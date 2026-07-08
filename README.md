@@ -19,6 +19,7 @@ React Native · Python FastAPI · MySQL · Deepgram ASR · OpenAI TTS
 ```bash
 git clone https://github.com/Lq0412/ai-en-coach.git
 cd ai-en-coach
+git config core.hooksPath .githooks   # 启用项目 Git hooks
 # .claude/skills/ 自动生效，无需额外配置
 ```
 
