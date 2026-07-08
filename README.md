@@ -63,12 +63,24 @@ cp -r .claude/skills/issue-standard .codex/skills/issue-standard
 
 > 以下文档仅团队可见（已 gitignore）。
 
-| 文档 | 说明 |
+```
+docs/
+└── week1/
+    ├── meetings/
+    ├── 林锵/
+    ├── 覃迦迎/
+    ├── 黄天宇/
+    ├── 张思成/
+    ├── 智铭威/
+    └── ...
+```
+
+| 文档 | 路径 |
 |------|------|
-| 市场需求调研分工 | `docs/market-research-tasks.md` |
-| 中文版 | `docs/market-research-tasks-zh.md` |
-| Product Killshot Report | `docs/product-killshot-report.md` |
-| 技术预研分工 | `docs/tech-pre-research-plan.md` |
-| 前端技术选型调研 | `docs/frontend-tech-research.md` |
-| 项目简介 | `docs/project-brief.md` |
+| Product Killshot Report | `docs/week1/2026-07-07-product-killshot-report.md` |
+| 市场需求调研分工 | `docs/week1/2026-07-08-market-research-tasks.md` |
+| 技术预研分工 | `docs/week1/2026-07-08-tech-pre-research-plan.md` |
+| 前端技术选型调研 | `docs/week1/2026-07-08-frontend-tech-research.md` |
+| 团队技术画像 | `docs/week1/2026-07-08-team-profile.md` |
+| 会议纪要 | `docs/week1/meetings/` |
 | 任务板 | `tasks/` |
