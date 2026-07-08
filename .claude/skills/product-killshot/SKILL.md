@@ -234,10 +234,10 @@ docs/product-killshot-YYYY-MM-DD.md
 7. **Deduplication** — If both agents suggest the same thing, merge into one item with combined justification
 8. **Language follows context** — Chinese output if user spoke Chinese, English otherwise. Technical terms stay in English
 9. **Save the file** — Always write the report to `docs/product-killshot-YYYY-MM-DD.md` and tell the user where it is
+10. **Feed into Proposal** — After the report is saved, suggest creating a `[提案]` Issue with `proposal` label, using the report's competitive analysis as the "备选方案与选择依据" and "本期不做清单" fields. See [产品设计规范](../../../reference/产品设计规范.md) § Proposal 八字段.
 
 ## When Not to Use This Skill
 
-- Non-developer-facing products (consumer apps, games, e-commerce) — the analysis framework is optimized for dev tools
-- Projects with no existing code (needs something to analyze)
+- Projects with no existing code or product definition (needs something to analyze)
 - Pure design/branding reviews (needs different expertise)
 - When user wants a single specific feature review (use brainstorming instead)
