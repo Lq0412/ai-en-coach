@@ -61,7 +61,7 @@ cp -r .claude/skills/issue-standard .codex/skills/issue-standard
 
 ## 内部文档
 
-> 以下文档仅团队可见（已 gitignore）。
+以下文档随项目同步，用于团队协作。
 
 ```
 docs/
