@@ -78,10 +78,20 @@ docs/
 
 | 文档 | 路径 |
 |------|------|
-| Product Killshot Report | `docs/week1/2026-07-07-product-killshot-report.md` |
-| 市场需求调研分工 | `docs/week1/2026-07-08-market-research-tasks.md` |
-| 技术预研分工 | `docs/week1/2026-07-08-tech-pre-research-plan.md` |
-| 前端技术选型调研 | `docs/week1/2026-07-08-frontend-tech-research.md` |
-| 团队技术画像 | `docs/week1/2026-07-08-team-profile.md` |
+| 竞品杀手锏报告 | `docs/week1/林锵/2026-07-07-竞品杀手锏报告.md` |
+| 项目简述 | `docs/week1/林锵/2026-07-08-项目简述.md` |
+| 市场调研分工 | `docs/week1/林锵/2026-07-08-市场调研分工.md` |
+| 技术预研分工 | `docs/week1/林锵/2026-07-08-技术预研分工.md` |
+| 前端技术选型调研 | `docs/week1/林锵/2026-07-08-前端技术选型调研.md` |
+| 团队技术画像 | `docs/week1/林锵/2026-07-08-团队技术画像.md` |
+| 产品方向评估 | `docs/week1/张思成/2026-07-08-产品方向评估.md` |
+| 数据库选型调研 | `docs/week1/张思成/2026-07-08-数据库选型调研.md` |
+| AI英语口语调研 | `docs/week1/覃迦迎/2026-07-07-AI英语口语调研.md` |
+| 用户需求调研综合报告 | `docs/week1/覃迦迎/2026-07-08-用户需求调研综合报告.md` |
+| AI口语陪练产品调研 | `docs/week1/黄天宇/2026-07-07-AI口语陪练产品调研.md` |
+| 竞品调研补充（海外） | `docs/week1/黄天宇/2026-07-08-AI口语陪练产品调研-补充海外APP.md` |
+| 未满足需求 Top10 | `docs/week1/黄天宇/2026-07-08-未满足需求Top10.md` |
+| 市场数据摘录 | `docs/week1/智铭威/2026-07-08-市场数据摘录.md` |
 | 会议纪要 | `docs/week1/meetings/` |
 | 任务板 | `tasks/` |
+| 参考规范 | `reference/` |
