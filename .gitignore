@@ -1,0 +1,29 @@
+# 内部规划文档（不公开）
+docs/
+
+# 依赖
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 环境变量
+.env
+.env.local
+.env.*.local
+
+# 构建产物
+dist/
+build/
+*.egg-info/
