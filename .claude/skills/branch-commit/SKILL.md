@@ -1,14 +1,13 @@
 ---
 name: branch-commit
 description: >
-  团队分支管理与提交频率规范。Use when 团队讨论分支策略、设置分支保护规则、
-  制定提交频率要求、处理 WIP 提交、或提到 分支管理、提交频率、分支命名、
-  commit 频率、推送规范、分支策略、pre-push、WIP 提交。
+  团队分支管理与提交频率规范。Use when 讨论分支策略、提交频率、
+  分支命名、WIP 提交、或提到 pre-push、推送规范。
 ---
 
 # 分支与提交规范
 
-团队级的**分支管理**和**提交节奏**约定。通用 commit 格式和 PR 模板见 [pr-commit](../../dev-tools/pr-commit/SKILL.md)，本文不重复。
+团队级的**分支管理**和**提交节奏**约定。通用 commit 格式和 PR 模板见 [pr-commit](../pr-commit/SKILL.md)，本文不重复。
 
 ## 与 pr-commit 的分工
 
@@ -19,7 +18,7 @@ description: >
 | PR 四段描述 | 提 PR 前的自检清单 |
 | 拆分建议 | 团队节奏：每人每天至少一次推送 |
 
-遇到 format 问题 → [pr-commit](../../dev-tools/pr-commit/SKILL.md)。遇到流程/节奏问题 → 本文。
+遇到 format 问题 → [pr-commit](../pr-commit/SKILL.md)。遇到流程/节奏问题 → 本文。
 
 ## 分支管理
 
@@ -101,48 +100,5 @@ WIP commit 只在功能分支上存在，**不能出现在 dev 上**。功能分
 | 删分支 | 合入后立刻删 | 开发者自己 |
 | 清理本地 | 每周 git fetch --prune | 所有人 |
 
-## 站会与日报
+站会与日报格式见 [一些安排与共识](../../../reference/一些安排与共识.md)。
 
-> 来自 [一些安排与共识](../../../reference/一些安排与共识.md)。
-
-### 每日站会
-
-- **必须开**，自行组织
-- **留存记录**，发到所在导师群
-- 内容：今日完成、明日计划、卡点
-
-### 日报
-
-- **按时提交**，带成果链接
-- 不是「今天做了什么」，而是「今天交付了什么」
-- **提交到所在导师群**
-
-**标准格式**：
-
-```
-[姓名] [日期]
-今日完成：[概述]
-- [事项]：[链接]
-- [事项]：[链接]
-明日计划：
-- [事项]
-```
-
-**示例**：
-
-```
-[姓名] 4.26 日报
-今日完成：整理网关下一步计划、探讨URL Scheme场景与结果、轻量传输层抽象与分层Action Registry
-- 整理网关下一步计划：链接
-- URL Scheme的场景与结果显示探讨：链接
-- 轻量传输层抽象与分层 Action Registry：链接
-明日计划：
-- 继续整理细化网关下一步计划，将URL Scheme实现
-```
-- 格式：人物 + 事件 + **链接**
-
-## 关联 Skills
-
-- commit 格式 → [pr-commit](../../dev-tools/pr-commit/SKILL.md)
-- Issue 怎么写 → [issue-standard](../issue-standard/SKILL.md)
-- 代码质量 → [code-discipline](../../dev-tools/code-discipline/SKILL.md)

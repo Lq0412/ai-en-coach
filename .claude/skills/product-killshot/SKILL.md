@@ -1,16 +1,12 @@
 ---
 name: product-killshot
 description: >
-  Use when the user says "产品杀手锏", "竞品分析", "产品优化报告", "product analysis",
-  "competitive analysis", "优化建议", "产品竞争力", "killshot", "产品分析报告",
-  "怎么打败竞品", "功能规划", "产品改进", or wants a competitive product analysis
-  with actionable optimization report for their dev tool / CLI / developer-facing product.
-  Also triggers on "product-killshot" or "产品杀手锏".
+  Use when the user says 产品杀手锏, 竞品分析, product analysis, competitive analysis,
+  killshot, or wants a competitive product analysis with actionable optimization report.
+  Also triggers on "product-killshot".
 ---
 
 # Product Killshot — 产品杀手锏分析
-
-You are a senior product strategist and competitive analyst specializing in developer tools, CLI applications, and developer-facing platforms. You have 15+ years of experience building and growing developer products from 0 to 1. You think in terms of "switching cost", "lock-in effect", and "10x improvement".
 
 ## Overview
 
@@ -25,17 +21,10 @@ You are a senior product strategist and competitive analyst specializing in deve
 
 ## Execution Pipeline
 
-```dot
-digraph killshot {
-    rankdir=TB;
-    "Read project code" -> "Identify product positioning";
-    "Identify product positioning" -> "Web search top competitor";
-    "Web search top competitor" -> "Agent A: Competitor Power User";
-    "Web search top competitor" -> "Agent B: Your Product Power User";
-    "Agent A: Competitor Power User" -> "Synthesize Report";
-    "Agent B: Your Product Power User" -> "Synthesize Report";
-    "Synthesize Report" -> "Save Markdown file";
-}
+```
+Read code → Identify positioning → Web search competitor
+  → Agent A (Competitor user) + Agent B (Your user) in parallel
+  → Synthesize report → Save to docs/
 ```
 
 ### Phase 1: Project Intelligence (Auto)
@@ -132,42 +121,29 @@ docs/product-killshot-YYYY-MM-DD.md
 > Generated: YYYY-MM-DD | Competitor analyzed: [Competitor Name]
 
 ## Executive Summary
-<!-- 3-5 sentences: the most critical insights and top 3 actions -->
 
 ## Product Snapshot
-<!-- Name, positioning, target user, core features, tech stack -->
 
 ## Competitive Landscape
 ### Top Competitor: [Name]
-<!-- Features, pricing, strengths, weaknesses, market position -->
 ### Secondary Competitors
-<!-- Brief mentions if applicable -->
 
 ---
 
 ## Part I: Competitive Killshot (竞品杀手锏)
-<!-- From Agent A — what makes competitor users switch -->
 
 ### 🎯 Quick Wins (Low Effort, High Impact)
-<!-- P0 items that are cheap to build but dramatically improve competitiveness -->
-
 | # | Feature | Why It Kills | Effort | Impact |
 |---|---------|-------------|--------|--------|
 | 1 | ... | ... | Low | High |
 
 ### 🔥 Switching Triggers
-<!-- Features that directly reduce switching cost from competitor -->
-
 ### 💀 Deal-Breaker Gaps
-<!-- Must-fix items that prevent adoption -->
-
 ### 🔒 Lock-In Opportunities
-<!-- Features that create "can't go back" moments -->
 
 ---
 
 ## Part II: User Experience Evolution (体验进化)
-<!-- From Agent B — what makes current users love it more -->
 
 ### 🎯 Quick Wins
 | # | Improvement | Dimension | Effort | Impact |
@@ -175,22 +151,14 @@ docs/product-killshot-YYYY-MM-DD.md
 | 1 | ... | Speed/Quality/UI | Low | High |
 
 ### ⚡ Speed Optimizations
-<!-- Specific workflow improvements -->
-
 ### ✨ Quality Enhancements
-<!-- Output quality and reliability improvements -->
-
 ### 🎨 UI/UX Upgrades
-<!-- Visual and interaction improvements -->
-
 ### 💪 Stickiness Multipliers
-<!-- Features that increase daily engagement and retention -->
 
 ---
 
 ## Part III: Unified Priority Matrix
 
-### Priority Classification
 | Priority | Count | Description |
 |----------|-------|-------------|
 | P0 (Do Now) | N | Quick wins from both analyses |
@@ -198,18 +166,12 @@ docs/product-killshot-YYYY-MM-DD.md
 | P2 (Roadmap) | N | Important but lower urgency |
 | P3 (Nice-to-have) | N | Polish and differentiation |
 
-### Implementation Roadmap
-<!-- Ordered list of all recommendations, merged and deduplicated -->
-
 #### Phase 1 — Quick Wins (Week 1)
 - [ ] ...
-
 #### Phase 2 — Competitive Parity (Weeks 2-4)
 - [ ] ...
-
 #### Phase 3 — Market Differentiation (Month 2)
 - [ ] ...
-
 #### Phase 4 — Lock-In & Growth (Month 3+)
 - [ ] ...
 
@@ -217,10 +179,7 @@ docs/product-killshot-YYYY-MM-DD.md
 
 ## Appendix
 ### Raw Analysis: Competitor Power User Perspective
-<!-- Agent A's full raw output -->
-
 ### Raw Analysis: Your Product Power User Perspective
-<!-- Agent B's full raw output -->
 ```
 
 ## Hard Rules

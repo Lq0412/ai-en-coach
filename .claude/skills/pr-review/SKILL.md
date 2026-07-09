@@ -8,7 +8,7 @@ description: >
 
 # PR Review 规范
 
-PR 的**创建格式**见 [pr-commit](../../dev-tools/pr-commit/SKILL.md)（四段描述模板）。本文只管 Review 和合入这半段。
+PR 的**创建格式**见 [pr-commit](../pr-commit/SKILL.md)（四段描述模板）。本文只管 Review 和合入这半段。
 
 ## 核心原则
 
@@ -85,7 +85,7 @@ Review 不是「我看了一遍代码」。按以下维度逐条过：
 - [ ] 有没有 AI 常见的糊弄行为？（兜底数据、猜测字段、冗余异常处理）
 - [ ] **核心 PR 附关键 Prompt 和人工 Review 说明**（用了什么 Prompt、Review 确认了哪些要点）
 
-> AI 使用底线详见 [code-discipline](../../dev-tools/code-discipline/SKILL.md) § AI 使用底线。最终交付责任在人，不在 AI。
+> AI 使用底线详见 [code-discipline](../code-discipline/SKILL.md) § AI 使用底线。最终交付责任在人，不在 AI。
 
 ## 合入条件
 
@@ -131,8 +131,3 @@ L42 这里如果 audioStream 为 null，会直接崩掉。
 - 功能分支立刻删
 - 如果合入后发现问题 → 新开 fix 分支修，不回滚已合入的代码（除非是阻塞级 bug）
 
-## 关联 Skills
-
-- PR 怎么写 → [pr-commit](../../dev-tools/pr-commit/SKILL.md)
-- 代码质量红线 → [code-discipline](../../dev-tools/code-discipline/SKILL.md)
-- 分支和提交节奏 → [branch-commit](../branch-commit/SKILL.md)
