@@ -24,6 +24,3 @@ Thumbs.db
 dist/
 build/
 *.egg-info/
-
-# 学习参考资料（本地留存，不提交）
-learn-1024xengineer/
