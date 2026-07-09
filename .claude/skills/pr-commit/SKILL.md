@@ -77,7 +77,7 @@ scope 可与团队历史一致（如中文 `后端`、`创作者端`），**与 
 - 一条 commit 一个意图；多 scope / 多意图 → **拆 commit**
 - 不提交 `.env`、密钥、本地缓存、构建产物（除非用户明确要求）
 - 用户未要求时 **不要主动 `git commit` / `git push`**
-- **禁止** 在 commit message 中添加 `Co-authored-by: Cursor` 等 Agent 协作者行
+- **禁止** 在 commit message 中添加 `Co-authored-by: [AI Tool]` 等 Agent 协作者行
 
 ### 示例
 
