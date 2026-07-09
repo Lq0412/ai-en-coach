@@ -86,7 +86,7 @@ WIP commit 只在功能分支上存在，**不能出现在 dev 上**。功能分
 - [ ] dev 合并过来了（rebase 或 merge），当前没有冲突
 - [ ] 在本地能跑起来（编译 / 启动不报错）
 - [ ] 调试用的 `console.log` / `TODO` 清理掉了
-- [ ] 如果 commit 包含 AI 生成代码，提交者自己能讲清每段逻辑
+- [ ] 如果 commit 包含 AI 生成代码，确认自己能讲清每段逻辑
 - [ ] 关联的 Issue 号写在 commit body 里
 
 ## 团队节奏
