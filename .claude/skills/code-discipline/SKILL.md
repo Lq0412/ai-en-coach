@@ -1,13 +1,9 @@
 ---
 name: code-discipline
 description: >
-  Use when writing or changing code, fixing bugs, refactoring, reviewing diffs,
-  or when the user mentions coding discipline, decision ladder, YAGNI,
-  stdlib first, minimal diff, deletion over addition, unrequested abstractions,
-  defensive code, fallback, silent defaults, redundant code, guessed fields,
-  编码纪律, 决策阶梯, 标准库优先, 最简方案, 最少改动, 删优于加,
-  模块化, 单一职责, 过度设计, 兜底, 冗余代码, 猜测字段, discipline 注释,
-  or asks to avoid unnecessary dependencies or abstractions.
+  Use when writing code, fixing bugs, refactoring, or reviewing diffs,
+  or when the user mentions coding discipline, YAGNI, stdlib first, minimal diff,
+  编码纪律, 决策阶梯, 过度设计, or asks to avoid unnecessary dependencies.
 ---
 
 **SUB-SKILL:** For commit/PR workflow after code changes, see [pr-commit](../pr-commit/SKILL.md).

@@ -31,7 +31,7 @@ description: >
 [类型] 简短描述（中文，≤50 字）
 ```
 
-**类型前缀**（与 commit type 对齐，见 [pr-commit](../../dev-tools/pr-commit/SKILL.md)）：
+**类型前缀**（与 commit type 对齐，见 [pr-commit](../pr-commit/SKILL.md)）：
 
 | 前缀 | 什么时候用 |
 |------|-----------|
@@ -70,7 +70,7 @@ description: >
 ```markdown
 ## 背景
 市场调研 Day 5 评审确定方向 D（高压冲突口语）。T1 访谈 6/8 人提到「现有 App 太温和」。
-技术预研确定使用 Deepgram 作为 ASR 方案。见 [ASR 选型调研](../../research/tech-预备调研/ASR选型调研.md)。
+技术预研确定使用 Deepgram 作为 ASR 方案。见 [相关调研文档]。
 
 ## 要做的事
 - 封装原生音频采集模块（AudioRecord / AVAudioEngine），输出 PCM 16kHz 流
@@ -87,7 +87,7 @@ description: >
 ## 关联
 - 依赖：#12（后端 WebSocket 服务搭建）
 - Milestone：MS2（核心路径跑通）
-- 参考：[ASR 选型调研](../../research/tech-预备调研/ASR选型调研.md)
+- 参考：[相关调研文档]
 ```
 
 ## 标签体系
@@ -136,7 +136,7 @@ description: >
 | `调研` | 桌面研究或技术调研 |
 | `bug` | 已有功能出问题 |
 
-每个 Issue **至少打 2 个标签**：1 个状态/优先级 + 1 个技术域。 |
+每个 Issue **至少打 2 个标签**：1 个状态/优先级 + 1 个技术域。
 
 ## 拆分规则
 
@@ -177,7 +177,3 @@ description: >
 4. **边界清晰**：明确什么被解决、什么不被解决
 5. **从真实场景抽象**：需求应来自多个真实用户故事的共性点
 
-## 关联 Skills
-
-- 分支命名和 commit 格式 → [pr-commit](../../dev-tools/pr-commit/SKILL.md)
-- 代码质量控制 → [code-discipline](../../dev-tools/code-discipline/SKILL.md)

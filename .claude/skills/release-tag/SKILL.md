@@ -83,7 +83,3 @@ gh release create v0.1.0 \
   --notes-file release-notes.md
 ```
 
-## 关联 Skills
-
-- MS 怎么管 → [milestone-manager](../milestone-manager/SKILL.md)
-- Issue 怎么写 → [issue-standard](../issue-standard/SKILL.md)

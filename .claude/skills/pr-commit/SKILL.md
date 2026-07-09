@@ -219,6 +219,6 @@ fix(api): 修复创建订单时 user_id 字段错误
 
 ## 项目级覆盖（可选）
 
-若仓库有 `.cursor/skills/pr-commit/` 或 `CONTRIBUTING.md` 中的 scope 表，**以项目内文件为准**，可覆盖本文 scope 与 subject 语言。
+若仓库有 `.claude/skills/pr-commit/` 或 `CONTRIBUTING.md` 中的 scope 表，**以项目内文件为准**，可覆盖本文 scope 与 subject 语言。
 
 详细示例：[examples.md](examples.md)
