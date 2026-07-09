@@ -42,7 +42,6 @@ PR 提交 → 指定 Reviewer → 24h 内给反馈
 
 ### Review 分工
 
-> 来自 [GitHub 过程管理规范](../../../reference/GitHub过程管理规范.md)。
 
 | 角色 | 职责 |
 |:-----|:-----|
