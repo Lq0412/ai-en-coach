@@ -91,7 +91,6 @@ description: >
 
 ## 标签体系
 
-> 标签体系来自 [GitHub 过程管理规范](../../../reference/GitHub过程管理规范.md)，用于标记产品设计决策结果、规格粒度、文档状态，使整个项目可追溯。
 
 ### 提案状态标签（产品/设计 Issue 专用）
 
@@ -159,7 +158,6 @@ description: >
 
 ## Proposal 流程
 
-> 详见 [产品设计规范](../../../reference/产品设计规范.md) 和 [GitHub 过程管理规范](../../../reference/GitHub过程管理规范.md)。
 
 当 Issue 类型为 `[提案]` 时，走特殊流程：
 
