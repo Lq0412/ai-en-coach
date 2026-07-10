@@ -128,13 +128,13 @@
 
 ## 原型 / Demo
 
-原型图待补充。
+![首页](原型图/mockly-homepage.png)
 
-建议后续直接在此处插入：
+![场景选择](原型图/mockly-scene-selection.png)
 
-- 原型截图
-- Figma 链接
-- 可运行 Demo 链接
+![AI 对话](原型图/mockly-ai-dialogue.png)
+
+![反馈/总结](原型图/3623567521634a29a9c8e40fd75aabcf.png)
 
 ## 验收标准
 
