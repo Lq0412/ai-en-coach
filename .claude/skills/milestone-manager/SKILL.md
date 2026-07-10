@@ -10,7 +10,18 @@ description: >
 
 把项目按固定间隔拆成可验收的迭代。每个 MS 必须有一个核心问题和一个可打 tag 的交付物。
 
-**操作逻辑（本文件）与项目参数分离。** 项目参数（起止时间、人数、Issue 配额等）见 [`data/ms-config.json`](data/ms-config.json)。
+## 规范来源与适用优先级
+
+本项目优先参考 `reference/GitHub过程管理规范.md` 和 `reference/一些安排与共识.md`。`data/ms-config.json` 是本地辅助配置，不是覆盖 GitHub 仓库现有 Milestone 的强制来源。
+
+使用本 skill 时按以下优先级判断：
+
+1. **已有仓库优先**：如果目标仓库已经有 Milestone 标题、描述和 due date，不要因为本地配置不同而直接覆盖。
+2. **创建新 Milestone 时才使用模板**：只有在用户要求新建或明确要求按配置同步时，才从 `data/ms-config.json` 生成标题、描述和截止日期。
+3. **修改前先对比实际做法**：1024XEngineer 各仓库的 Milestone 口径并不完全一致，有的有 due date，有的没有。调整前应先说明差异和影响。
+4. **不要批量改历史元数据**：除非用户明确要求，不要为了“规范化”批量改已有 Issue 的 Milestone、标签或关闭状态。
+
+**操作逻辑（本文件）与项目参数分离。** 项目参数（起止时间、人数、Issue 配额等）见 [`data/ms-config.json`](data/ms-config.json)，仅作新建或规划时的参考。
 
 ## 读取项目参数
 
@@ -80,9 +91,9 @@ MS{N}：{一句话使命}
 
 ### 关联检查
 
-创建 Issue 或评审 Issue 时，必须确认 **Milestone 字段不为空**。
+创建 Issue 或评审 Issue 时，优先确认仓库是否正在使用 Milestone 管理。如果同一批 Issue 已经挂了 MS，则新增 Issue 应挂到同一 MS；如果仓库同类 Issue 普遍不挂 MS，不要擅自批量补挂。
 
-没有挂 MS 的 Issue 等于没有排期。
+在 1024XEngineer 过程规范中，Milestone 用于集中展示本轮目标、关联 Issue 和进度。它是推荐的过程管理主线，但具体标题、due date 和描述以目标仓库现状为准。
 
 ### 工作量配平
 
@@ -91,7 +102,7 @@ MS{N}：{一句话使命}
 - 当前 MS 的 Issue 数 = `teamSize × perPersonQuota.{min,max}`（即 `{teamSize * perPersonQuota.min}-{teamSize * perPersonQuota.max}` 作为参考总量）
 - 同时参考 `issueQuota.{min,max}` 作为绝对范围
 
-超出这个范围 → 检查是否把 Issue 拆得太碎或太大。
+超出这个范围 → 先提醒“本地配置建议范围”和“仓库实际做法”存在差异，再判断是否需要拆分、合并或补 Issue。不要直接把配置中的 issueQuota 当作硬性验收失败。
 
 ## 进度跟踪
 

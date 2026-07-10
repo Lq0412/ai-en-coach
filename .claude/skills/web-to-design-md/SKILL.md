@@ -22,6 +22,24 @@ metadata:
 
 目标不是克隆页面，而是让另一个 Agent **仅凭文档**即可复现相同的设计语言、内容调性与交互气质。
 
+## 与 XEngineer 规范的衔接
+
+当本 skill 用于 XEngineer 项目的竞品网站分析、产品 Proposal 支撑材料或设计系统提取时，同时遵守：
+
+- `reference/产品设计规范.md`：竞品调研用于支撑设计取舍，而不是堆功能清单；输出应能回答“有哪些做法、选哪个、为什么、明确不做什么”。
+- `reference/GitHub过程管理规范.md`：调研阶段不强制标准化；若调研结论进入 Proposal，再使用 `proposal`、`FullSpec` / `MiniSpec` 等标签流转。
+- `references/browser-backends.md` 与 `references/website-reading-checklist.md`：网站证据必须 browser-first，优先 DOM、computed style、CSS 变量、交互态 diff，不用截图或静态 HTML 代替主要证据。
+
+不要把 `DESIGN.md` 直接写成产品 Proposal。正确关系是：
+
+```text
+竞品网站证据
+  -> DESIGN.md / design system 摘要
+  -> 产品设计中的“现有做法及其不足 / 关键决策与依据 / 原型风格参考”
+```
+
+如果用户要求“提取竞品设计并写进 Issue/Proposal”，先完成浏览器证据提取，再把结论压缩成可引用的设计取舍，而不是把整份 DESIGN.md 粘进 Issue。
+
 ## 浏览器运行时（双版本，自动选用）
 
 | 版本 | 宿主 | 工具 |
@@ -41,6 +59,7 @@ metadata:
 - **观察 vs 推断**：直接观测写事实；判断性规则标注「推断」
 - **合成而非 dump**：把 CSS 翻译成设计语言，不写无意义数值堆砌
 - **默认双产出**：`DESIGN.md` + 同目录 `DESIGN-preview.html`（用户明确只要 markdown 时可省略 HTML）
+- **服务取舍**：若服务 XEngineer Proposal，最后补一小节“可借鉴 / 不建议照搬 / 对本项目的取舍影响”
 
 ## Preflight
 

@@ -4,6 +4,8 @@
 
 支持 **Cursor 版**（Playwright MCP）与 **Codex 版**（`agent-browser` CLI），按当前环境自动选用，两套流程等价。
 
+用于 XEngineer 项目的竞品分析时，本 skill 只负责 browser-first 证据提取与设计系统总结；若结论进入产品 Proposal，应再按 `reference/产品设计规范.md` 转成“现有做法及其不足 / 关键决策与依据 / 明确不做”的取舍表达。
+
 ## 能力
 
 - 用真实浏览器读取 DOM、computed style、CSS 变量、交互态（非截图优先）

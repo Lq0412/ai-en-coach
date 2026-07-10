@@ -2,6 +2,8 @@
 
 GitHub Milestone 创建、Issue 关联与进度跟踪。基于 8 周 / 4 个 MS 模型。
 
+本项目使用时优先参考 `reference/GitHub过程管理规范.md` 和 `reference/一些安排与共识.md`。已有仓库的 Milestone 标题、描述和 due date 以仓库现状为准；`data/ms-config.json` 只在新建或用户明确要求同步时作为参考。
+
 ## 安装
 
 ```bash
