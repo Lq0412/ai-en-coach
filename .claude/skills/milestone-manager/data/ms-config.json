@@ -1,0 +1,73 @@
+{
+  "project": {
+    "name": "ai-en-coach",
+    "teamSize": 5,
+    "startDate": "2026-07-07",
+    "totalWeeks": 8
+  },
+  "milestones": [
+    {
+      "id": "MS1",
+      "weeks": [1, 2],
+      "title": "MS1：战略决策与首个可串联版本",
+      "dueDate": "2026-07-19",
+      "coreQuestion": "方向和主干成立吗？",
+      "deliverables": [
+        "产品取舍决策（提案文档：5 问完整回答 + 方案对比）",
+        "模块骨架可运行（接口定义、数据模型、目录结构可编译）",
+        "技术选型裁定",
+        "Live Demo（核心链路可串联展示）"
+      ],
+      "nonDeliverables": [
+        "完整 MVP 功能",
+        "真实第三方集成（仅桩实现）",
+        "商业化方案"
+      ],
+      "issueQuota": { "min": 10, "max": 15 },
+      "perPersonQuota": { "min": 2, "max": 3 }
+    },
+    {
+      "id": "MS2",
+      "weeks": [3, 4],
+      "title": "MS2：MVP 深化与架构落实",
+      "dueDate": "2026-08-02",
+      "coreQuestion": "核心路径跑通了吗？",
+      "deliverables": [
+        "核心功能可演示"
+      ],
+      "nonDeliverables": [],
+      "issueQuota": { "min": 15, "max": 20 },
+      "perPersonQuota": { "min": 3, "max": 4 }
+    },
+    {
+      "id": "MS3",
+      "weeks": [5, 6],
+      "title": "MS3：功能闭合与质量达标",
+      "dueDate": "2026-08-16",
+      "coreQuestion": "MVP 真的做完了吗？",
+      "deliverables": [
+        "全部功能完成，可试用"
+      ],
+      "nonDeliverables": [],
+      "issueQuota": { "min": 15, "max": 20 },
+      "perPersonQuota": { "min": 3, "max": 4 }
+    },
+    {
+      "id": "MS4",
+      "weeks": [7, 8],
+      "title": "MS4：打磨、交付与发布",
+      "dueDate": "2026-08-30",
+      "coreQuestion": "交付真实、表达清楚吗？",
+      "deliverables": [
+        "功能冻结 + 文档 + Tag v1.0"
+      ],
+      "nonDeliverables": [],
+      "issueQuota": { "min": 5, "max": 10 },
+      "perPersonQuota": { "min": 1, "max": 2 }
+    }
+  ],
+  "progressTracking": {
+    "halfOverLowThreshold": 0.3,
+    "nearEndUnstartedThreshold": 3
+  }
+}
