@@ -6,7 +6,7 @@
 
 ## 技术栈
 
-React Native · Python FastAPI · MySQL · Deepgram ASR · OpenAI TTS
+React Native · Go · MySQL · Deepgram ASR · OpenAI TTS
 
 ## 安装 Skills
 
