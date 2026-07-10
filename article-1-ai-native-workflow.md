@@ -161,15 +161,17 @@ milestone-manager/
 
 ## 第一周的初步观察
 
-以下是我们第一周（7/7-7/12）的实际情况，样本量很小（5 人团队，10 个 Issue），仅供参考：
+> ⚠️ **说明**：本文所引用的 Issue、PR 等数据来自团队额外开设的**文档共享仓库**（用于快速同步调研文档和规范文件），而非实训营的项目仓库。本仓库的 PR 以文档提交为主，因此 PR 数量偏高、且以自建自合为主——这些特征不代表实训营项目的实际开发节奏。
+
+以下是我们第一周（7/7-7/12，截至 7/10）的实际情况，样本量很小（5 人团队，12 个 Issue），仅供参考：
 
 **看到的改善：**
-- Issue 全部按四段模板填写，Milestone 关联率 100%（10/10）
-- 17 个已合并的 PR 均采用 conventional commits 格式
+- Issue 全部按四段模板填写，Milestone 关联率 100%（12/12）
+- 22 个已合并的 PR 均采用 conventional commits 格式
 - 方向评审前完成 6 条调研线 + 4 条技术预研线，Issue 粒度基本控制在 1 人天以内
 
 **还没做到的：**
-- PR Review 环节尚未实际运转——所有 PR 均为同一人自建自合，pr-review 中的「独立 Reviewer」规则还没用上
+- PR Review 环节尚未实际运转——22 个 PR 中 16 个为同一人自建自合，pr-review 中的「独立 Reviewer」规则还没用上
 - milestone-manager 的进度跟踪只在第一周有效，后续 MS 的节奏还没测试
 - 「AI 生成代码时提交者必须能讲清每段逻辑」这条规则，因为还没进入编码阶段，尚未验证
 
@@ -186,6 +188,6 @@ milestone-manager/
 ✍️ 作者：林锵 · 助教：张普 · 🎓 导师：夏延吉
 👥 团队成员：覃迦迎、黄天宇、张思成、智铭威
 
-> **GitHub**: [https://github.com/Lq0412/ai-en-coach](https://github.com/Lq0412/ai-en-coach)
+> **GitHub**: [https://github.com/Lq0412/ai-en-coach-specs](https://github.com/Lq0412/ai-en-coach-specs)
 >
 > 欢迎 Fork / Star / PR，也欢迎把你的团队规范写成 Skill 一起交流。
