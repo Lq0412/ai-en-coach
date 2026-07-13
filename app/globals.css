@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+  background: #090a0a;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
