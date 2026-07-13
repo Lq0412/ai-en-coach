@@ -1,98 +1,116 @@
-# vinext-starter
+# AI 英语口语陪练
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support.
+面向外语学习者的 AI 口语对话训练工具，重点解决低延迟、可打断、发音评测与表达纠错。
 
-## Prerequisites
+5 人团队 · 8 周 · 2026-07-08 起
 
-- Node.js `>=22.13.0`
+## 技术栈
 
-## Quick Start
+React Native · Go · MySQL · Deepgram ASR · OpenAI TTS
+
+## 安装 Skills
+
+本项目 `.claude/skills/` 下包含团队工作流 skills。安装后 AI 助手自动遵循团队规范。
+
+### Claude Code
+
+项目级自动加载（推荐）：
+
+```bash
+git clone https://github.com/Lq0412/ai-en-coach.git
+cd ai-en-coach
+git config core.hooksPath .githooks   # 启用项目 Git hooks
+# .claude/skills/ 自动生效，无需额外配置
+```
+
+全局安装（所有项目通用）：
+
+```bash
+ln -s $(pwd)/.claude/skills/issue-standard ~/.claude/skills/issue-standard
+ln -s $(pwd)/.claude/skills/pr-commit ~/.claude/skills/pr-commit
+ln -s $(pwd)/.claude/skills/code-discipline ~/.claude/skills/code-discipline
+# …选择你需要的 skill
+```
+
+### Codex (OpenAI)
+
+```bash
+# 全局安装
+cp -r .claude/skills/issue-standard ~/.codex/skills/issue-standard
+cp -r .claude/skills/pr-commit ~/.codex/skills/pr-commit
+cp -r .claude/skills/code-discipline ~/.codex/skills/code-discipline
+# …选择你需要的 skill
+
+# 或项目级（放项目根目录）
+cp -r .claude/skills/issue-standard .codex/skills/issue-standard
+```
+
+### 可用 Skills
+
+| Skill | 用途 |
+|-------|------|
+| `issue-standard` | Issue 模板、标签、拆分 |
+| `pr-commit` | Commit 格式、PR 四段描述 |
+| `code-discipline` | 编码纪律、禁止项 |
+| `branch-commit` | 分支管理、提交频率 |
+| `pr-review` | Review 流程、合入条件 |
+| `milestone-manager` | Milestone 创建、进度跟踪 |
+| `release-tag` | Tag 命名、Release Notes |
+| `product-killshot` | 竞品分析 + 产品优化报告 |
+| `ai-design-smell` | AI 生成设计味识别与修复 |
+| `web-to-design-md` | 竞品网站提取设计系统 |
+
+## 内部文档
+
+以下文档随项目同步，用于团队协作。
+
+```
+docs/
+└── week1/
+    ├── meetings/
+    ├── 林锵/
+    ├── 覃迦迎/
+    ├── 黄天宇/
+    ├── 张思成/
+    ├── 智铭威/
+    └── ...
+```
+
+| 文档 | 路径 |
+|------|------|
+| 竞品杀手锏报告 | `docs/week1/林锵/2026-07-07-竞品杀手锏报告.md` |
+| 项目简述 | `docs/week1/林锵/2026-07-08-项目简述.md` |
+| 市场调研分工 | `docs/week1/林锵/2026-07-08-市场调研分工.md` |
+| 技术预研分工 | `docs/week1/林锵/2026-07-08-技术预研分工.md` |
+| 前端技术选型调研 | `docs/week1/林锵/2026-07-08-前端技术选型调研.md` |
+| 团队技术画像 | `docs/week1/林锵/2026-07-08-团队技术画像.md` |
+| 产品方向评估 | `docs/week1/张思成/2026-07-08-产品方向评估.md` |
+| 数据库选型调研 | `docs/week1/张思成/2026-07-08-数据库选型调研.md` |
+| AI英语口语调研 | `docs/week1/覃迦迎/2026-07-07-AI英语口语调研.md` |
+| 用户需求调研综合报告 | `docs/week1/覃迦迎/2026-07-08-用户需求调研综合报告.md` |
+| AI口语陪练产品调研 | `docs/week1/黄天宇/2026-07-07-AI口语陪练产品调研.md` |
+| 竞品调研补充（海外） | `docs/week1/黄天宇/2026-07-08-AI口语陪练产品调研-补充海外APP.md` |
+| 未满足需求 Top10 | `docs/week1/黄天宇/2026-07-08-未满足需求Top10.md` |
+| 市场数据摘录 | `docs/week1/智铭威/2026-07-08-市场数据摘录.md` |
+| 会议纪要 | `docs/week1/meetings/` |
+| 任务板 | `tasks/` |
+| 参考规范 | `reference/` |
+
+## SpeakUp Web 产品原型
+
+仓库根目录同时包含可交互的 SpeakUp 产品原型，覆盖模拟面试创建、多轮及分阶段练习、实时/气泡对话、练习历史、报告、错题回顾、角色创建与个人中心等流程。
+
+### 本地运行
 
 ```bash
 npm install
 npm run dev
+```
+
+启动后访问开发服务器首页，或直接查看 `public/spreak-prototype.html`。
+
+### 构建
+
+```bash
 npm run build
 ```
-
-This starter does not use `wrangler.jsonc`.
-
-## Included Shape
-
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
-
-## Workspace Auth Headers
-
-OpenAI workspace sites can read the current user's email from
-`oai-authenticated-user-email`.
-
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
-```
-
-## Optional Dispatch-Owned ChatGPT Sign-In
-
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
-
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
-
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
-
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
-
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
-
-## Useful Commands
-
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
-
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)

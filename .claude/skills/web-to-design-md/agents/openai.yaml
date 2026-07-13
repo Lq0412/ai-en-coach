@@ -1,0 +1,4 @@
+interface:
+  display_name: "Web to DESIGN.md"
+  short_description: "Inspect a live website and write a reusable DESIGN.md"
+  default_prompt: "Use $web-to-design-md to inspect a live website with agent-browser and generate a reusable DESIGN.md plus an HTML preview."

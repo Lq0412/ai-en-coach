@@ -1,42 +1,39 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
+# 依赖
+node_modules/
 /node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
+__pycache__/
+*.pyc
+.venv/
+venv/
 
-# testing
-/coverage
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
 
-# next.js
-/.next/
-/.vinext/
-/out/
-
-# misc
+# 系统文件
 .DS_Store
-*.pem
+Thumbs.db
 
-# debug
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.pnpm-debug.log*
+# 环境变量
+.env
+.env.local
+.env.*.local
 
-# env files (can opt-in for committing if needed)
-.env*
+# 构建产物
+dist/
+build/
+*.egg-info/
 
-# vercel
-.vercel
-
-# typescript
+# SpeakUp Web 原型
+.next/
+.vinext/
+out/
+.wrangler/
+coverage/
+outputs/
+work/
 next-env.d.ts
-/dist/
-/.wrangler/
-/outputs/
-/work/
+*.pem
+*.log
