@@ -98,19 +98,21 @@ docs/
 
 ## SpeakUp Web 产品原型
 
-仓库根目录同时包含可交互的 SpeakUp 产品原型，覆盖模拟面试创建、多轮及分阶段练习、实时/气泡对话、练习历史、报告、错题回顾、角色创建与个人中心等流程。
+`prototype/` 目录包含可交互的 SpeakUp 产品原型，覆盖模拟面试创建、多轮及分阶段练习、实时/气泡对话、练习历史、报告、错题回顾、角色创建与个人中心等流程。
 
 ### 本地运行
 
 ```bash
+cd prototype
 npm install
 npm run dev
 ```
 
-启动后访问开发服务器首页，或直接查看 `public/spreak-prototype.html`。
+启动后访问开发服务器首页，或直接查看 `prototype/public/spreak-prototype.html`。
 
 ### 构建
 
 ```bash
+cd prototype
 npm run build
 ```
