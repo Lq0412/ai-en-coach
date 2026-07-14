@@ -48,7 +48,7 @@ test("keeps the product shell linked to the interactive prototype", async () => 
   assert.match(layout, /title:\s*"SpeakUp 产品原型"/);
   assert.match(layout, /lang="zh-CN"/);
   assert.match(prototypeHtml, /id="screen"/);
-  assert.match(prototypeHtml, /src="spreak-prototype\.js\?v=3"/);
+  assert.match(prototypeHtml, /src="spreak-prototype\.js\?v=\d+"/);
   assert.match(prototypeHtml, /data-route="interviewers"/);
   assert.match(prototypeScript, /'interviewers':interviewers/);
   assert.match(prototypeScript, /'conversation-history':conversationHistory/);
