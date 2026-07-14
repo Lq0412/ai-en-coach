@@ -1,0 +1,182 @@
+erDiagram
+  users ||--o{ auth_sessions : has
+  users ||--o{ resumes : uploads
+  users ||--o{ experiences : owns
+  users ||--o{ interview_plans : creates
+  users ||--o{ interviewers : owns
+  users ||--o{ interview_sessions : owns
+  users ||--o{ audio_assets : owns
+
+  resumes ||--o{ experiences : extracts
+  resumes ||--o{ interview_plans : used_by
+  experiences ||--o{ interview_plans : source_for
+
+  interview_plans ||--o{ interviewers : contains
+  interview_plans ||--o{ interview_sessions : groups
+  interviewers ||--o{ interview_sessions : starts
+  interview_sessions ||--o{ turns : contains
+  interview_sessions ||--o{ feedback_items : reports
+
+  audio_assets ||--o{ turns : original_answer_for
+  audio_assets ||--o{ retry_attempts : retry_answer_for
+  turns ||--|| feedback_items : produces
+  turns ||--o{ retry_attempts : retries
+  feedback_items ||--o{ retry_attempts : compares
+
+  users {
+    uuid id PK
+    text email UK
+    text password_hash
+    uuid default_resume_id FK
+    timestamptz deleted_at
+    timestamptz created_at
+    timestamptz updated_at
+  }
+
+  auth_sessions {
+    uuid id PK
+    uuid user_id FK
+    text token_hash UK
+    timestamptz expires_at
+    timestamptz revoked_at
+    timestamptz created_at
+    timestamptz updated_at
+  }
+
+  resumes {
+    uuid id PK
+    uuid user_id FK
+    text file_name
+    text mime_type
+    bigint file_size_bytes
+    text storage_key UK
+    enum parse_status
+    text parse_error
+    boolean is_default
+    timestamptz parsed_at
+    timestamptz deleted_at
+    timestamptz created_at
+    timestamptz updated_at
+  }
+
+  experiences {
+    uuid id PK
+    uuid user_id FK
+    uuid resume_id FK
+    enum source
+    enum type
+    text title
+    text organization
+    date start_date
+    date end_date
+    integer sort_order
+    text background
+    text responsibility
+    text achievements
+    jsonb raw_extract_json
+    timestamptz created_at
+    timestamptz updated_at
+  }
+
+  interview_plans {
+    uuid id PK
+    uuid user_id FK
+    uuid resume_id FK
+    uuid source_experience_id FK
+    text target_role
+    text job_description
+    text practice_focus
+    text extra_requirements
+    jsonb experience_snapshot_json
+    enum status
+    timestamptz created_at
+    timestamptz updated_at
+  }
+
+  interviewers {
+    uuid id PK
+    uuid user_id FK
+    uuid plan_id FK
+    text name
+    text role
+    text style
+    text focus_areas
+    integer sort_order
+    timestamptz created_at
+    timestamptz updated_at
+  }
+
+  interview_sessions {
+    uuid id PK
+    uuid user_id FK
+    uuid plan_id FK
+    uuid interviewer_id FK
+    enum status
+    integer current_turn_index
+    timestamptz started_at
+    timestamptz completed_at
+    timestamptz ended_early_at
+    integer duration_seconds
+    enum report_status
+    jsonb report_summary_json
+    text report_error
+    timestamptz created_at
+    timestamptz updated_at
+  }
+
+  audio_assets {
+    uuid id PK
+    uuid user_id FK
+    text storage_key UK
+    text mime_type
+    bigint file_size_bytes
+    integer duration_ms
+    text transcript
+    enum transcript_status
+    timestamptz created_at
+    timestamptz updated_at
+  }
+
+  turns {
+    uuid id PK
+    uuid user_id FK
+    uuid session_id FK
+    integer turn_index
+    enum fixed_goal
+    text question_text
+    text played_question_text
+    boolean was_interrupted
+    uuid answer_audio_asset_id FK
+    text answer_transcript
+    timestamptz answered_at
+    timestamptz created_at
+    timestamptz updated_at
+  }
+
+  feedback_items {
+    uuid id PK
+    uuid user_id FK
+    uuid session_id FK
+    uuid turn_id FK
+    enum status
+    text evidence_quote
+    text diagnosis
+    text improvement_goal
+    text example_answer
+    jsonb gap_json
+    timestamptz created_at
+    timestamptz updated_at
+  }
+
+  retry_attempts {
+    uuid id PK
+    uuid user_id FK
+    uuid turn_id FK
+    uuid feedback_item_id FK
+    integer attempt_index
+    uuid audio_asset_id FK
+    text transcript
+    jsonb filled_gap_json
+    jsonb missing_gap_json
+    timestamptz created_at
+  }
