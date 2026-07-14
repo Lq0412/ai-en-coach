@@ -120,7 +120,7 @@ Token、认证协议、数据库表、对象存储权限和删除任务由架构
 
 ## 原型 / Demo
 
-- 在线原型：[SpeakUp 最新在线原型](https://speakup-product-prototype.wendymcdonald606998.chatgpt.site/)
+- 在线原型：[SpeakUp 在线原型](https://speakup-product-prototype.wendymcdonald606998.chatgpt.site/)
 - 相关页面：“我的”、个人简历、设置。
 
 最新版原型对应关系：
