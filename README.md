@@ -10,39 +10,24 @@ React Native · Go · MySQL · Deepgram ASR · OpenAI TTS
 
 ## 安装 Skills
 
-本项目 `.claude/skills/` 下包含团队工作流 skills。安装后 AI 助手自动遵循团队规范。
+本项目 `.agents/skills/` 下包含 Codex 团队工作流 skills，进入项目后自动加载。
 
-### Claude Code
-
-项目级自动加载（推荐）：
+### Codex
 
 ```bash
 git clone https://github.com/Lq0412/ai-en-coach.git
 cd ai-en-coach
 git config core.hooksPath .githooks   # 启用项目 Git hooks
-# .claude/skills/ 自动生效，无需额外配置
+# .agents/skills/ 自动生效，无需复制
 ```
 
-全局安装（所有项目通用）：
+如需在其他项目复用，可选择性复制到 Codex 全局 skills：
 
 ```bash
-ln -s $(pwd)/.claude/skills/issue-standard ~/.claude/skills/issue-standard
-ln -s $(pwd)/.claude/skills/pr-commit ~/.claude/skills/pr-commit
-ln -s $(pwd)/.claude/skills/code-discipline ~/.claude/skills/code-discipline
+cp -r .agents/skills/issue-standard ~/.codex/skills/issue-standard
+cp -r .agents/skills/pr-commit ~/.codex/skills/pr-commit
+cp -r .agents/skills/code-discipline ~/.codex/skills/code-discipline
 # …选择你需要的 skill
-```
-
-### Codex (OpenAI)
-
-```bash
-# 全局安装
-cp -r .claude/skills/issue-standard ~/.codex/skills/issue-standard
-cp -r .claude/skills/pr-commit ~/.codex/skills/pr-commit
-cp -r .claude/skills/code-discipline ~/.codex/skills/code-discipline
-# …选择你需要的 skill
-
-# 或项目级（放项目根目录）
-cp -r .claude/skills/issue-standard .codex/skills/issue-standard
 ```
 
 ### 可用 Skills
