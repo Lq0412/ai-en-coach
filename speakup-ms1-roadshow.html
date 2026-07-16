@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SpeakUp · Milestone 1 路演</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Noto+Sans+SC:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    /* === THEME === */
+    :root {
+      --stage-bg: #080b12;
+      --slide-bg: #f6f4ee;
+      --paper: #f6f4ee;
+      --paper-2: #ebe9e3;
+      --ink: #10131b;
+      --muted: #666b78;
+      --blue: #275efe;
+      --blue-dark: #1536a6;
+      --blue-soft: #dce4ff;
+      --white: #ffffff;
+      --line: #c9c8c3;
+      --success: #21a56d;
+      --warning: #f2a900;
+      --danger: #ee5d50;
+      --font-display: "Manrope", "Noto Sans SC", sans-serif;
+      --font-body: "Noto Sans SC", "Manrope", sans-serif;
+      --ease: cubic-bezier(.16, 1, .3, 1);
+    }
+
+    /* === FIXED 16:9 STAGE: MANDATORY BASE STYLES === */
+    html,
+    body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: var(--stage-bg, #000);
+    }
+    .deck-viewport {
+        position: fixed;
+        inset: 0;
+        overflow: hidden;
+        background: var(--stage-bg, #000);
+    }
+    .deck-stage {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        transform-origin: 0 0;
+        background: var(--slide-bg, #fff);
+    }
+    .slide {
+        position: absolute;
+        inset: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        display: block;
+        visibility: hidden;
+        opacity: 0;
+        pointer-events: none;
+        background: var(--slide-bg, #fff);
+    }
+    .slide.active,
+    .slide.visible {
+        visibility: visible;
+        opacity: 1;
+        pointer-events: auto;
+        z-index: 1;
+    }
+    img,
+    video,
+    canvas,
+    svg {
+        max-width: 100%;
+        max-height: 100%;
+    }
+    .deck-controls {
+        position: fixed;
+        left: 50%;
+        bottom: 22px;
+        transform: translateX(-50%);
+        z-index: 1000;
+    }
+    @media print {
+        html,
+        body {
+            width: 1920px;
+            height: auto;
+            overflow: visible;
+            background: #fff;
+        }
+        .deck-viewport {
+            position: static;
+            overflow: visible;
+            background: #fff;
+        }
+        .deck-stage {
+            position: static;
+            width: auto;
+            height: auto;
+            transform: none !important;
+            background: none;
+        }
+        .slide {
+            position: relative;
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            pointer-events: auto !important;
+            width: 1920px;
+            height: 1080px;
+            break-after: page;
+            page-break-after: always;
+        }
+        .slide:last-child {
+            break-after: auto;
+            page-break-after: auto;
+        }
+        .deck-controls {
+            display: none !important;
+        }
+        .reveal,
+        .reveal-left,
+        .reveal-scale {
+            opacity: 1 !important;
+            transform: none !important;
+        }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+            animation-duration: 0.01ms !important;
+            transition-duration: 0.2s !important;
+        }
+    }
+
+    /* === GLOBAL SLIDE SYSTEM === */
+    * { box-sizing: border-box; }
+    h1, h2, h3, p { margin: 0; }
+    body { font-family: var(--font-body); }
+    .slide { color: var(--ink); }
+    .page {
+      position: absolute;
+      right: 72px;
+      top: 58px;
+      font: 700 19px/1 var(--font-display);
+      letter-spacing: .12em;
+      color: var(--muted);
+    }
+    .section-label {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font: 700 20px/1 var(--font-display);
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--blue);
+    }
+    .section-label::before { content: ""; width: 13px; height: 13px; border-radius: 50%; background: var(--blue); }
+    .slide-inner { position: absolute; inset: 0; padding: 68px 84px 72px; }
+    .slide-title {
+      margin-top: 52px;
+      max-width: 1560px;
+      font: 800 86px/1.08 var(--font-body);
+      letter-spacing: -.055em;
+    }
+    .slide-lead {
+      margin-top: 30px;
+      max-width: 1250px;
+      font-size: 34px;
+      line-height: 1.55;
+      color: var(--muted);
+    }
+    .accent { color: var(--blue); }
+    .small-note { font-size: 20px; line-height: 1.5; color: var(--muted); }
+    .footnote { position: absolute; left: 84px; bottom: 42px; font-size: 18px; color: #7a7e89; }
+    .rule { height: 1px; background: var(--line); }
+
+    /* === REVEAL ANIMATIONS === */
+    .reveal, .reveal-left, .reveal-scale {
+      opacity: 0;
+      transition: opacity .55s var(--ease), transform .55s var(--ease);
+    }
+    .reveal { transform: translateY(28px); }
+    .reveal-left { transform: translateX(-34px); }
+    .reveal-scale { transform: scale(.96); }
+    .slide.visible .reveal,
+    .slide.visible .reveal-left,
+    .slide.visible .reveal-scale { opacity: 1; transform: none; }
+    .d1 { transition-delay: .08s; } .d2 { transition-delay: .16s; }
+    .d3 { transition-delay: .24s; } .d4 { transition-delay: .32s; }
+    .d5 { transition-delay: .40s; }
+
+    /* === COVER === */
+    .cover-top { position: absolute; inset: 0 0 390px; background: var(--paper); padding: 70px 92px; }
+    .cover-bottom { position: absolute; left: 0; right: 0; bottom: 0; height: 390px; padding: 58px 92px; background: var(--blue); color: var(--white); }
+    .cover-kicker { font: 700 22px/1 var(--font-display); letter-spacing: .18em; text-transform: uppercase; }
+    .cover-kicker::before { content: ""; display: inline-block; width: 13px; height: 13px; margin-right: 16px; border-radius: 50%; background: var(--blue); }
+    .cover h1 { margin-top: 86px; font: 800 184px/.84 var(--font-display); letter-spacing: -.08em; }
+    .cover-tag { margin-top: 42px; font-size: 44px; font-weight: 700; letter-spacing: -.03em; }
+    .cover-statement { font-size: 50px; line-height: 1.34; font-weight: 600; letter-spacing: -.025em; }
+    .cover-team { position: absolute; right: 92px; bottom: 62px; width: 600px; text-align: right; font-size: 22px; line-height: 1.8; color: rgba(255,255,255,.78); }
+    .cover-rail { position: absolute; right: 0; top: 0; width: 24px; height: 690px; background: var(--ink); }
+
+    /* === MARKET CAPABILITY ATLAS === */
+    .market-atlas { position: absolute; left: 84px; right: 84px; bottom: 74px; height: 650px; display: grid; grid-template-columns: 1.42fr .58fr; gap: 24px; }
+    .capability-field { position: relative; overflow: hidden; border: 1px solid var(--line); background-color: var(--paper-2); background-image: linear-gradient(rgba(39,94,254,.055) 1px,transparent 1px),linear-gradient(90deg,rgba(39,94,254,.055) 1px,transparent 1px); background-size: 48px 48px; }
+    .capability-field::before { content: ""; position: absolute; inset: 34px; border: 1px solid rgba(39,94,254,.14); border-radius: 50%; transform: scaleX(1.65); }
+    .capability-cluster { position: absolute; width: 535px; }
+    .capability-cluster.learning { left: 44px; top: 44px; }
+    .capability-cluster.practice { right: 34px; top: 44px; }
+    .capability-cluster.interaction { left: 54px; bottom: 44px; }
+    .capability-cluster.review { right: 34px; bottom: 44px; }
+    .cluster-title { display: flex; align-items: center; gap: 13px; margin-bottom: 20px; font-size: 22px; font-weight: 800; color: var(--blue); letter-spacing: .08em; }
+    .cluster-title::before { content: ""; width: 12px; height: 12px; border-radius: 50%; background: var(--blue); box-shadow: 0 0 0 7px rgba(39,94,254,.1); }
+    .capability-tags { display: flex; flex-wrap: wrap; gap: 14px 12px; }
+    .capability-tag { min-height: 54px; display: inline-flex; align-items: center; padding: 12px 20px; border: 1px solid #b9bdc8; border-radius: 999px; background: rgba(255,255,255,.84); font-size: 24px; line-height: 1.15; font-weight: 650; color: #343a48; }
+    .market-risks { position: relative; padding: 36px; background: var(--ink); color: var(--white); }
+    .market-risks .sample { font-size: 18px; letter-spacing: .08em; color: rgba(255,255,255,.5); }
+    .market-risks .total { margin-top: 28px; font: 800 98px/.9 var(--font-display); letter-spacing: -.07em; }
+    .market-risks .total-label { margin-top: 14px; font-size: 22px; line-height: 1.45; color: rgba(255,255,255,.64); }
+    .risk-list { margin-top: 38px; display: grid; gap: 22px; }
+    .risk-item { padding-top: 19px; border-top: 1px solid rgba(255,255,255,.18); display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: end; }
+    .risk-item span { font-size: 21px; line-height: 1.35; }
+    .risk-item b { font: 800 32px/1 var(--font-display); color: #8da9ff; }
+    .risk-conclusion { position: absolute; left: 36px; right: 36px; bottom: 32px; font-size: 20px; line-height: 1.5; color: rgba(255,255,255,.66); }
+
+    /* === VOICE-FIRST ENTRY COMPARISON === */
+    .entry-compare { position: absolute; left: 84px; right: 84px; bottom: 78px; height: 625px; display: grid; grid-template-columns: 1fr 112px 1fr; align-items: center; }
+    .entry-panel { height: 580px; padding: 34px; border: 1px solid var(--line); background: var(--paper-2); }
+    .entry-panel.voice { color: var(--white); border: 0; background: var(--blue); }
+    .entry-label { font-size: 20px; font-weight: 800; color: var(--muted); letter-spacing: .04em; }
+    .entry-panel.voice .entry-label { color: rgba(255,255,255,.66); }
+    .menu-stack { margin-top: 31px; display: grid; gap: 12px; }
+    .menu-level { height: 57px; padding: 15px 20px; background: var(--white); border-left: 5px solid #b7b9c0; font-size: 20px; color: #555b68; transform: translateX(var(--x)); width: calc(100% - var(--x)); }
+    .menu-level:last-child { color: var(--ink); border-color: var(--blue); font-weight: 700; }
+    .entry-vs { width: 66px; height: 66px; justify-self: center; display: grid; place-items: center; border-radius: 50%; color: var(--blue); background: var(--white); border: 2px solid var(--blue); font: 800 20px/1 var(--font-display); }
+    .voice-bubble { margin-top: 38px; padding: 30px; color: var(--ink); background: var(--white); font-size: 30px; font-weight: 700; line-height: 1.45; }
+    .agent-steps { margin-top: 36px; display: grid; grid-template-columns: 1fr 46px 1fr 46px 1fr; align-items: center; }
+    .agent-step { padding: 21px 14px; border: 1px solid rgba(255,255,255,.42); text-align: center; font-size: 20px; line-height: 1.4; }
+    .agent-step-arrow { text-align: center; color: rgba(255,255,255,.55); font-size: 26px; }
+    .entry-foot { margin-top: 31px; font-size: 19px; color: rgba(255,255,255,.66); }
+
+    /* === VERTICAL OPPORTUNITY === */
+    .opportunity-layout { position: absolute; left: 84px; right: 84px; bottom: 76px; height: 650px; display: grid; grid-template-columns: 1.12fr .88fr; gap: 30px; }
+    .market-cross { position: relative; overflow: hidden; background: var(--paper-2); border: 1px solid var(--line); }
+    .market-circle { position: absolute; top: 86px; width: 485px; height: 485px; border-radius: 50%; padding: 76px 54px; }
+    .market-circle.left { left: 70px; color: var(--white); background: rgba(39,94,254,.91); }
+    .market-circle.right { right: 70px; color: var(--white); background: rgba(16,19,27,.91); }
+    .market-circle h3 { font-size: 35px; }
+    .market-circle p { margin-top: 25px; font-size: 20px; line-height: 1.65; color: rgba(255,255,255,.68); }
+    .market-circle.left p { width: 250px; }
+    .market-circle.right { padding-left: 200px; padding-right: 34px; }
+    .cross-core { position: absolute; left: 50%; top: 245px; width: 225px; min-height: 155px; transform: translateX(-50%); display: grid; place-items: center; padding: 24px; text-align: center; color: var(--ink); background: var(--white); border: 4px solid var(--blue); font-size: 24px; line-height: 1.35; font-weight: 800; z-index: 3; }
+    .opportunity-gaps { padding: 42px; color: var(--white); background: var(--ink); }
+    .opportunity-gaps .eyebrow { font: 700 18px/1 var(--font-display); color: #8da9ff; letter-spacing: .12em; }
+    .opportunity-gaps h3 { margin-top: 32px; font-size: 38px; line-height: 1.3; }
+    .gap-list { margin-top: 40px; display: grid; gap: 20px; }
+    .gap-item { padding: 20px 0 20px 56px; position: relative; border-top: 1px solid rgba(255,255,255,.17); font-size: 22px; line-height: 1.45; }
+    .gap-item::before { content: attr(data-n); position: absolute; left: 0; top: 21px; color: #8da9ff; font: 800 24px/1 var(--font-display); }
+    .source-note { position: absolute; left: 84px; bottom: 32px; font-size: 17px; color: var(--muted); }
+
+    /* === DIRECTION DECISION === */
+    .direction-row { position: absolute; left: 84px; right: 84px; bottom: 86px; height: 555px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; align-items: end; }
+    .direction { height: 510px; padding: 34px; border: 1px solid var(--line); background: rgba(255,255,255,.4); display: flex; flex-direction: column; }
+    .direction .n { font: 800 52px/1 var(--font-display); color: #bbbcc1; }
+    .direction h3 { margin-top: 38px; font-size: 34px; line-height: 1.25; }
+    .direction ul { margin: 28px 0 0; padding: 0; list-style: none; display: grid; gap: 13px; }
+    .direction li { padding-left: 20px; position: relative; font-size: 20px; line-height: 1.4; color: var(--muted); }
+    .direction li::before { content: ""; position: absolute; left: 0; top: 11px; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+    .direction .verdict { margin-top: auto; padding-top: 20px; border-top: 1px solid var(--line); font-size: 20px; font-weight: 800; }
+    .direction.selected { height: 555px; color: var(--white); border-color: var(--blue); background: var(--blue); box-shadow: 0 22px 48px rgba(39,94,254,.2); }
+    .direction.selected .n,.direction.selected li { color: rgba(255,255,255,.72); }
+    .direction.selected .verdict { border-color: rgba(255,255,255,.35); }
+
+    /* === WHY INTERVIEW === */
+    .why-grid { position: absolute; left: 84px; right: 84px; bottom: 84px; height: 565px; display: grid; grid-template-columns: repeat(3,1fr); gap: 20px; }
+    .why-card { position: relative; padding: 38px; border-top: 8px solid var(--blue); background: var(--paper-2); }
+    .why-card.dark { color: var(--white); border-color: #8da9ff; background: var(--ink); }
+    .why-number { font: 800 68px/1 var(--font-display); color: rgba(39,94,254,.2); }
+    .why-card.dark .why-number { color: rgba(141,169,255,.3); }
+    .why-card h3 { margin-top: 55px; font-size: 36px; line-height: 1.25; }
+    .why-card p { margin-top: 26px; font-size: 22px; line-height: 1.65; color: var(--muted); }
+    .why-card.dark p { color: rgba(255,255,255,.68); }
+    .why-takeaway { position: absolute; left: 38px; right: 38px; bottom: 34px; padding-top: 20px; border-top: 1px solid var(--line); font-size: 19px; font-weight: 800; color: var(--blue); }
+    .why-card.dark .why-takeaway { border-color: rgba(255,255,255,.2); color: #8da9ff; }
+
+    /* === DIFFERENTIATED PREPARATION SYSTEM === */
+    .difference-grid { position: absolute; left: 84px; right: 84px; bottom: 92px; height: 525px; display: grid; grid-template-columns: repeat(3,1fr); gap: 18px; }
+    .difference-card { position: relative; padding: 36px; border: 2px solid var(--ink); background: var(--paper); }
+    .difference-card.primary { color: var(--white); border-color: var(--blue); background: var(--blue); }
+    .difference-card .micro { font: 700 17px/1 var(--font-display); color: var(--muted); letter-spacing: .11em; text-transform: uppercase; }
+    .difference-card.primary .micro { color: rgba(255,255,255,.65); }
+    .difference-card h3 { margin-top: 42px; font-size: 35px; line-height: 1.28; }
+    .difference-card p { margin-top: 24px; font-size: 21px; line-height: 1.6; color: var(--muted); }
+    .difference-card.primary p { color: rgba(255,255,255,.72); }
+    .difference-card .index { position: absolute; right: 28px; bottom: 22px; font: 800 62px/1 var(--font-display); color: rgba(39,94,254,.16); }
+    .difference-card.primary .index { color: rgba(255,255,255,.18); }
+    .continuity-rail { position: absolute; left: 84px; right: 84px; bottom: 40px; height: 34px; display: flex; align-items: center; gap: 18px; font-size: 18px; font-weight: 800; color: var(--blue); }
+    .continuity-rail::after { content: ""; flex: 1; height: 4px; background: linear-gradient(90deg,var(--blue),#a8baff); }
+
+    /* === USER LIFECYCLE === */
+    .lifecycle { position: absolute; left: 84px; right: 84px; top: 405px; height: 360px; display: grid; grid-template-columns: 1.15fr .85fr .85fr .85fr .85fr; gap: 28px; }
+    .life-stage { position: relative; padding: 34px 24px; background: var(--paper-2); border-top: 7px solid #aab9e6; }
+    .life-stage.deep { color: var(--white); border-color: var(--ink); background: var(--blue); transform: translateY(-28px); box-shadow: 0 24px 45px rgba(39,94,254,.2); }
+    .life-stage .phase { font: 700 16px/1 var(--font-display); color: var(--muted); letter-spacing: .1em; }
+    .life-stage.deep .phase { color: rgba(255,255,255,.65); }
+    .life-stage h3 { margin-top: 42px; font-size: 30px; line-height: 1.25; }
+    .life-stage p { margin-top: 18px; font-size: 19px; line-height: 1.5; color: var(--muted); }
+    .life-stage.deep p { color: rgba(255,255,255,.7); }
+    .life-stage::after { content: "→"; position: absolute; right: -27px; top: 164px; width: 26px; text-align: center; color: var(--blue); font: 700 22px/1 var(--font-display); z-index: 4; }
+    .life-stage:last-child::after { display: none; }
+    .position-lockup { position: absolute; left: 84px; right: 84px; bottom: 64px; padding-top: 26px; border-top: 1px solid var(--line); font-size: 32px; line-height: 1.45; font-weight: 700; }
+
+    /* === PAYMENT VALUE === */
+    .payment-layout { position: absolute; left: 84px; right: 84px; bottom: 78px; height: 610px; display: grid; grid-template-columns: .72fr 1.28fr; gap: 24px; }
+    .casual-panel { padding: 38px; background: var(--paper-2); border: 1px solid var(--line); }
+    .casual-panel h3,.outcome-panel h3 { font-size: 34px; line-height: 1.3; }
+    .casual-panel ul { margin: 54px 0 0; padding: 0; list-style: none; display: grid; gap: 24px; }
+    .casual-panel li { padding-bottom: 19px; border-bottom: 1px solid var(--line); font-size: 22px; color: var(--muted); }
+    .outcome-panel { position: relative; padding: 38px; color: var(--white); background: var(--blue); }
+    .value-equation { margin-top: 37px; display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; }
+    .value-part { min-height: 106px; padding: 20px 14px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.4); text-align: center; font-size: 19px; font-weight: 700; line-height: 1.35; }
+    .value-result { margin-top: 25px; padding: 22px; color: var(--ink); background: var(--white); font-size: 27px; line-height: 1.4; font-weight: 800; text-align: center; }
+    .vertical-proof { position: absolute; left: 38px; right: 38px; bottom: 30px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .proof-item { padding: 17px 19px; background: rgba(16,19,27,.88); }
+    .proof-item b { display: block; font-size: 21px; }
+    .proof-item span { display: block; margin-top: 7px; font-size: 17px; line-height: 1.4; color: rgba(255,255,255,.62); }
+
+    /* === PROTOTYPE INTERLUDE === */
+    .prototype-slide { background: var(--blue); color: var(--white); display: grid; place-items: center; }
+    .prototype-slide h2 { font-size: 126px; font-weight: 800; letter-spacing: -.06em; }
+
+    /* === ARCHITECTURE DERIVATION === */
+    .slide-title.arch-title { max-width: 1740px; font-size: 76px; }
+    .architecture-derivation { position: absolute; left: 84px; right: 84px; bottom: 70px; height: 610px; }
+    .derivation-grid { height: 390px; display: grid; grid-template-columns: repeat(3,1fr); gap: 18px; }
+    .derivation-card { position: relative; padding: 32px 34px; border-top: 8px solid var(--blue); background: var(--paper-2); }
+    .derivation-card.dark { color: var(--white); border-color: #8da9ff; background: var(--ink); }
+    .derivation-card .decision-label { font: 700 16px/1 var(--font-display); color: var(--blue); letter-spacing: .11em; text-transform: uppercase; }
+    .derivation-card.dark .decision-label { color: #8da9ff; }
+    .derivation-card h3 { margin-top: 28px; font-size: 31px; line-height: 1.3; }
+    .derivation-card .derive-arrow { margin-top: 25px; font-size: 31px; color: var(--blue); }
+    .derivation-card.dark .derive-arrow { color: #8da9ff; }
+    .derivation-card p { margin-top: 14px; font-size: 20px; line-height: 1.55; color: var(--muted); }
+    .derivation-card.dark p { color: rgba(255,255,255,.68); }
+    .reuse-strip { position: absolute; left: 0; right: 0; bottom: 0; height: 190px; display: grid; grid-template-columns: 1fr 90px 1.14fr 90px 1fr; align-items: stretch; }
+    .scene-pack,.shared-core { padding: 27px 30px; border: 1px solid var(--line); background: rgba(255,255,255,.45); }
+    .shared-core { color: var(--white); border-color: var(--blue); background: var(--blue); }
+    .scene-pack b,.shared-core b { display: block; font-size: 25px; }
+    .scene-pack span,.shared-core span { display: block; margin-top: 15px; font-size: 18px; line-height: 1.45; color: var(--muted); }
+    .shared-core span { color: rgba(255,255,255,.75); }
+    .reuse-arrow { display: grid; place-items: center; color: var(--blue); font-size: 34px; font-weight: 800; }
+
+    /* === TARGET ARCHITECTURE === */
+    .system-stack { position: absolute; left: 84px; right: 84px; bottom: 62px; height: 670px; }
+    .arch-entry { height: 58px; display: grid; place-items: center; color: var(--white); background: var(--ink); font-size: 20px; font-weight: 800; letter-spacing: .05em; }
+    .arch-agent { margin-top: 12px; min-height: 118px; padding: 22px 32px; display: grid; grid-template-columns: 310px 1fr; align-items: center; color: var(--white); background: var(--blue); }
+    .arch-agent h3 { font: 800 30px/1.2 var(--font-display); }
+    .arch-agent p { font-size: 20px; line-height: 1.55; color: rgba(255,255,255,.78); }
+    .module-grid { margin-top: 14px; height: 365px; display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; }
+    .arch-module { position: relative; padding: 27px 26px 92px; border-top: 7px solid var(--blue); background: var(--paper-2); }
+    .arch-module h3 { font-size: 27px; line-height: 1.25; }
+    .arch-module .objects { margin-top: 19px; font-size: 18px; line-height: 1.65; color: var(--muted); }
+    .module-ai { position: absolute; left: 22px; right: 22px; bottom: 20px; min-height: 60px; padding: 12px 14px; display: flex; align-items: center; border-left: 5px solid var(--blue); color: var(--ink); background: rgba(255,255,255,.68); font-size: 16px; line-height: 1.35; font-weight: 700; }
+    .arch-principles { margin-top: 14px; height: 75px; display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; }
+    .arch-principle { display: grid; place-items: center; padding: 12px; border: 1px solid var(--line); font-size: 18px; font-weight: 800; color: var(--blue); text-align: center; }
+
+    /* === CODE AS ARCHITECTURE === */
+    .contract-evidence { position: absolute; left: 84px; right: 84px; bottom: 74px; height: 620px; }
+    .evidence-grid { height: 470px; display: grid; grid-template-columns: repeat(3,1fr); gap: 18px; }
+    .evidence-card { padding: 34px; border: 2px solid var(--ink); background: var(--paper); }
+    .evidence-card.primary { color: var(--white); border-color: var(--blue); background: var(--blue); }
+    .evidence-card .evidence-n { font: 800 54px/1 var(--font-display); color: rgba(39,94,254,.2); }
+    .evidence-card.primary .evidence-n { color: rgba(255,255,255,.2); }
+    .evidence-card h3 { margin-top: 30px; font-size: 31px; }
+    .code-list { margin-top: 25px; display: flex; flex-wrap: wrap; gap: 10px; }
+    .code-token { padding: 10px 13px; border: 1px solid var(--line); background: var(--paper-2); font: 600 16px/1.2 "Manrope", monospace; }
+    .evidence-card.primary .code-token { border-color: rgba(255,255,255,.35); background: rgba(255,255,255,.09); }
+    .call-chain { margin-top: 23px; font: 600 17px/1.72 "Manrope", "Noto Sans SC", monospace; color: var(--muted); }
+    .evidence-card.primary .call-chain { color: rgba(255,255,255,.76); }
+    .code-status { margin-top: 18px; min-height: 124px; padding: 22px 28px; display: grid; grid-template-columns: 230px 1fr; align-items: center; color: var(--white); background: var(--ink); }
+    .code-status b { font-size: 23px; color: #8da9ff; }
+    .code-status span { font-size: 20px; line-height: 1.5; color: rgba(255,255,255,.72); }
+
+    /* === PROGRESS === */
+    .roadmap-grid { position: absolute; left: 84px; right: 84px; bottom: 92px; height: 560px; display: grid; grid-template-columns: .85fr 1fr 1.3fr; gap: 18px; }
+    .roadmap-stage { position: relative; padding: 34px; border-top: 8px solid var(--success); background: var(--paper-2); }
+    .roadmap-stage.closing-ms1 { border-color: var(--warning); }
+    .roadmap-stage.ms2 { color: var(--white); border-color: var(--blue); background: var(--blue); }
+    .roadmap-stage .phase { font: 800 16px/1 var(--font-display); color: var(--muted); letter-spacing: .12em; }
+    .roadmap-stage.ms2 .phase { color: rgba(255,255,255,.62); }
+    .roadmap-stage h3 { margin-top: 25px; font-size: 31px; }
+    .roadmap-stage ul { margin: 30px 0 0; padding: 0; list-style: none; display: grid; gap: 14px; }
+    .roadmap-stage li { padding-left: 23px; position: relative; font-size: 19px; line-height: 1.42; color: var(--muted); }
+    .roadmap-stage li::before { content: ""; position: absolute; left: 0; top: 10px; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+    .roadmap-stage.ms2 li { color: rgba(255,255,255,.8); }
+    .roadmap-summary { position: absolute; left: 84px; right: 84px; bottom: 35px; font-size: 20px; color: var(--muted); }
+
+    /* === CLOSING === */
+    .closing { background: var(--blue); color: var(--white); }
+    .closing-inner { position: absolute; inset: 0; padding: 86px 96px; display: flex; flex-direction: column; justify-content: space-between; }
+    .closing-kicker { font: 700 21px/1 var(--font-display); letter-spacing: .16em; text-transform: uppercase; opacity: .7; }
+    .closing h2 { font: 800 170px/.9 var(--font-display); letter-spacing: -.075em; }
+    .closing p { font-size: 45px; font-weight: 600; }
+    .closing-line { position: absolute; left: 96px; right: 96px; bottom: 170px; height: 1px; background: rgba(255,255,255,.3); }
+
+    /* === DECK CHROME & EDIT MODE === */
+    .progress-track { position: fixed; left: 0; right: 0; bottom: 0; height: 5px; z-index: 5000; background: rgba(255,255,255,.12); }
+    .progress-fill { height: 100%; width: 0; background: var(--blue); transition: width .3s ease; }
+    .counter { position: fixed; right: 18px; bottom: 16px; z-index: 5001; padding: 7px 11px; border-radius: 3px; color: rgba(255,255,255,.7); background: rgba(8,11,18,.65); font: 600 12px/1 var(--font-display); backdrop-filter: blur(8px); }
+    .edit-hotzone { position: fixed; top: 0; left: 0; width: 80px; height: 80px; z-index: 10000; cursor: pointer; }
+    .edit-toggle { position: fixed; top: 16px; left: 16px; z-index: 10001; width: 44px; height: 44px; border: 0; border-radius: 50%; color: var(--white); background: var(--blue); opacity: 0; pointer-events: none; transition: opacity .3s ease; cursor: pointer; }
+    .edit-toggle.show,.edit-toggle.active { opacity: 1; pointer-events: auto; }
+    body.editing [data-editable="true"] { outline: 2px dashed rgba(39,94,254,.55); outline-offset: 5px; cursor: text; }
+    .edit-toast { position: fixed; left: 50%; top: 20px; transform: translateX(-50%); z-index: 10002; padding: 11px 18px; color: #fff; background: rgba(8,11,18,.88); font-size: 14px; opacity: 0; transition: opacity .2s; }
+    .edit-toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <div class="deck-viewport">
+    <main class="deck-stage" id="deckStage">
+
+      <!-- === 01 COVER === -->
+      <section class="slide cover active">
+        <div class="cover-top">
+          <div class="cover-kicker reveal">XEngineer · Milestone 1</div>
+          <h1 class="reveal d1" data-editable="true">SpeakUp</h1>
+          <div class="cover-tag reveal d2" data-editable="true">开口即用的个性化英语表达教练</div>
+          <div class="cover-rail"></div>
+        </div>
+        <div class="cover-bottom">
+          <div class="cover-statement reveal d3" data-editable="true">以英文面试为深度切口，<br>持续适配职场与日常高频沟通</div>
+          <div class="cover-team reveal d4" data-editable="true">导师 夏延吉　·　助教 张普<br>组长 林锵<br>组员 黄天宇、覃迦迎、智铭威、张思成</div>
+        </div>
+      </section>
+
+      <!-- === 02 MARKET CAPABILITY ATLAS === -->
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="section-label reveal">01 · Market landscape</div><div class="page">02 / 15</div>
+          <h2 class="slide-title reveal d1" data-editable="true">市场已经探索了<span class="accent">丰富的产品形态</span></h2>
+          <div class="market-atlas">
+            <div class="capability-field reveal d2">
+              <div class="capability-cluster learning"><div class="cluster-title">学习内容</div><div class="capability-tags"><span class="capability-tag">课程</span><span class="capability-tag">词汇</span><span class="capability-tag">题库</span><span class="capability-tag">情景脚本</span><span class="capability-tag">示范表达</span></div></div>
+              <div class="capability-cluster practice"><div class="cluster-title">口语练习</div><div class="capability-tags"><span class="capability-tag">跟读</span><span class="capability-tag">复述</span><span class="capability-tag">自由对话</span><span class="capability-tag">角色扮演</span><span class="capability-tag">任务模拟</span><span class="capability-tag">多人对话</span></div></div>
+              <div class="capability-cluster interaction"><div class="cluster-title">交互体验</div><div class="capability-tags"><span class="capability-tag">语音交互</span><span class="capability-tag">实时字幕</span><span class="capability-tag">数字人</span><span class="capability-tag">沉浸场景</span><span class="capability-tag">游戏化</span></div></div>
+              <div class="capability-cluster review"><div class="cluster-title">反馈复习</div><div class="capability-tags"><span class="capability-tag">发音评分</span><span class="capability-tag">语法纠错</span><span class="capability-tag">表达润色</span><span class="capability-tag">练习报告</span><span class="capability-tag">历史记录</span><span class="capability-tag">复习计划</span></div></div>
+            </div>
+            <div class="market-risks reveal d3">
+              <div class="sample">LOW-RATING REVIEW SIGNALS</div><div class="total">2,061</div><div class="total-label">条三星及以下评论<br>暴露出核心体验仍有缺口</div>
+              <div class="risk-list"><div class="risk-item"><span>发音识别不准确</span><b>189</b></div><div class="risk-item"><span>评分与反馈不合理</span><b>136</b></div><div class="risk-item"><span>AI 对话机械</span><b>102</b></div></div>
+              <div class="risk-conclusion">市场并不缺功能，<br>但功能丰富不等于训练体验完整。</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- === 03 VOICE-FIRST ENTRY === -->
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="section-label reveal">02 · Interaction decision</div><div class="page">03 / 15</div>
+          <h2 class="slide-title reveal d1" data-editable="true">功能越多，入口越应该<span class="accent">简单</span></h2>
+          <div class="entry-compare">
+            <div class="entry-panel reveal d2">
+              <div class="entry-label">传统 UI · 用户寻找功能</div>
+              <div class="menu-stack"><div class="menu-level" style="--x:0px">首页</div><div class="menu-level" style="--x:32px">场景分类</div><div class="menu-level" style="--x:64px">英文面试</div><div class="menu-level" style="--x:96px">面试官与模式</div><div class="menu-level" style="--x:128px">背景设置</div><div class="menu-level" style="--x:160px">开始训练</div></div>
+            </div>
+            <div class="entry-vs reveal d3">VS</div>
+            <div class="entry-panel voice reveal d4">
+              <div class="entry-label">开口即用 · 产品理解用户</div>
+              <div class="voice-bubble">“我下周要面试一家出海公司的后端岗位，今天想先练项目经历。”</div>
+              <div class="agent-steps"><div class="agent-step">理解目标</div><div class="agent-step-arrow">→</div><div class="agent-step">用户确认</div><div class="agent-step-arrow">→</div><div class="agent-step">进入训练</div></div>
+              <div class="entry-foot">语音表达目标 · Agent 理解与编排 · UI 承担确认、状态与结果</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- === 04 VERTICAL OPPORTUNITY === -->
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="section-label reveal">03 · Vertical opportunity</div><div class="page">04 / 15</div>
+          <h2 class="slide-title reveal d1" data-editable="true">两个市场的交叉处，藏着<span class="accent">更具体的机会</span></h2>
+          <div class="opportunity-layout">
+            <div class="market-cross reveal d2">
+              <div class="market-circle left"><h3>AI 口语学习</h3><p>Speak · ELSA · 流利说 · Praktika<br><br>发音、语言纠错、日常对话与通用场景</p></div>
+              <div class="market-circle right"><h3>面试准备</h3><p>Yoodli · Big Interview<br>Exponent · Huru · SmallTalk2Me<br><br>面试结构、表现分析与岗位练习</p></div>
+              <div class="cross-core">非英语母语<br>技术求职者的<br>英文面试准备</div>
+            </div>
+            <div class="opportunity-gaps reveal d3">
+              <div class="eyebrow">THE INTERSECTION GAP</div><h3>两边都只解决了<br>一部分问题</h3>
+              <div class="gap-list"><div class="gap-item" data-n="01">不只评价面试表现，还要帮助用户讲清英文</div><div class="gap-item" data-n="02">不只做通用面试，还要理解技术岗位与项目经历</div><div class="gap-item" data-n="03">不只完成一次模拟，还要支持持续反馈与复练</div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- === 05 DIRECTION DECISION === -->
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="section-label reveal">04 · Direction decision</div><div class="page">05 / 15</div>
+          <h2 class="slide-title reveal d1" data-editable="true">我们没有选择<span class="accent">最宽</span>的方向</h2>
+          <p class="slide-lead reveal d2">综合用户目标、结果压力、专业化空间与当前阶段的落地边界。</p>
+          <div class="direction-row">
+            <div class="direction reveal d2"><div class="n">01</div><h3>泛英语口语</h3><ul><li>用户范围最大</li><li>目标与边界分散</li><li>容易变成大而全的口语产品</li></ul><div class="verdict">不作为当前切口</div></div>
+            <div class="direction reveal d3"><div class="n">02</div><h3>生活场景</h3><ul><li>使用频率更高</li><li>免费替代方式较多</li><li>单次结果压力相对有限</li></ul><div class="verdict">作为长期适配场景</div></div>
+            <div class="direction selected reveal d4"><div class="n">03</div><h3>英文面试</h3><ul><li>目标、期限和结果明确</li><li>依赖岗位与个人经历</li><li>专业化空间和训练闭环完整</li></ul><div class="verdict">当前最值得做深</div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- === 06 WHY INTERVIEW === -->
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="section-label reveal">04 · Direction decision</div><div class="page">06 / 15</div>
+          <h2 class="slide-title reveal d1" data-editable="true">为什么选择<span class="accent">英文面试</span>？</h2>
+          <div class="why-grid">
+            <div class="why-card reveal d2"><div class="why-number">01</div><h3>目标明确，失败有真实代价</h3><p>用户要通过英文面试、获得工作机会。表达不清可能直接影响结果，因此准备动力更强，付费理由也更清晰。</p><div class="why-takeaway">从“提高英语”变成“准备一次重要机会”</div></div>
+            <div class="why-card dark reveal d3"><div class="why-number">02</div><h3>真实难点在于应对追问</h3><p>连续追问会暴露临场组织、细节说明和逻辑表达上的问题，让练习更接近真实面试。</p><div class="why-takeaway">追问让真正的问题浮现</div></div>
+            <div class="why-card reveal d4"><div class="why-number">03</div><h3>天然形成完整改进闭环</h3><p>模拟面试暴露问题，反馈报告定位问题，同题复练验证用户是否真正完成改进。</p><div class="why-takeaway">模拟 → 反馈 → 同题复练</div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- === 07 DIFFERENTIATION === -->
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="section-label reveal">05 · Product differentiation</div><div class="page">07 / 15</div>
+          <h2 class="slide-title reveal d1" data-editable="true">差异不在面试入口，<br>而在准备过程能否<span class="accent">持续推进</span></h2>
+          <div class="difference-grid">
+            <div class="difference-card reveal d2"><span class="micro">Persistent context</span><h3>持续积累的准备档案</h3><p>岗位、JD、个人经历、准备目标和历次表现，不会在一次对话结束后清空。</p><div class="index">01</div></div>
+            <div class="difference-card primary reveal d3"><span class="micro">Professional interview</span><h3>专业化面试组织</h3><p>不同视角的单个面试官、可选群面，以及知识库支撑的岗位问题、专业追问和评价。</p><div class="index">02</div></div>
+            <div class="difference-card reveal d4"><span class="micro">Evidence-based improvement</span><h3>基于证据的持续改进</h3><p>反馈引用原回答，同题复练保留版本对比，薄弱点继续进入下一次训练。</p><div class="index">03</div></div>
+          </div>
+          <div class="continuity-rail reveal d5">用户不是重新开始一段对话，而是在同一段面试准备过程中持续推进</div>
+        </div>
+      </section>
+
+      <!-- === 08 STRATEGIC POSITIONING === -->
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="section-label reveal">06 · Strategy</div><div class="page">08 / 15</div>
+          <h2 class="slide-title reveal d1" data-editable="true">一个深度切口，<br>一条更长的<span class="accent">用户旅程</span></h2>
+          <div class="lifecycle">
+            <div class="life-stage deep reveal d2"><div class="phase">DEEP ENTRY</div><h3>英文面试准备</h3><p>当前最完善的场景<br>以专业化深度建立价值</p></div>
+            <div class="life-stage reveal d2"><div class="phase">ONBOARDING</div><h3>入职适应</h3><p>第一周沟通<br>自我介绍与协作</p></div>
+            <div class="life-stage reveal d3"><div class="phase">WORKPLACE</div><h3>会议与汇报</h3><p>表达观点<br>讲清进展与判断</p></div>
+            <div class="life-stage reveal d4"><div class="phase">BUSINESS</div><h3>客户沟通</h3><p>澄清需求<br>说明方案与结果</p></div>
+            <div class="life-stage reveal d5"><div class="phase">EVERYDAY</div><h3>日常表达</h3><p>持续适配<br>高频沟通任务</p></div>
+          </div>
+          <div class="position-lockup reveal d5" data-editable="true"><span class="accent">SpeakUp，开口即用的个性化英语表达教练</span><br>以英文面试为深度切口，持续适配职场与日常高频沟通</div>
+        </div>
+      </section>
+
+      <!-- === 09 PAYMENT VALUE === -->
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="section-label reveal">06 · Strategy</div><div class="page">09 / 15</div>
+          <h2 class="slide-title reveal d1" data-editable="true">用户购买的不是聊天时长，<br>而是降低面试准备的<span class="accent">不确定性</span></h2>
+          <div class="payment-layout">
+            <div class="casual-panel reveal d2"><h3>日常随便练</h3><ul><li>没有明确期限</li><li>收益分散、难以衡量</li><li>免费替代方式丰富</li><li>很容易推迟到“以后”</li></ul></div>
+            <div class="outcome-panel reveal d3"><h3>下周有一场重要英文面试</h3>
+              <div class="value-equation"><div class="value-part">岗位与经历<br>定制</div><div class="value-part">真实连续<br>追问</div><div class="value-part">原回答证据<br>反馈</div><div class="value-part">同题复练<br>验证改进</div></div>
+              <div class="value-result">用户付费，是为了更有把握地完成一次高代价任务</div>
+              <div class="vertical-proof"><div class="proof-item"><b>Big Interview · $39 / 30天</b><span>Interview BootCamp，直接围绕短期面试准备定价</span></div><div class="proof-item"><b>Big Interview · $99 / 3个月</b><span>Interview Accelerator，覆盖一次完整求职准备周期</span></div></div>
+            </div>
+          </div>
+          <div class="source-note">官方定价页核验：Big Interview Pricing for Job Seekers，2026-07-16</div>
+        </div>
+      </section>
+
+      <!-- === 10 PROTOTYPE DEMO === -->
+      <section class="slide prototype-slide"><h2 class="reveal" data-editable="true">产品原型展示</h2></section>
+
+      <!-- === 11 PRODUCT TO ARCHITECTURE === -->
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="section-label reveal">07 · Architecture</div><div class="page">11 / 15</div>
+          <h2 class="slide-title arch-title reveal d1" data-editable="true">做深一个场景，但不把系统<span class="accent">写死</span>在一个场景里</h2>
+          <div class="architecture-derivation">
+            <div class="derivation-grid">
+              <div class="derivation-card reveal d2"><div class="decision-label">01 · 深度</div><h3>英文面试必须足够专业</h3><div class="derive-arrow">↓</div><p>将角色、知识库、追问策略和评价标准组织成可替换的场景能力包。</p></div>
+              <div class="derivation-card dark reveal d3"><div class="decision-label">02 · 扩展</div><h3>后续需要持续适配多场景</h3><div class="derive-arrow">↓</div><p>抽取计划、Session、Turn、反馈、复练与历史等通用训练内核。</p></div>
+              <div class="derivation-card reveal d4"><div class="decision-label">03 · 个性化</div><h3>用户不是每次重新开始</h3><div class="derive-arrow">↓</div><p>背景、经历、历史弱项和训练进度作为跨场景上下文持续积累。</p></div>
+            </div>
+            <div class="reuse-strip reveal d4">
+              <div class="scene-pack"><b>英文面试能力包</b><span>面试官角色 · 技术知识库<br>面试追问 · 岗位评价标准</span></div><div class="reuse-arrow">→</div>
+              <div class="shared-core"><b>通用训练内核</b><span>计划 · Session · Turn<br>反馈 · 复练 · 历史</span></div><div class="reuse-arrow">←</div>
+              <div class="scene-pack"><b>英文会议能力包</b><span>会议角色 · 职场知识库<br>观点表达 · 澄清评价标准</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- === 12 TARGET ARCHITECTURE === -->
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="section-label reveal">07 · Architecture</div><div class="page">12 / 15</div>
+          <h2 class="slide-title arch-title reveal d1" data-editable="true">Agent 负责<span class="accent">选择与编排</span>，业务模块负责完成训练</h2>
+          <div class="system-stack reveal d2">
+            <div class="arch-entry">语音输入　/　UI 操作　→　用户直接表达目标</div>
+            <div class="arch-agent"><h3>Agent Orchestration</h3><p>理解目标　·　读取上下文　·　选择场景能力包　·　组织下一步　·　请求用户确认</p></div>
+            <div class="module-grid">
+              <div class="arch-module"><h3>个性化上下文</h3><div class="objects">User Profile<br>Resume / Experience<br>历史表现与弱项</div><div class="module-ai">模块内接入：简历解析、经历提取</div></div>
+              <div class="arch-module"><h3>场景系统</h3><div class="objects">Scenario Definition<br>角色与训练目标<br>专属知识库与评价标准</div><div class="module-ai">模块内接入：计划生成、知识检索</div></div>
+              <div class="arch-module"><h3>训练系统</h3><div class="objects">Practice Plan<br>Session / Turn<br>实时对话与状态推进</div><div class="module-ai">模块内接入：实时语音、对话与追问</div></div>
+              <div class="arch-module"><h3>反馈与进步</h3><div class="objects">Analysis / Feedback<br>Retry / Progress<br>证据与版本历史</div><div class="module-ai">模块内接入：转录、反馈、复练比较</div></div>
+            </div>
+            <div class="arch-principles"><div class="arch-principle">Agent 不拥有业务状态</div><div class="arch-principle">AI 能力由具体模块按需接入</div><div class="arch-principle">扩展场景不修改训练主干</div></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- === 13 CODE AS ARCHITECTURE === -->
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="section-label reveal">07 · Architecture</div><div class="page">13 / 15</div>
+          <h2 class="slide-title arch-title reveal d1" data-editable="true">架构不是一张图，而是仓库中<span class="accent">可编译的契约</span></h2>
+          <div class="contract-evidence">
+            <div class="evidence-grid">
+              <div class="evidence-card reveal d2"><div class="evidence-n">01</div><h3>真实业务对象</h3><div class="code-list"><span class="code-token">UserContext</span><span class="code-token">ScenarioDefinition</span><span class="code-token">PracticePlan</span><span class="code-token">Session</span><span class="code-token">Turn</span><span class="code-token">Feedback</span><span class="code-token">Retry</span></div></div>
+              <div class="evidence-card primary reveal d3"><div class="evidence-n">02</div><h3>真实模块契约</h3><div class="code-list"><span class="code-token">Context Service</span><span class="code-token">Scenario Service</span><span class="code-token">Practice Service</span><span class="code-token">Review Service</span></div><div class="call-chain">接口与方法固定模块职责<br>具体实现可以暂时留空</div></div>
+              <div class="evidence-card reveal d4"><div class="evidence-n">03</div><h3>真实调用关系</h3><div class="call-chain">HandleGoal<br>→ LoadContext<br>→ ResolveScenario<br>→ StartSession<br>→ SaveTurn<br>→ BuildFeedback</div></div>
+            </div>
+            <div class="code-status reveal d4"><b>MS1 当前收尾</b><span>方法体和外部 AI 能力可以使用 Mock，但业务对象、接口、调用关系与编译结果不能 Mock。</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- === 14 PROGRESS === -->
+      <section class="slide">
+        <div class="slide-inner">
+          <div class="section-label reveal">08 · Roadmap</div><div class="page">14 / 15</div>
+          <h2 class="slide-title arch-title reveal d1" data-editable="true">MS1 完成架构骨架，MS2 跑通<span class="accent">真实核心流程</span></h2>
+          <div class="roadmap-grid">
+            <div class="roadmap-stage reveal d2"><div class="phase">COMPLETED</div><h3>已经完成</h3><ul><li>市场与竞品调研</li><li>产品方向收敛</li><li>Agent 入口决策</li><li>多场景扩展策略</li><li>Mock 产品原型</li></ul></div>
+            <div class="roadmap-stage closing-ms1 reveal d3"><div class="phase">MS1 · CLOSING</div><h3>当前收尾</h3><ul><li>确定训练内核与场景能力包</li><li>补充 Agent Orchestration 边界</li><li>定义业务对象与模块接口</li><li>使用 Mock 串联调用关系</li><li>保证代码骨架可以编译</li></ul></div>
+            <div class="roadmap-stage ms2 reveal d4"><div class="phase">MS2 · CORE FLOW</div><h3>跑通真实核心流程</h3><ul><li>支持一种用户身份</li><li>接入一个真实岗位背景与一份 PDF</li><li>完成真实语音问答与受控追问</li><li>生成并保存基础反馈报告</li><li>将核心 Mock 能力替换为真实实现</li><li>端到端演示英文面试核心流程</li></ul></div>
+          </div>
+          <div class="roadmap-summary">MS2 不追求一次实现全部场景：先让英文面试真实可用，再沿同一架构逐步接入职场与日常沟通。</div>
+        </div>
+      </section>
+
+      <!-- === 15 CLOSING === -->
+      <section class="slide closing">
+        <div class="closing-inner"><div class="closing-kicker reveal">SpeakUp · Milestone 1</div><h2 class="reveal d1" data-editable="true">谢谢大家</h2><div class="closing-line reveal d2"></div><p class="reveal d3" data-editable="true">Speak Up. Move Forward.</p></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- === PRESENTATION CHROME === -->
+  <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+  <div class="counter" id="counter">01 / 15</div>
+  <div class="edit-hotzone" aria-label="编辑模式热区"></div>
+  <button class="edit-toggle" id="editToggle" title="编辑模式（E）">✎</button>
+  <div class="edit-toast" id="editToast">编辑模式</div>
+
+  <script>
+    /* === SLIDE PRESENTATION CONTROLLER === */
+    class SlidePresentation {
+      constructor() {
+        this.slides = [...document.querySelectorAll('.slide')];
+        this.currentSlide = 0;
+        this.stage = document.getElementById('deckStage');
+        this.wheelLocked = false;
+        this.touchStartX = 0;
+        this.setupStageScale();
+        this.setupKeyboardNav();
+        this.setupTouchNav();
+        this.setupWheelNav();
+        this.showSlide(this.restoreIndex());
+      }
+      setupStageScale() {
+        const scale = () => {
+          const factor = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+          const x = (window.innerWidth - 1920 * factor) / 2;
+          const y = (window.innerHeight - 1080 * factor) / 2;
+          this.stage.style.transform = `translate(${x}px, ${y}px) scale(${factor})`;
+        };
+        scale(); window.addEventListener('resize', scale);
+      }
+      setupKeyboardNav() {
+        document.addEventListener('keydown', (event) => {
+          if (event.target.getAttribute('contenteditable') === 'true') return;
+          if (['ArrowRight','ArrowDown',' ','PageDown'].includes(event.key)) { event.preventDefault(); this.next(); }
+          if (['ArrowLeft','ArrowUp','PageUp'].includes(event.key)) { event.preventDefault(); this.prev(); }
+          if (event.key === 'Home') this.showSlide(0);
+          if (event.key === 'End') this.showSlide(this.slides.length - 1);
+        });
+      }
+      setupTouchNav() {
+        document.addEventListener('touchstart', e => { this.touchStartX = e.changedTouches[0].screenX; }, {passive:true});
+        document.addEventListener('touchend', e => {
+          const delta = e.changedTouches[0].screenX - this.touchStartX;
+          if (Math.abs(delta) > 55) delta < 0 ? this.next() : this.prev();
+        }, {passive:true});
+      }
+      setupWheelNav() {
+        document.addEventListener('wheel', e => {
+          if (this.wheelLocked || Math.abs(e.deltaY) < 20) return;
+          this.wheelLocked = true; e.deltaY > 0 ? this.next() : this.prev();
+          setTimeout(() => this.wheelLocked = false, 650);
+        }, {passive:true});
+      }
+      restoreIndex() {
+        const requested = Number(new URLSearchParams(location.search).get('slide'));
+        if (Number.isInteger(requested) && requested >= 1) return Math.min(requested - 1, this.slides.length - 1);
+        const i = Number(localStorage.getItem('speakup-slide-index'));
+        return Number.isFinite(i) ? Math.max(0, Math.min(i, this.slides.length-1)) : 0;
+      }
+      showSlide(index) {
+        this.currentSlide = Math.max(0, Math.min(index, this.slides.length - 1));
+        this.slides.forEach((slide, i) => { slide.classList.toggle('active', i === this.currentSlide); slide.classList.toggle('visible', i === this.currentSlide); });
+        localStorage.setItem('speakup-slide-index', String(this.currentSlide));
+        document.getElementById('counter').textContent = `${String(this.currentSlide+1).padStart(2,'0')} / ${String(this.slides.length).padStart(2,'0')}`;
+        document.getElementById('progressFill').style.width = `${((this.currentSlide+1)/this.slides.length)*100}%`;
+      }
+      next() { this.showSlide(this.currentSlide + 1); }
+      prev() { this.showSlide(this.currentSlide - 1); }
+    }
+
+    /* === INLINE TEXT EDITOR === */
+    class InlineEditor {
+      constructor() {
+        this.isActive = false;
+        this.nodes = [...document.querySelectorAll('[data-editable="true"]')];
+        this.restore();
+        this.nodes.forEach((node, index) => node.addEventListener('input', () => localStorage.setItem(`speakup-edit-${index}`, node.innerHTML)));
+      }
+      restore() { this.nodes.forEach((node, index) => { const saved = localStorage.getItem(`speakup-edit-${index}`); if (saved !== null) node.innerHTML = saved; }); }
+      toggleEditMode() {
+        this.isActive = !this.isActive;
+        document.body.classList.toggle('editing', this.isActive);
+        this.nodes.forEach(node => node.setAttribute('contenteditable', this.isActive ? 'true' : 'false'));
+        editToggle.classList.toggle('active', this.isActive);
+        this.toast(this.isActive ? '编辑模式已开启 · 点击文字修改 · Ctrl/⌘+S 保存副本' : '编辑内容已保存在浏览器中');
+      }
+      toast(message) { const toast = document.getElementById('editToast'); toast.textContent = message; toast.classList.add('show'); clearTimeout(this.toastTimer); this.toastTimer = setTimeout(() => toast.classList.remove('show'), 2200); }
+      exportHtml() {
+        const clone = document.documentElement.cloneNode(true);
+        clone.querySelectorAll('[contenteditable]').forEach(n => n.setAttribute('contenteditable','false'));
+        const blob = new Blob(['<!DOCTYPE html>\n' + clone.outerHTML], {type:'text/html'});
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'speakup-ms1-roadshow-edited.html'; a.click(); URL.revokeObjectURL(a.href);
+        this.toast('已保存 HTML 副本');
+      }
+    }
+
+    const deck = new SlidePresentation();
+    const editor = new InlineEditor();
+    const hotzone = document.querySelector('.edit-hotzone');
+    const editToggle = document.getElementById('editToggle');
+    let hideTimeout = null;
+    editToggle.addEventListener('click', () => editor.toggleEditMode());
+    hotzone.addEventListener('mouseenter', () => { clearTimeout(hideTimeout); editToggle.classList.add('show'); });
+    hotzone.addEventListener('mouseleave', () => { hideTimeout = setTimeout(() => { if (!editor.isActive) editToggle.classList.remove('show'); }, 400); });
+    editToggle.addEventListener('mouseenter', () => clearTimeout(hideTimeout));
+    editToggle.addEventListener('mouseleave', () => { hideTimeout = setTimeout(() => { if (!editor.isActive) editToggle.classList.remove('show'); }, 400); });
+    hotzone.addEventListener('click', () => editor.toggleEditMode());
+    document.addEventListener('keydown', e => {
+      if ((e.key === 'e' || e.key === 'E') && e.target.getAttribute('contenteditable') !== 'true') editor.toggleEditMode();
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's' && editor.isActive) { e.preventDefault(); editor.exportHtml(); }
+    });
+  </script>
+</body>
+</html>
