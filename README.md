@@ -49,6 +49,8 @@ cp -r .agents/skills/code-discipline ~/.codex/skills/code-discipline
 
 以下文档随项目同步，用于团队协作。
 
+参与开发前请先阅读 [`CONTRIBUTING.md`](CONTRIBUTING.md)。Issue、分支、Commit、PR、Review 与 Release 的完整规则见 [`reference/GitHub过程管理规范.md`](reference/GitHub过程管理规范.md)。
+
 ```
 docs/
 └── week1/
@@ -93,7 +95,7 @@ npm install
 npm run dev
 ```
 
-启动后访问开发服务器首页，或直接查看 `prototype/public/spreak-prototype.html`。
+启动后访问开发服务器首页，或直接查看 `prototype/speakup-premium/pages/prototype.html`。
 
 ### 构建
 

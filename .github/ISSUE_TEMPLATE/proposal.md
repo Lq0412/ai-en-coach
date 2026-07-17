@@ -1,7 +1,9 @@
 ---
 name: 产品提案 (Proposal)
-description: 产品设计提案 — 用于方向决策、功能设计、方案讨论。遵循 产品设计规范 八字段。
-labels: [proposal]
+about: 用于产品方向、功能设计和方案决策，遵循产品设计规范八字段
+title: "[提案] "
+labels: "proposal"
+assignees: ""
 ---
 
 ## 动机 / 用户故事
