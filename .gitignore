@@ -53,3 +53,10 @@ prototype/speakup-premium/assets/*.bak*
 prototype/speakup-premium/assets/spreak-prototype-v25.js
 prototype/speakup-premium/assets/spreak-prototype-v26.js
 prototype/speakup-premium/assets/spreak-prototype-v27.js
+
+# 本地方案草稿与 GitHub 发布辅助文本
+docs/superpowers/plans/
+prototype/docs/
+prototype/speakup-premium/assets/spreak-prototype.js
+prototype/speakup-premium/*.design
+tasks/issue-bodies/
