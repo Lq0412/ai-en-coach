@@ -38,3 +38,18 @@ work/
 next-env.d.ts
 *.pem
 *.log
+
+# 本地交付包与原型验收产物（保留本地，不提交）
+deliverables/
+prototype/.pnpm-store/
+prototype/.workbuddy/
+prototype/.uploads/
+prototype/patch_new_section.txt
+prototype/public/ios-premium.css
+prototype/speakup-premium/.workbuddy/
+prototype/speakup-premium/artifacts/
+prototype/speakup-premium/*-verified.png
+prototype/speakup-premium/assets/*.bak*
+prototype/speakup-premium/assets/spreak-prototype-v25.js
+prototype/speakup-premium/assets/spreak-prototype-v26.js
+prototype/speakup-premium/assets/spreak-prototype-v27.js
