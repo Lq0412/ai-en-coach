@@ -21,38 +21,38 @@
 ### Task 1: Four-round mock plan and Agent result
 
 **Files:**
-- Modify: `prototype_副本/speakup-premium/tests/agent-create-flow.test.mjs`
-- Modify: `prototype_副本/speakup-premium/assets/panel-extension.js`
+- Modify: `prototype/speakup-premium/tests/agent-create-flow.test.mjs`
+- Modify: `prototype/speakup-premium/assets/panel-extension.js`
 
 **Interfaces:**
 - Produces: `createAgentMockPlan()` returning a plan whose single mode has four interviewers with `roundTitle` and `roundDuration`.
 - Produces: `agentCreateSummary(true)` containing the four-round plan overview.
 
 - [ ] Add assertions that single mode creates four round presets, total duration is 70 minutes, and the created summary contains the four round names.
-- [ ] Run `node --test prototype_副本/speakup-premium/tests/agent-create-flow.test.mjs` and confirm the new assertions fail because only one interviewer is generated.
+- [ ] Run `node --test prototype/speakup-premium/tests/agent-create-flow.test.mjs` and confirm the new assertions fail because only one interviewer is generated.
 - [ ] Update the presets and created-summary markup with the minimum data and copy needed by the test.
 - [ ] Run the same test and confirm it passes.
 
 ### Task 2: Swipeable round plan page
 
 **Files:**
-- Create: `prototype_副本/speakup-premium/tests/interview-plan-carousel.test.mjs`
-- Modify: `prototype_副本/speakup-premium/assets/interview-alignment.js`
-- Modify: `prototype_副本/speakup-premium/assets/panel-extension.js`
+- Create: `prototype/speakup-premium/tests/interview-plan-carousel.test.mjs`
+- Modify: `prototype/speakup-premium/assets/interview-alignment.js`
+- Modify: `prototype/speakup-premium/assets/panel-extension.js`
 
 **Interfaces:**
 - Consumes: `plan.interviewers[index].roundTitle`, `roundDuration`, and `plan.sessions[index]`.
 - Produces: `alignedRoundsV3()` markup with `data-plan-carousel`, `data-round-index`, and indexed `align-prepare` actions.
 
 - [ ] Add source-level assertions for the plan summary, four-card loop, indexed entry actions, status-specific CTA copy, dots, and scroll synchronization.
-- [ ] Run `node --test prototype_副本/speakup-premium/tests/interview-plan-carousel.test.mjs` and confirm it fails because the swipe plan markup is absent.
+- [ ] Run `node --test prototype/speakup-premium/tests/interview-plan-carousel.test.mjs` and confirm it fails because the swipe plan markup is absent.
 - [ ] Replace the single-card renderer with a scroll-snap round-card track and update click/scroll handlers so the selected round is activated before preparation.
 - [ ] Run the new test and the complete prototype test directory and confirm they pass.
 
 ### Task 3: Restrained mobile styling and visual verification
 
 **Files:**
-- Modify: `prototype_副本/speakup-premium/assets/panel-extension.css`
+- Modify: `prototype/speakup-premium/assets/panel-extension.css`
 
 **Interfaces:**
 - Consumes: the semantic class names from Task 2.
@@ -62,5 +62,5 @@
 - [ ] Run the carousel test and confirm the CSS assertions fail.
 - [ ] Add the minimum responsive CSS for the plan overview, card track, card hierarchy, CTA and dots.
 - [ ] Run all prototype tests.
-- [ ] Open `prototype_副本/speakup-premium/pages/prototype.html`, complete the mock Agent flow, open the plan, swipe through cards, enter a non-first round, and capture a mobile screenshot.
+- [ ] Open `prototype/speakup-premium/pages/prototype.html`, complete the mock Agent flow, open the plan, swipe through cards, enter a non-first round, and capture a mobile screenshot.
 - [ ] Check that no page-level horizontal overflow, clipped CTA, duplicate border, gradient, or incorrect interviewer activation remains.
