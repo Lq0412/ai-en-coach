@@ -1,3 +1,0 @@
-#!/bin/bash
-# Remove auto-appended Co-Authored-By line from Claude Code
-sed -i '' '/^Co-Authored-By: Claude Fable 5 <noreply@anthropic\.com>$/d' "$1"

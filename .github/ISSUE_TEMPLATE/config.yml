@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: GitHub 协作规范
+    url: https://github.com/Lq0412/ai-en-coach/blob/main/reference/GitHub%E8%BF%87%E7%A8%8B%E7%AE%A1%E7%90%86%E8%A7%84%E8%8C%83.md
+    about: 创建 Issue 前先查看项目的 Issue、PR、Review 和 Release 规范
