@@ -2,7 +2,7 @@
 
 > 状态：已按主仓已接受 Proposal 收敛，待团队终审<br>
 > 更新日期：2026-07-20<br>
-> 视觉基线：[SpeakUp 最新线上原型](https://speakup-preview.oopwqsnyzxm.chatgpt.site/)<br>
+> 当前可交互原型：[SpeakUp 线上原型](https://speakup-preview.oopwqsnyzxm.chatgpt.site/)<br>
 > 产品总入口：[1024XEngineer/XE3-ESL#9](https://github.com/1024XEngineer/XE3-ESL/issues/9)<br>
 > 本次收口任务：[1024XEngineer/XE3-ESL#16](https://github.com/1024XEngineer/XE3-ESL/issues/16)
 
@@ -58,7 +58,9 @@ MS1 只证明方向、信息结构和最小主链路可以串联：
 
 ## 3. 原型截图使用规则
 
-截图记录终局信息架构和视觉基线，不等于对应功能已在 MS1 实现。每张截图必须使用以下状态之一：
+本文截图是 2026-07-14 产品评审时使用的历史快照，用于追溯当时的信息结构和范围映射，不要求与后续原型逐像素一致，也不等于对应功能已在 MS1 实现。后续原型的视觉、文案或非 MS1 页面变化无需回写本文；只有主链路或 Milestone 边界发生新的正式决策时，才通过独立 Issue/PR 修订。
+
+每张截图必须使用以下状态之一：
 
 | 标记 | 含义 |
 |---|---|
