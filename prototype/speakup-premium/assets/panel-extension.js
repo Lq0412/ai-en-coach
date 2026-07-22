@@ -245,6 +245,7 @@ function appDrawer(){
   return `<div class="app-drawer-backdrop" data-action="close-app-menu"><aside class="app-drawer" data-action="noop">
     <header><span class="app-drawer-brand"><img src="../assets/speakup-agent.png" alt=""><b>SpeakUp</b></span><button data-action="close-app-menu" aria-label="关闭菜单">×</button></header>
     <button class="app-drawer-new ${state.route==='agent-chat'&&!state.agentConversationTitle?'active':''}" data-action="drawer-route" data-route-target="agent-chat"><span class="drawer-new-icon" aria-hidden="true"></span>开始新对话</button>
+    <button class="app-drawer-item ${state.route==='scenes'?'active':''}" data-action="drawer-route" data-route-target="scenes"><b>场景练习</b><small>浏览所有练习场景</small></button>
     <section><small>复盘</small>${item('home','练习记录')}${item('mistakes','错题回顾')}</section>
     <section class="app-drawer-recent"><small>最近对话</small>${AGENT_HISTORY.map(entry=>`<button class="${state.agentConversationTitle===entry.title?'active':''}" data-action="drawer-conversation" data-history-title="${entry.title}">${entry.title}</button>`).join('')}</section>
     <footer class="${state.appAccountOpen?'open':''}">
@@ -358,8 +359,32 @@ roleChat=function(){
   const status=state.recording?'正在聆听':answered?`${config.partner} 正在回应`:`${config.partner} 正在说话`;
   const hint=state.recording?'自然说完，再点击麦克风提交':answered?`第 ${Math.min(turn+1,4)} / 4 轮，听完后继续回答`:`第 ${turn+1} / 4 轮，先听问题再回答`;
   const currentLine=config.questions[turn];
-  return `<div class="role-session-page"><header class="single-scene-head"><button class="single-scene-back" data-route="role-preview" aria-label="返回场景确认">‹</button><h1>${esc(config.shortTitle)}</h1><span class="single-scene-spacer" aria-hidden="true"></span></header><main class="role-session-main"><section class="role-session-person">${roleAvatar(true)}<h2>${status}</h2><p>${hint}</p></section><section class="role-session-prompt"><header><small>${esc(config.labels[turn])} · ${turn+1}/${config.questions.length}</small><button data-action="role-replay">${roleIcon('replay')}<span>重听</span></button></header><p>${esc(currentLine)}</p></section>${roleConversationPanel()}</main>${roleBottomControls()}${state.dialogPanel?dialogInfo():''}</div>`;
+  const hasCorrections=session?.turns?.some(t=>t.suggestion);
+  return `<div class="role-session-page"><header class="single-scene-head"><button class="single-scene-back" data-route="role-preview" aria-label="返回场景确认">‹</button><h1>${esc(config.shortTitle)}</h1>${hasCorrections?`<button class="single-scene-correction" data-action="open-correction-drawer" aria-label="查看表达建议"><span>Aa</span></button>`:'<span class="single-scene-spacer" aria-hidden="true"></span>'}</header><main class="role-session-main"><section class="role-session-person">${roleAvatar(true)}<h2>${status}</h2><p>${hint}</p></section><section class="role-session-prompt"><header><small>${esc(config.labels[turn])} · ${turn+1}/${config.questions.length}</small><button data-action="role-replay">${roleIcon('replay')}<span>重听</span></button></header><p>${esc(currentLine)}</p></section>${roleConversationPanel()}</main>${roleBottomControls()}${state.dialogPanel?dialogInfo():''}${state.correctionDrawerOpen?correctionDrawer():''}</div>`;
 };
+function correctionDrawer(){
+  const session=currentSceneSession(),config=sceneConfig(session),turns=session?.turns||[];
+  const corrections=turns.filter(t=>t.suggestion).map((turn,index)=>({
+    id:`correction-${index}`,
+    question:turn.question,
+    original:turn.answer,
+    suggestion:turn.suggestion,
+    label:turn.label,
+    type:'expression'
+  }));
+  if(!corrections.length)return '';
+  const correctionItem=(c)=>`<article class="correction-item"><header><span class="correction-type">表达优化</span><span class="correction-label">${esc(c.label)}</span></header><div class="correction-content"><section class="correction-original"><small>你说的是</small><p>${esc(c.original)}</p></section><section class="correction-divider">→</section><section class="correction-suggestion"><small>建议这样说</small><p>${esc(c.suggestion)}</p></section></div><section class="correction-analysis"><small>为什么这样说更好</small><p>使用更自然的动词短语和连接词，让表达更流畅地道。</p></section><footer><button class="correction-action" data-action="save-mistake" data-mistake-id="${c.id}">${isMistakeSaved(c.id)?'已收藏':'收藏到错题'}</button><button class="correction-action correction-action-secondary">跟读练习</button></footer></article>`;
+  return `<div class="correction-drawer-backdrop" data-action="close-correction-drawer"></div><aside class="correction-drawer" data-action="noop"><header class="correction-drawer-head"><h2>表达建议</h2><button data-action="close-correction-drawer" aria-label="关闭">×</button></header><main class="correction-drawer-body"><section class="correction-drawer-summary"><small>本轮练习共发现</small><b>${corrections.length} 条表达建议</b></section>${corrections.map(correctionItem).join('')}</main></aside>`;
+}
+function correctionMockView(){
+  const mockCorrections=[
+    {id:'mock-1',label:'Part 1 · Hometown',original:'My hometown is very beautiful, there have many trees and river.',suggestion:'My hometown is very beautiful; there are many trees and a river.',analysis:'Use "there are" instead of "there have" for existence. Also add articles and use semicolons to connect related clauses.'},
+    {id:'mock-2',label:'Part 2 · Describe a book',original:'I read a book which name is The Old Man and the Sea.',suggestion:'I read a book called The Old Man and the Sea.',analysis:'"Which name is" is unnatural. Use "called" or "whose name is" to introduce titles more fluently.'},
+    {id:'mock-3',label:'Part 3 · Technology',original:'I think technology is good for our life, it make things more easier.',suggestion:'I think technology is good for our lives; it makes things much easier.',analysis:'Subject-verb agreement: "it makes" (not "make"). Use "much" (not "more") with comparatives like "easier".'}
+  ];
+  const correctionItem=(c)=>`<article class="correction-item"><header><span class="correction-type">表达优化</span><span class="correction-label">${esc(c.label)}</span></header><div class="correction-content"><section class="correction-original"><small>你说的是</small><p>${esc(c.original)}</p></section><section class="correction-divider">→</section><section class="correction-suggestion"><small>建议这样说</small><p>${esc(c.suggestion)}</p></section></div><section class="correction-analysis"><small>为什么这样说更好</small><p>${esc(c.analysis)}</p></section><footer><button class="correction-action" data-action="save-mistake" data-mistake-id="${c.id}">${isMistakeSaved(c.id)?'已收藏':'收藏到错题'}</button><button class="correction-action correction-action-secondary">跟读练习</button></footer></article>`;
+  return `<div class="correction-mock-page">${topbar('表达建议','home')}<main class="correction-mock-body"><section class="correction-drawer-summary"><small>本轮练习共发现</small><b>${mockCorrections.length} 条表达建议</b></section>${mockCorrections.map(correctionItem).join('')}</main></div>`;
+}
 function roleComplete(){
   const record=activeSceneRecord()||{configId:'restaurant',title:'英文餐厅点餐',partner:'Bob',status:'incomplete',turns:[],durationMinutes:1,correctionCount:0},config=sceneConfig(record);
   const turns=record.turns||[],completed=record.status==='completed',corrections=record.correctionCount||0;
@@ -439,19 +464,62 @@ function agentCreateFlow(){
   const content=state.agentCreateStatus==='created'?`<article class="agent-create-agent"><img src="../assets/speakup-agent.png" alt=""><p><b>已经创建好了。</b><span>面试计划和问题结构都已准备完成。</span></p></article>${agentCreateSummary(true)}`:`${completed}<article class="agent-create-agent"><img src="../assets/speakup-agent.png" alt=""><p><b>SpeakUp</b><span>${esc(active.question)}</span>${active.hint?`<small>${esc(active.hint)}</small>`:''}</p></article>${step<4?options:agentCreateSummary(false)}`;
   return `<div class="agent-page agent-home agent-simple-home agent-create-flow agent-idle"><section class="agent-create-thread"><header class="agent-create-progress">创建模拟面试 · ${step}/4 <span>${state.agentCreateStatus==='created'?'已完成':esc(active.label)}</span></header>${content}</section>${agentCreateComposer()}</div>`;
 }
+function scenesView(){
+  const featured=[{icon:'INT',title:'Job interviews',desc:'Full mock interviews with multiple interviewers, resume deep dive, and detailed reports.',duration:'15-25 min',route:'create-job',featured:true}];
+  const ieltsScenes=[
+    {icon:'P1',title:'Part 1 Q&A',desc:'Daily topic questions and answers',duration:'8 min',sceneId:'ielts-part1'},
+    {icon:'P2',title:'Part 2 Long turn',desc:'2-minute monologue on a given topic',duration:'10 min',sceneId:'ielts-part2'},
+    {icon:'P3',title:'Part 3 Discussion',desc:'In-depth discussion linked to Part 2',duration:'12 min',sceneId:'ielts-part3'}
+  ];
+  const workplaceScenes=[
+    {icon:'1:1',title:'1-on-1 meeting',desc:'Talk with your manager about progress',duration:'10 min',sceneId:'workplace-1on1'},
+    {icon:'ME',title:'Meeting presentation',desc:'Present your work to the team',duration:'15 min',sceneId:'workplace-meeting'},
+    {icon:'CL',title:'Client call',desc:'Handle a client conversation',duration:'12 min',sceneId:'workplace-client'},
+    {icon:'EM',title:'Email polishing',desc:'Refine your email wording',duration:'5 min',sceneId:'workplace-email'}
+  ];
+  const dailyScenes=[
+    {icon:'DN',title:'Dining out',desc:'Order food at a restaurant',duration:'8 min',sceneId:'restaurant'},
+    {icon:'HT',title:'Hotel check-in',desc:'Check in and ask about facilities',duration:'6 min',sceneId:'hotel'},
+    {icon:'TR',title:'Airport & travel',desc:'Navigate airport and travel',duration:'8 min',sceneId:'airport'}
+  ];
+  const card=(scene)=>`<button class="scene-card" data-action="${scene.route?'scene-featured':'scene-select'}" ${scene.route?`data-route-target="${scene.route}"`:''} ${scene.sceneId?`data-scene-id="${scene.sceneId}"`:''}>
+    <span class="scene-card-icon">${scene.icon}</span>
+    <span class="scene-card-body"><b>${scene.title}</b><small>${scene.desc}</small><span class="scene-card-meta">${scene.duration}</span></span>
+  </button>`;
+  const featuredCard=(scene)=>`<button class="scene-card scene-card-featured" data-action="scene-featured" data-route-target="${scene.route}">
+    <span class="scene-card-icon">${scene.icon}</span>
+    <span class="scene-card-body"><b>${scene.title}</b><small>${scene.desc}</small><span class="scene-card-meta">${scene.duration}</span></span>
+    <span class="scene-card-arrow">›</span>
+  </button>`;
+  const section=(title,scenes,featured=false)=>`<section class="scene-section">
+    <small class="scene-section-title">${title}</small>
+    <div class="scene-grid">${featured?scenes.map(featuredCard).join(''):scenes.map(card).join('')}</div>
+  </section>`;
+  return `<div class="scenes-page">${topbar('Scenes','agent-chat')}
+    <div class="scenes-search"><span>🔍</span><input type="text" placeholder="Search scenes..." data-action="scene-search"></div>
+    <main class="scenes-list">
+      ${section('Featured',featured,true)}
+      ${section('For IELTS / TOEFL',ieltsScenes)}
+      ${section('For workplace',workplaceScenes)}
+      ${section('Daily life',dailyScenes)}
+    </main>
+  </div>`;
+}
 function agentHome(){
   if(state.agentConversationTitle)return agentHistoryConversation();
   if(state.agentCreateStep>0)return agentCreateFlow();
   return `<div class="agent-page agent-home agent-simple-home agent-idle">
     <section class="agent-simple-hero">
-      <div class="agent-simple-avatar"><img src="../assets/speakup-agent.png" alt="SpeakUp"></div>
-      <h2>今天想练什么？</h2>
-      <p>告诉我目标，我来创建面试或继续练习。</p>
+      <h2>What would you like to practice?</h2>
+      <p>Describe your goal or scenario, and I'll help you prepare.</p>
     </section>
     <div class="agent-quick-actions">
-      <button data-action="agent-command" data-command="create"><span>＋</span><b>创建模拟面试</b></button>
-      <button data-action="agent-command" data-command="scene"><span>→</span><b>场景口语练习</b></button>
-      <button data-action="agent-command" data-command="continue"><span>↗</span><b>继续上次练习</b></button>
+      <div class="quick-chips">
+        <button data-action="agent-command" data-command="create">Job interviews</button>
+        <button data-action="agent-command" data-command="ielts">IELTS / TOEFL</button>
+        <button data-action="agent-command" data-command="workplace">Workplace</button>
+        <button data-action="agent-command" data-command="continue">Continue session</button>
+      </div>
     </div>
     ${state.agentKeyboardOpen?`<label class="agent-text-entry agent-home-text"><span>告诉 SpeakUp 你想完成什么</span><textarea data-agent-transcript placeholder="例如：帮我创建一次后端开发模拟面试"></textarea><button data-action="agent-send-text">发送</button></label>`:''}
     <footer class="agent-composer">
@@ -513,6 +581,28 @@ ms1CreateHub=function(){
   return html.slice(0,index)+entry+html.slice(index);
 };
 views['create-hub']=ms1CreateHub;
+views['scenes']=scenesView;
+views['correction-mock']=correctionMockView;
+
+function voiceChatView(){
+  const micSvg='<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>';
+  const bars='<span class="vc-bars"><i></i><i></i><i></i><i></i><i></i><i></i></span>';
+  const voiceGlyph='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></svg>';
+  const aiBubble=(who,txt)=>`<div class="vc-ai"><div class="vc-who">${who}</div><div class="vc-txt">${txt}</div><div class="vc-ops"><button class="vc-pill" data-action="bubble-audio">▶ 发音</button><button class="vc-pill" data-action="bubble-translate">翻译</button></div></div>`;
+  const userTurn=(dur,inner,chips,fix)=>`<div class="vc-user"><div class="vc-msg"><div class="vc-voice-row">${micSvg}${bars}<span class="vc-dur">${dur}</span><button class="vc-replay" data-action="bubble-audio">回听</button></div><div class="vc-txt">${inner}</div></div><div class="vc-chips">${chips}</div>${fix||''}</div>`;
+  const fixCard=`<div class="vc-fix"><div class="vc-fix-diff"><s>since five years</s><span class="vc-arr">→</span><b>for five years</b></div><div class="vc-fix-rule">for + 一段时间；since + 具体起点（如 since 2019）</div><div class="vc-fix-ops"><button class="vc-fix-a" data-action="bubble-audio">▶ 听正确读法</button><button class="vc-fix-b" data-action="save-mistake">加入错题</button></div></div>`;
+  return `<div class="vc-page">
+    ${topbar('HR 初面 · Mia','rounds','<span class="vc-progress-tag">2 / 4 轮</span>')}
+    <main class="vc-thread">
+      ${aiBubble('Mia · 面试官','Tell me about a project you owned end to end.')}
+      ${userTurn('0:08','I owned the product definition <span class="vc-err">since five years</span> and worked with design and engineering to ship it.','<span class="vc-chip-ok">发音自然</span><span class="vc-chip-err">1 处语法</span>',fixCard)}
+      ${aiBubble('Mia · 面试官','Good overview. How does the system scale when traffic doubles?')}
+      ${userTurn('0:12','We added a cache layer and moved the heavy jobs into an async queue, so the API stays fast under pressure.','<span class="vc-chip-ok">✓ 表达地道</span>','')}
+    </main>
+    <footer class="vc-composer"><button class="vc-add" data-action="agent-more" aria-label="更多输入方式">＋</button><button class="vc-field" data-action="agent-keyboard">按住说话</button><button class="vc-mic" data-action="agent-dictate" aria-label="语音转文字">${micSvg}</button><button class="vc-voice" data-action="agent-cycle" aria-label="开始语音对话">${voiceGlyph}</button></footer>
+  </div>`;
+}
+views['voice-chat']=voiceChatView;
 
 window.addEventListener('click',event=>{
   const drawerBack=event.target.closest('[data-route][aria-label="返回"]');
@@ -542,6 +632,10 @@ window.addEventListener('click',event=>{
   else if(action==='agent-create-select'){event.preventDefault();event.stopImmediatePropagation();const field=el.dataset.field,value=el.dataset.value||'',answer=el.dataset.answer||value;state.agentCreateDraft[field]=value;state.agentCreateDraft.answers??={};state.agentCreateDraft.answers[field]=answer;state.agentCreateStep=Math.min(4,state.agentCreateStep+1);state.agentKeyboardOpen=false;state.agentTranscript='';render()}
   else if(action==='agent-create-edit'){event.preventDefault();event.stopImmediatePropagation();state.agentCreateStep=1;state.agentCreateStatus='collecting';state.agentCreateDraft.answers={};render()}
   else if(action==='agent-create-confirm'){event.preventDefault();event.stopImmediatePropagation();createAgentMockPlan();state.agentCreateStatus='created';render();toast('模拟面试已创建')}
+  else if(action==='scene-featured'){event.preventDefault();event.stopImmediatePropagation();const target=el.dataset.routeTarget;state.appMenuOpen=false;go(target)}
+  else if(action==='scene-select'){event.preventDefault();event.stopImmediatePropagation();const sceneId=el.dataset.sceneId;const sceneMap={restaurant:'restaurant',hotel:'hotel',airport:'project'};const configId=sceneMap[sceneId]||'restaurant';state.sceneConfigId=configId;state.sceneAgentReady=true;startScenePracticeSession(configId);go('role-preview')}
+  else if(action==='open-correction-drawer'){event.preventDefault();event.stopImmediatePropagation();state.correctionDrawerOpen=true;render()}
+  else if(action==='close-correction-drawer'){event.preventDefault();event.stopImmediatePropagation();state.correctionDrawerOpen=false;render()}
   else if(action==='agent-cycle'){event.preventDefault();event.stopImmediatePropagation();if(state.agentVoiceState==='idle'){state.agentIntent='';state.agentOperation='';state.agentTranscript='';state.agentVoiceMuted=false;state.agentDictating=false;state.agentVoiceState='listening'}render()}
   else if(action==='agent-voice-enter-interview'){event.preventDefault();event.stopImmediatePropagation();createAgentMockPlan();state.agentVoiceState='idle';state.agentVoiceMuted=false;state.activeInterviewer=0;state.practiceSelection={type:'full',specialtyId:null};alignStartSession()}
   else if(action==='agent-voice-mute'){event.preventDefault();event.stopImmediatePropagation();state.agentVoiceMuted=!state.agentVoiceMuted;render();toast(state.agentVoiceMuted?'麦克风已关闭':'麦克风已打开')}
@@ -623,3 +717,22 @@ resetAgentCreateFlow();
 state.appMenuOpen=false;
 state.appAccountOpen=false;
 render();
+
+document.addEventListener('wheel',function(e){
+  const chips=e.target.closest('.quick-chips');
+  if(!chips)return;
+  if(e.deltaY===0)return;
+  e.preventDefault();
+  chips.scrollLeft+=e.deltaY;
+},{passive:false});
+
+// Hash route support
+function handleHashRoute(){
+  const hash=window.location.hash.slice(1);
+  if(hash&&views[hash]){
+    state.route=hash;
+    render();
+  }
+}
+window.addEventListener('hashchange',handleHashRoute);
+if(window.location.hash)handleHashRoute();

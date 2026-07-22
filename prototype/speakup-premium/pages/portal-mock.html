@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SpeakUp 门户展示 mock</title>
+<style>
+  :root{
+    --ink:#1a1a1a;--muted:#6b6b6b;--faint:#858581;--line:#e6e6e2;
+    --bubble:#f4f4f2;--panel:#fafaf8;--black:#151515;
+    --green-bg:#EAF3DE;--green:#3B6D11;--red-bg:#FCEBEB;--red:#A32D2D;--red-line:#F09595;--red-soft:#F7C1C1;
+  }
+  *{box-sizing:border-box;margin:0}
+  body{background:#EDEAE7;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","PingFang SC","Microsoft YaHei",sans-serif;color:var(--ink)}
+  .gallery{display:flex;flex-wrap:wrap;gap:44px;justify-content:center;padding:44px 24px}
+  .shot{width:360px}
+  .shot>p{text-align:center;font-size:12px;color:var(--muted);margin-top:14px}
+  .phone{background:#fff;border-radius:32px;overflow:hidden;box-shadow:0 18px 44px rgba(0,0,0,.14);min-height:720px;display:flex;flex-direction:column}
+
+  /* 顶栏：复用 agent 首页 */
+  .topbar{display:flex;align-items:center;gap:10px;padding:14px 16px 10px}
+  .round-btn{width:36px;height:36px;border-radius:50%;background:#f2f2f0;display:grid;place-items:center;border:0;color:var(--ink);font-size:15px}
+  .hamburger{flex-direction:column;gap:3px}
+  .hamburger i{width:13px;height:1.5px;background:var(--ink);display:block}
+  .brand{font-size:15px;font-weight:600}
+  .topbar .spacer{margin-left:auto}
+  .crumb{font-size:12px;color:var(--faint)}
+  .crumb b{color:var(--ink);font-weight:500}
+
+  /* 底部 composer：复用 agent 首页 */
+  .composer{display:flex;align-items:center;gap:4px;margin:auto 12px 14px;padding:5px 6px;border:1px solid var(--line);border-radius:28px;background:var(--panel)}
+  .composer .add{width:36px;height:36px;display:grid;place-items:center;font-size:22px;font-weight:300;color:#171717}
+  .composer .field{flex:1;font-size:12px;color:var(--faint)}
+  .composer .mic{width:32px;height:36px;display:grid;place-items:center;color:#171717}
+  .composer .voice{width:38px;height:38px;border-radius:50%;background:var(--black);display:grid;place-items:center}
+
+  /* 聊天气泡 */
+  .thread{padding:12px 14px 16px;display:flex;flex-direction:column;gap:15px}
+  .b-ai{max-width:86%;background:var(--bubble);border-radius:16px 16px 16px 5px;padding:11px 13px}
+  .b-ai .who{font-size:10px;color:var(--faint);margin-bottom:4px}
+  .b-ai .txt{font-size:13px;line-height:1.55}
+  .b-ai .ops{display:flex;gap:6px;margin-top:9px}
+  .pill{font-size:10px;color:var(--muted);border:1px solid #e9e9e6;border-radius:999px;padding:3px 9px;background:#fff}
+
+  .b-user{align-self:flex-end;max-width:92%}
+  .b-user .msg{background:var(--black);color:#fff;border-radius:16px 16px 5px 16px;padding:11px 13px}
+  .voice-row{display:flex;align-items:center;gap:7px;margin-bottom:8px}
+  .voice-row .bars{display:inline-flex;gap:2px;align-items:flex-end;height:13px}
+  .bars i{width:2px;background:#fff;border-radius:1px;display:block}
+  .voice-row .dur{font-size:10px;opacity:.75}
+  .voice-row .replay{margin-left:auto;font-size:10px;opacity:.75}
+  .b-user .txt{font-size:13px;line-height:1.6}
+  .err{color:var(--red-soft);border-bottom:1.5px solid var(--red-line)}
+  .chips{display:flex;gap:5px;margin-top:7px;justify-content:flex-end}
+  .chip-ok{font-size:10px;border-radius:999px;padding:3px 9px;background:var(--green-bg);color:var(--green)}
+  .chip-err{font-size:10px;border-radius:999px;padding:3px 9px;background:var(--red-bg);color:var(--red)}
+  .fix{margin-top:7px;background:#fff;border:1px solid #ececea;border-left:2.5px solid var(--black);border-radius:10px;padding:9px 11px}
+  .fix .diff{font-size:11.5px}
+  .fix .diff s{color:var(--red)}
+  .fix .diff .arr{color:var(--faint)}
+  .fix .diff b{color:var(--green);font-weight:600}
+  .fix .rule{font-size:11px;color:var(--muted);margin-top:4px;line-height:1.5}
+  .fix .ops{display:flex;gap:12px;margin-top:8px;font-size:11px}
+  .fix .ops .a{font-weight:500}
+  .fix .ops .b{color:var(--muted)}
+
+  /* 场景库 */
+  .scene-body{padding:4px 16px 16px;display:flex;flex-direction:column;gap:16px}
+  .search{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:10px 14px;font-size:12px;color:var(--faint)}
+  .sec-title{font-size:11px;color:var(--faint);letter-spacing:.06em;margin-bottom:8px}
+  .sec-title b{color:var(--ink);font-weight:600}
+  .scene-card{display:flex;gap:12px;align-items:center;background:#fff;border:1px solid #ececea;border-radius:16px;padding:13px 14px;margin-bottom:8px}
+  .scene-card.hero{border:1.5px solid var(--black)}
+  .s-icon{width:40px;height:40px;border-radius:13px;background:var(--panel);border:1px solid var(--line);display:grid;place-items:center;font-size:11px;font-weight:700;color:var(--muted);flex:none}
+  .scene-card.hero .s-icon{background:var(--black);color:#fff;border-color:var(--black)}
+  .s-body b{font-size:13.5px;display:block}
+  .s-body small{font-size:11px;color:var(--muted);display:block;margin-top:3px;line-height:1.45}
+  .s-meta{margin-left:auto;font-size:10px;color:var(--faint);white-space:nowrap}
+  .tag-hot{font-size:9px;color:#fff;background:var(--black);border-radius:999px;padding:2px 7px;margin-left:6px;vertical-align:1px}
+
+  /* IELTS 独白 */
+  .ielts-topic{margin:6px 16px 0;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px}
+  .ielts-topic small{font-size:10px;color:var(--faint);letter-spacing:.05em}
+  .ielts-topic h3{font-size:14.5px;font-weight:600;margin:6px 0 4px;line-height:1.4}
+  .ielts-topic p{font-size:11.5px;color:var(--muted);line-height:1.55}
+  .timer{display:flex;align-items:center;justify-content:center;gap:8px;margin:16px 0 4px;font-size:13px;color:var(--muted)}
+  .timer b{font-size:22px;font-weight:600;color:var(--ink);font-variant-numeric:tabular-nums}
+  .ielts-lines{padding:8px 16px 16px;display:flex;flex-direction:column;gap:12px}
+  .line{background:#fff;border:1px solid #ececea;border-radius:14px;padding:11px 13px}
+  .line .meta{display:flex;align-items:center;gap:7px;margin-bottom:7px}
+  .line .meta .bars i{background:var(--ink)}
+  .line .meta .dur{font-size:10px;color:var(--faint)}
+  .line .meta .st{margin-left:auto;font-size:10px;border-radius:999px;padding:2px 8px}
+  .st.ok{background:var(--green-bg);color:var(--green)}
+  .st.fix{background:var(--red-bg);color:var(--red)}
+  .line .txt{font-size:12.5px;line-height:1.6}
+  .line .mini-fix{margin-top:7px;padding-top:7px;border-top:1px dashed #e9e9e6;font-size:11px;color:var(--muted)}
+  .line .mini-fix s{color:var(--red)}
+  .line .mini-fix b{color:var(--green)}
+
+  /* 场景生成确认 */
+  .gen-thread{padding:12px 16px 16px;display:flex;flex-direction:column;gap:14px}
+  .b-user-simple{align-self:flex-end;max-width:85%;background:var(--black);color:#fff;border-radius:16px 16px 5px 16px;padding:11px 13px;font-size:13px;line-height:1.55}
+  .b-agent{max-width:92%;display:flex;gap:9px}
+  .b-agent .avatar{width:28px;height:28px;border-radius:9px;background:var(--black);color:#fff;display:grid;place-items:center;font-size:11px;font-weight:700;flex:none}
+  .b-agent .body .who{font-size:10px;color:var(--faint);margin-bottom:4px}
+  .b-agent .body .txt{font-size:13px;line-height:1.6}
+  .brief{background:#fff;border:1px solid #ececea;border-radius:16px;padding:15px;margin-top:4px}
+  .brief small{font-size:10px;color:var(--faint);letter-spacing:.05em}
+  .brief h3{font-size:16px;font-weight:600;margin:6px 0 3px}
+  .brief .sub{font-size:11.5px;color:var(--muted)}
+  .brief .row{display:flex;gap:10px;align-items:flex-start;margin-top:12px;padding-top:12px;border-top:1px solid #f0f0ed}
+  .brief .row .k{font-size:10px;color:var(--faint);width:56px;flex:none;padding-top:2px}
+  .brief .row .v{font-size:12.5px;line-height:1.55}
+  .brief .partner{display:flex;align-items:center;gap:10px}
+  .brief .partner .pa{width:38px;height:38px;border-radius:50%;background:var(--bubble);display:grid;place-items:center;font-size:13px;font-weight:700;color:var(--muted)}
+  .brief .goal{font-size:12.5px;line-height:1.6}
+  .cta{display:flex;gap:8px;margin-top:14px}
+  .cta .sec{flex:1;text-align:center;font-size:12.5px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:11px}
+  .cta .pri{flex:1.4;text-align:center;font-size:12.5px;font-weight:500;color:#fff;background:var(--black);border-radius:999px;padding:11px}
+</style>
+</head>
+<body>
+<div class="gallery">
+
+  <!-- ① 面试对话页 · 内联纠错（改造） -->
+  <div class="shot">
+    <div class="phone">
+      <div class="topbar">
+        <span class="round-btn hamburger"><i></i><i></i><i></i></span>
+        <span class="crumb">模拟面试 · <b>HR 初面</b></span>
+        <span class="spacer"></span>
+        <span class="round-btn">···</span>
+      </div>
+      <div class="thread">
+        <div class="b-ai">
+          <div class="who">Mia · 面试官</div>
+          <div class="txt">Tell me about a project you owned end to end.</div>
+          <div class="ops"><span class="pill">▶ 发音</span><span class="pill">翻译</span></div>
+        </div>
+        <div class="b-user">
+          <div class="msg">
+            <div class="voice-row">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+              <span class="bars"><i style="height:5px"></i><i style="height:10px"></i><i style="height:7px"></i><i style="height:12px"></i><i style="height:6px"></i><i style="height:9px"></i></span>
+              <span class="dur">0:08</span>
+              <span class="replay">回听</span>
+            </div>
+            <div class="txt">I owned the product definition <span class="err">since five years</span> and worked with design and engineering to ship it.</div>
+          </div>
+          <div class="chips"><span class="chip-ok">发音自然</span><span class="chip-err">1 处语法</span></div>
+          <div class="fix">
+            <div class="diff"><s>since five years</s> <span class="arr">→</span> <b>for five years</b></div>
+            <div class="rule">for + 一段时间；since + 具体起点（如 since 2019）</div>
+            <div class="ops"><span class="a">▶ 听正确读法</span><span class="b">加入错题</span></div>
+          </div>
+        </div>
+        <div class="b-ai">
+          <div class="who">Mia · 面试官</div>
+          <div class="txt">Good overview. How does the system scale when traffic doubles?</div>
+          <div class="ops"><span class="pill">▶ 发音</span><span class="pill">翻译</span></div>
+        </div>
+        <div class="b-user">
+          <div class="msg">
+            <div class="voice-row">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+              <span class="bars"><i style="height:6px"></i><i style="height:11px"></i><i style="height:8px"></i><i style="height:13px"></i><i style="height:5px"></i><i style="height:10px"></i></span>
+              <span class="dur">0:12</span>
+              <span class="replay">回听</span>
+            </div>
+            <div class="txt">We added a cache layer and moved the heavy jobs into an async queue, so the API stays fast under pressure.</div>
+          </div>
+          <div class="chips"><span class="chip-ok">✓ 表达地道</span></div>
+        </div>
+      </div>
+      <div class="composer">
+        <span class="add">＋</span>
+        <span class="field">按住说话</span>
+        <span class="mic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/></svg></span>
+        <span class="voice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></svg></span>
+      </div>
+    </div>
+    <p>① 面试对话页 · 语音气泡默认带转写与纠错（改造现有页）</p>
+  </div>
+
+  <!-- ② 场景库（新增） -->
+  <div class="shot">
+    <div class="phone">
+      <div class="topbar">
+        <span class="round-btn hamburger"><i></i><i></i><i></i></span>
+        <span class="brand">SpeakUp</span>
+        <span class="spacer"></span>
+        <span class="round-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1a1a1a" stroke-width="1.8"><path d="M5 5.5h14v10H9l-4 3v-13Z"/></svg></span>
+      </div>
+      <div class="scene-body">
+        <div class="search"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#858581" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>搜索场景</div>
+        <div>
+          <div class="sec-title"><b>求职面试</b> · 主打</div>
+          <div class="scene-card hero">
+            <span class="s-icon">INT</span>
+            <span class="s-body"><b>全真模拟面试<span class="tag-hot">主打</span></b><small>4 位面试官轮问 · 简历深挖 · 详细报告</small></span>
+            <span class="s-meta">25 min ›</span>
+          </div>
+          <div class="scene-card">
+            <span class="s-icon">HR</span>
+            <span class="s-body"><b>HR 初面</b><small>求职动机 · 沟通表达 · 岗位匹配</small></span>
+            <span class="s-meta">15 min ›</span>
+          </div>
+          <div class="scene-card">
+            <span class="s-icon">SD</span>
+            <span class="s-body"><b>系统设计面</b><small>架构边界 · 可靠性 · 扩展方案</small></span>
+            <span class="s-meta">20 min ›</span>
+          </div>
+        </div>
+        <div>
+          <div class="sec-title"><b>雅思托福</b></div>
+          <div class="scene-card">
+            <span class="s-icon">P1</span>
+            <span class="s-body"><b>Part 1 问答</b><small>日常话题快问快答</small></span>
+            <span class="s-meta">8 min ›</span>
+          </div>
+          <div class="scene-card">
+            <span class="s-icon">P2</span>
+            <span class="s-body"><b>Part 2 独白</b><small>2 分钟限时表达 + 逐句反馈</small></span>
+            <span class="s-meta">10 min ›</span>
+          </div>
+        </div>
+        <div>
+          <div class="sec-title"><b>日常与职场</b></div>
+          <div class="scene-card">
+            <span class="s-icon">1:1</span>
+            <span class="s-body"><b>1-on-1 汇报</b><small>和经理同步进展与 blocker</small></span>
+            <span class="s-meta">10 min ›</span>
+          </div>
+          <div class="scene-card">
+            <span class="s-icon">DN</span>
+            <span class="s-body"><b>餐厅点餐</b><small>点菜、忌口与结账</small></span>
+            <span class="s-meta">8 min ›</span>
+          </div>
+        </div>
+      </div>
+      <div class="composer">
+        <span class="add">＋</span>
+        <span class="field">说说你想练的场景</span>
+        <span class="mic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/></svg></span>
+        <span class="voice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></svg></span>
+      </div>
+    </div>
+    <p>② 场景库 · 三类用户分区，面试置顶（新增 mock）</p>
+  </div>
+
+  <!-- ③ IELTS 独白练习（新增） -->
+  <div class="shot">
+    <div class="phone">
+      <div class="topbar">
+        <span class="round-btn">‹</span>
+        <span class="crumb">IELTS · <b>Part 2 独白</b></span>
+        <span class="spacer"></span>
+        <span class="round-btn">···</span>
+      </div>
+      <div class="ielts-topic">
+        <small>TOPIC CARD</small>
+        <h3>Describe a skill you learned recently</h3>
+        <p>You should say: what it is · why you learned it · how you practiced · and explain how you feel about it.</p>
+      </div>
+      <div class="timer">已说 <b>01:24</b> / 建议 02:00</div>
+      <div class="ielts-lines">
+        <div class="line">
+          <div class="meta">
+            <span class="bars" style="display:inline-flex;gap:2px;align-items:flex-end;height:12px"><i style="height:5px"></i><i style="height:9px"></i><i style="height:7px"></i><i style="height:11px"></i><i style="height:6px"></i></span>
+            <span class="dur">句 1 · 0:09</span>
+            <span class="st ok">✓ 不错</span>
+          </div>
+          <div class="txt">A skill I picked up recently is public speaking, which I deliberately practiced for my job.</div>
+        </div>
+        <div class="line">
+          <div class="meta">
+            <span class="bars" style="display:inline-flex;gap:2px;align-items:flex-end;height:12px"><i style="height:6px"></i><i style="height:10px"></i><i style="height:8px"></i><i style="height:12px"></i><i style="height:5px"></i></span>
+            <span class="dur">句 2 · 0:11</span>
+            <span class="st fix">1 处可优化</span>
+          </div>
+          <div class="txt">At first I was <span class="err">very nervously</span>, so I recorded myself and watched it back every night.</div>
+          <div class="mini-fix"><s>very nervously</s> → <b>very nervous</b> · be 动词后用形容词</div>
+        </div>
+        <div class="line">
+          <div class="meta">
+            <span class="bars" style="display:inline-flex;gap:2px;align-items:flex-end;height:12px"><i style="height:4px"></i><i style="height:8px"></i><i style="height:6px"></i><i style="height:10px"></i><i style="height:7px"></i></span>
+            <span class="dur">句 3 · 0:10</span>
+            <span class="st ok">✓ 不错</span>
+          </div>
+          <div class="txt">After two weeks, I could present to the whole team without reading from my notes.</div>
+        </div>
+        <div class="line" style="opacity:.55">
+          <div class="meta">
+            <span class="bars" style="display:inline-flex;gap:2px;align-items:flex-end;height:12px"><i style="height:3px"></i><i style="height:3px"></i><i style="height:3px"></i><i style="height:3px"></i></span>
+            <span class="dur">句 4 · 正在说…</span>
+          </div>
+          <div class="txt" style="color:var(--faint)">继续说完最后一点感受…</div>
+        </div>
+      </div>
+      <div class="composer">
+        <span class="add">＋</span>
+        <span class="field">按住继续说</span>
+        <span class="mic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/></svg></span>
+        <span class="voice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></svg></span>
+      </div>
+    </div>
+    <p>③ IELTS Part 2 · 独白计时 + 逐句反馈（新增 mock）</p>
+  </div>
+
+  <!-- ④ 场景生成确认（新增） -->
+  <div class="shot">
+    <div class="phone">
+      <div class="topbar">
+        <span class="round-btn hamburger"><i></i><i></i><i></i></span>
+        <span class="brand">SpeakUp</span>
+        <span class="spacer"></span>
+        <span class="round-btn"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1a1a1a" stroke-width="1.8"><path d="M5 5.5h14v10H9l-4 3v-13Z"/></svg></span>
+      </div>
+      <div class="gen-thread">
+        <div class="b-user-simple">下周我要和海外客户开一个项目进度会，我想练一下怎么用英语汇报进展和 delay。</div>
+        <div class="b-agent">
+          <span class="avatar">S</span>
+          <div class="body">
+            <div class="who">SpeakUp</div>
+            <div class="txt">明白，客户会议最关键的是"先给结论，再讲风险"。我已经把场景整理好了：</div>
+          </div>
+        </div>
+        <div class="brief">
+          <small>场景已生成</small>
+          <h3>海外客户进度会</h3>
+          <div class="sub">职场协作 · 中级 · 约 12 分钟</div>
+          <div class="row">
+            <span class="k">对话伙伴</span>
+            <div class="partner">
+              <span class="pa">SJ</span>
+              <div class="v"><b>Sarah · 客户方 PM</b><br><span style="font-size:11px;color:var(--muted)">关注交付时间，会追问 delay 原因</span></div>
+            </div>
+          </div>
+          <div class="row">
+            <span class="k">练习目标</span>
+            <div class="v goal">① 用 30 秒说清当前进度 ② 主动说明 delay 并给补救方案 ③ 回应一次客户追问</div>
+          </div>
+          <div class="row">
+            <span class="k">开场白</span>
+            <div class="v" style="font-style:italic;color:var(--muted)">"Thanks for joining. Could you walk me through where the project stands right now?"</div>
+          </div>
+          <div class="cta">
+            <span class="sec">重新描述</span>
+            <span class="pri">开始练习</span>
+          </div>
+        </div>
+      </div>
+      <div class="composer">
+        <span class="add">＋</span>
+        <span class="field">继续补充要求</span>
+        <span class="mic"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/></svg></span>
+        <span class="voice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></svg></span>
+      </div>
+    </div>
+    <p>④ 场景生成确认 · 一句话生成情景简报（新增 mock）</p>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SpeakUp · 说一句话，它帮你搞定英文面试</title>
+<style>
+  :root{
+    --ink:#1a1a1a;--muted:#6b6b6b;--faint:#858581;--line:#e9e9e6;
+    --panel:#f7f7f5;--panel2:#fafaf8;--black:#151515;
+    --green-bg:#EAF3DE;--green:#3B6D11;--red-bg:#FCEBEB;--red:#A32D2D;
+  }
+  *{box-sizing:border-box;margin:0}
+  html{scroll-behavior:smooth}
+  body{background:#fff;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","PingFang SC","Microsoft YaHei",sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+  .eyebrow{font-size:12px;color:var(--muted);letter-spacing:.08em;margin-bottom:14px}
+  h1{font-size:clamp(30px,4.6vw,42px);font-weight:600;letter-spacing:-.02em;line-height:1.24}
+  h2{font-size:clamp(22px,3vw,28px);font-weight:600;letter-spacing:-.01em;line-height:1.3}
+  h3{font-size:19px;font-weight:600;line-height:1.35}
+  .sub{font-size:15px;color:var(--muted);line-height:1.75}
+  .btn{display:inline-block;font-size:14px;font-weight:500;border-radius:999px;padding:13px 26px;text-decoration:none}
+  .btn-pri{background:var(--black);color:#fff}
+  .btn-sec{color:var(--ink);border:1px solid var(--line)}
+  section{padding:84px 0}
+
+  /* nav */
+  nav{position:sticky;top:0;z-index:10;background:rgba(255,255,255,.88);backdrop-filter:blur(10px);border-bottom:1px solid #f0f0ed}
+  nav .wrap{display:flex;align-items:center;height:60px}
+  .logo{font-size:16px;font-weight:600}
+  .nav-links{display:flex;gap:26px;margin:0 auto;font-size:13px;color:var(--muted)}
+  .nav-links a{color:inherit;text-decoration:none}
+  .nav-links a:hover{color:var(--ink)}
+  .nav-cta{font-size:13px;font-weight:500;background:var(--black);color:#fff;border-radius:999px;padding:9px 18px;text-decoration:none}
+  @media(max-width:720px){.nav-links{display:none}}
+
+  /* hero：大对话框 */
+  .hero{padding-top:64px;padding-bottom:76px}
+  .hero-top{text-align:center;max-width:640px;margin:0 auto 40px}
+  .hero-top .sub{margin:18px auto 0;max-width:480px}
+  .dialog{max-width:680px;margin:0 auto;border:1px solid var(--line);border-radius:24px;overflow:hidden;box-shadow:0 20px 54px rgba(0,0,0,.08);background:#fff}
+  .dialog-head{display:flex;align-items:center;gap:9px;padding:12px 16px;border-bottom:1px solid #f2f2ef}
+  .dialog-head .davatar{width:26px;height:26px;border-radius:8px;background:var(--black);color:#fff;display:grid;place-items:center;font-size:10.5px;font-weight:700}
+  .dialog-head .dname{font-size:13px;font-weight:600}
+  .dialog-head .dstatus{margin-left:auto;font-size:10.5px;color:var(--green);background:var(--green-bg);border-radius:999px;padding:3px 10px}
+  .dialog-body{padding:20px 18px;display:flex;flex-direction:column;gap:14px;background:var(--panel2)}
+  .msg-user{align-self:flex-end;max-width:82%;background:var(--black);color:#fff;border-radius:16px 16px 5px 16px;padding:11px 14px;font-size:13.5px;line-height:1.55}
+  .msg-agent{max-width:88%;display:flex;gap:9px;align-self:flex-start}
+  .msg-agent .mavatar{width:24px;height:24px;border-radius:8px;background:var(--black);color:#fff;display:grid;place-items:center;font-size:10px;font-weight:700;flex:none;margin-top:2px}
+  .msg-agent .mbody .mtxt{font-size:13.5px;line-height:1.6}
+  .plan-card{margin-top:10px;background:#fff;border:1px solid #ececea;border-radius:14px;padding:13px 14px}
+  .plan-card small{font-size:10px;color:var(--faint);letter-spacing:.05em}
+  .plan-card h4{font-size:14.5px;font-weight:600;margin:5px 0 2px}
+  .plan-card .psub{font-size:11.5px;color:var(--muted)}
+  .plan-rounds{margin-top:11px;display:flex;flex-direction:column;gap:6px}
+  .plan-rounds li{list-style:none;display:flex;align-items:center;gap:10px;font-size:12px}
+  .plan-rounds li .no{width:20px;height:20px;border-radius:50%;background:var(--panel);border:1px solid var(--line);display:grid;place-items:center;font-size:10px;color:var(--muted);flex:none}
+  .plan-rounds li b{font-weight:600}
+  .plan-rounds li span{color:var(--muted);margin-left:auto;font-size:11px}
+  .plan-cta{margin-top:12px;display:inline-block;font-size:12px;font-weight:500;background:var(--black);color:#fff;border-radius:999px;padding:8px 16px;text-decoration:none}
+  .dialog-input{display:flex;align-items:center;gap:5px;padding:8px 10px;border-top:1px solid #f2f2ef;background:#fff}
+  .dialog-input .dplus{width:32px;height:32px;display:grid;place-items:center;font-size:20px;font-weight:300;color:var(--muted)}
+  .dialog-input .dfield{flex:1;font-size:12.5px;color:var(--faint)}
+  .dialog-input .dvoice{width:34px;height:34px;border-radius:50%;background:var(--black);display:grid;place-items:center}
+  .hero-ctas{display:flex;gap:12px;justify-content:center;margin-top:34px}
+  .hero-note{text-align:center;font-size:12px;color:var(--faint);margin-top:14px}
+
+  /* agent 能力三节 */
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center;padding:48px 0}
+  .row + .row{border-top:1px solid #f2f2ef}
+  .row.flip .txt{order:2}
+  .row .shot-frame{width:min(340px,100%);margin:0 auto;border-radius:28px;overflow:hidden;box-shadow:0 18px 44px rgba(0,0,0,.11)}
+  .row .shot-frame img{display:block;width:100%}
+  .cap-tag{display:inline-block;font-size:11px;color:var(--muted);background:var(--panel);border-radius:999px;padding:5px 13px;margin-bottom:16px;letter-spacing:.04em}
+  .feat-list{display:flex;flex-direction:column;gap:13px;margin-top:22px}
+  .feat-list li{list-style:none;display:flex;gap:12px;font-size:14px;line-height:1.65;color:var(--muted)}
+  .feat-list li::before{content:"";flex:none;width:18px;height:18px;margin-top:2px;border-radius:50%;background:var(--green-bg);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%233B6D11' stroke-width='3'%3E%3Cpath d='M5 13l4 4L19 7'/%3E%3C/svg%3E");background-size:10px;background-position:center;background-repeat:no-repeat}
+  .feat-list li b{color:var(--ink);font-weight:600}
+  @media(max-width:860px){.row{grid-template-columns:1fr;gap:32px}.row.flip .txt{order:0}}
+
+  /* 同一个 agent 三种用法 */
+  .aud{background:var(--panel)}
+  .aud-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:36px}
+  .aud-card{background:#fff;border:1px solid var(--line);border-radius:18px;padding:26px 24px}
+  .aud-card.main{border:1.5px solid var(--black);position:relative}
+  .aud-badge{position:absolute;top:-11px;left:22px;background:var(--black);color:#fff;font-size:10.5px;border-radius:999px;padding:4px 12px;letter-spacing:.04em}
+  .aud-card h3{font-size:16.5px;font-weight:600;margin-bottom:6px}
+  .aud-card .say{font-size:12.5px;color:var(--ink);background:var(--panel);border-radius:12px;padding:10px 13px;margin:14px 0;font-style:italic;line-height:1.55}
+  .aud-card p{font-size:12.5px;color:var(--muted);line-height:1.7}
+  @media(max-width:860px){.aud-grid{grid-template-columns:1fr}}
+
+  /* 闭环 */
+  .loop-steps{display:flex;align-items:stretch;gap:10px;margin-top:36px}
+  .loop-step{flex:1;background:#fff;border:1px solid #efefec;border-radius:16px;padding:22px 18px;text-align:center}
+  .loop-step .n{width:30px;height:30px;border-radius:50%;background:var(--black);color:#fff;font-size:13px;font-weight:600;display:grid;place-items:center;margin:0 auto 12px}
+  .loop-step b{font-size:14px;display:block;margin-bottom:6px}
+  .loop-step small{font-size:12px;color:var(--muted);line-height:1.6;display:block}
+  .loop-arrow{align-self:center;color:var(--faint);font-size:16px;flex:none}
+  @media(max-width:860px){.loop-steps{flex-direction:column}.loop-arrow{transform:rotate(90deg)}}
+
+  /* 越用越懂你 */
+  .memory{background:var(--black);color:#fff}
+  .memory .eyebrow{color:rgba(255,255,255,.5)}
+  .memory h2{color:#fff}
+  .memory .sub{color:rgba(255,255,255,.62)}
+  .mem-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:40px}
+  .mem-card{background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.1);border-radius:18px;padding:24px 22px}
+  .mem-card .mno{font-size:11px;color:rgba(255,255,255,.45);letter-spacing:.06em}
+  .mem-card h3{font-size:15.5px;font-weight:600;margin:10px 0 8px;color:#fff}
+  .mem-card p{font-size:12.5px;color:rgba(255,255,255,.6);line-height:1.7}
+  .mem-card .memsay{margin-top:14px;font-size:12px;color:#fff;background:rgba(255,255,255,.09);border-radius:11px;padding:9px 12px;font-style:italic;line-height:1.55}
+  .mem-proof{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:16px}
+  .mem-shot{border-radius:16px;overflow:hidden;border:1px solid rgba(255,255,255,.12)}
+  .mem-shot img{display:block;width:100%}
+  .mem-shot p{font-size:11px;color:rgba(255,255,255,.5);text-align:center;padding:10px 8px;background:rgba(255,255,255,.04)}
+  @media(max-width:860px){.mem-grid,.mem-proof{grid-template-columns:1fr}}
+
+  /* final */
+  .final{text-align:center}
+  .final .sub{max-width:460px;margin:18px auto 30px}
+  footer{border-top:1px solid #f0f0ed;padding:30px 0;font-size:12px;color:var(--faint)}
+  footer .wrap{display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <span class="logo">SpeakUp</span>
+    <div class="nav-links">
+      <a href="#how">它怎么帮你</a>
+      <a href="#who">三种用法</a>
+      <a href="#memory">越用越懂你</a>
+      <a href="#loop">学习闭环</a>
+    </div>
+    <a class="nav-cta" href="#final">开始对话</a>
+  </div>
+</nav>
+
+<!-- Hero：一段正在发生的 agent 对话 -->
+<header class="hero">
+  <div class="wrap">
+    <div class="hero-top">
+      <p class="eyebrow">AI 职业英语陪练</p>
+      <h1>说一句话，<br>它帮你搞定英文面试</h1>
+      <p class="sub">不是题库，是一个听得懂处境、越用越懂你的陪练。告诉它你要面对什么，剩下的交给它。</p>
+    </div>
+    <div class="dialog">
+      <div class="dialog-head">
+        <span class="davatar">S</span>
+        <span class="dname">SpeakUp</span>
+        <span class="dstatus">● 在线</span>
+      </div>
+      <div class="dialog-body">
+        <div class="msg-user">帮我准备下周的后端开发面试，岗位是处理高并发交易服务。</div>
+        <div class="msg-agent">
+          <span class="mavatar">S</span>
+          <div class="mbody">
+            <p class="mtxt">明白。我根据这个岗位整理了面试计划——4 轮、4 位角色化面试官，会从 HR 初面一直追问到系统设计。</p>
+            <div class="plan-card">
+              <small>面试计划已生成</small>
+              <h4>后端开发工程师 · 全真模拟</h4>
+              <p class="psub">基于岗位职责自动出题 · 约 70 分钟</p>
+              <ul class="plan-rounds">
+                <li><span class="no">1</span><b>HR 初面</b><span>Mia · 15 min</span></li>
+                <li><span class="no">2</span><b>项目深挖</b><span>Ethan · 20 min</span></li>
+                <li><span class="no">3</span><b>系统设计</b><span>Noah · 20 min</span></li>
+                <li><span class="no">4</span><b>综合终面</b><span>Lena · 15 min</span></li>
+              </ul>
+              <a class="plan-cta" href="#final">开始第一轮</a>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="dialog-input">
+        <span class="dplus">＋</span>
+        <span class="dfield">说说你要面对的场景…</span>
+        <span class="dvoice"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></svg></span>
+      </div>
+    </div>
+    <div class="hero-ctas">
+      <a class="btn btn-pri" href="#final">和 SpeakUp 说一句</a>
+      <a class="btn btn-sec" href="#how">看它怎么帮你</a>
+    </div>
+    <p class="hero-note">无需注册 · 开口即练 · 真实产品原型可直接体验</p>
+  </div>
+</header>
+
+<!-- 三个 agent 能力 -->
+<section id="how" style="padding-top:20px">
+  <div class="wrap">
+    <p class="eyebrow">它怎么帮你</p>
+    <h2>一个陪练，听懂处境、给你生成、陪你练对</h2>
+
+    <div class="row">
+      <div class="txt">
+        <span class="cap-tag">能力 ① · 听懂处境</span>
+        <h3>说出你的处境，场景自动生成</h3>
+        <p class="sub" style="margin-top:12px">"下周要和海外客户开进度会"——一句话，它整理好对话伙伴、练习目标和开场白。你练的不是通用题库，是你下周真的要面对的那场会。</p>
+        <ul class="feat-list">
+          <li><b>听懂"对谁说、要达到什么"</b>，不只是关键词匹配</li>
+          <li><b>自动生成情景简报</b>：伙伴人设、目标、开场白</li>
+          <li><b>随时补充要求</b>，场景跟着你的处境变</li>
+        </ul>
+      </div>
+      <div class="shot-frame"><img src="../assets/portal-shots/r2-scene-brief.png" alt="SpeakUp 听懂处境，一句话生成专属场景"></div>
+    </div>
+
+    <div class="row flip">
+      <div class="txt">
+        <span class="cap-tag">能力 ② · 给你生成</span>
+        <h3>一句话，创建整场面试</h3>
+        <p class="sub" style="margin-top:12px">告诉它目标岗位，它逐步收集 JD、简历、面试形式，直接生成 4 轮 4 位面试官——HR、工程经理、系统设计、技术负责人，各自有追问风格。</p>
+        <ul class="feat-list">
+          <li><b>基于真实 JD 和简历出题</b>，不是随机题库</li>
+          <li><b>4 位角色化面试官</b>：连续追问，像真面试</li>
+          <li><b>单面 / 群面可选</b>，练完给完整报告</li>
+        </ul>
+      </div>
+      <div class="shot-frame"><img src="../assets/portal-shots/r3-scenes.png" alt="SpeakUp 生成面试计划与场景库"></div>
+    </div>
+
+    <div class="row">
+      <div class="txt">
+        <span class="cap-tag">能力 ③ · 陪你练对</span>
+        <h3>陪练不是闲聊，说完真给你改</h3>
+        <p class="sub" style="margin-top:12px">面试过程里，它追问、聆听、说完即转写——错词直接划线标红，附一句话规则和正确读法。错句自动进错题本，下次优先复练，直到你说对。</p>
+        <ul class="feat-list">
+          <li><b>说完即见错</b>：转写、标错、规则同屏出现</li>
+          <li><b>发音给描述不打分</b>：不制造开口压力</li>
+          <li><b>错句自动复练</b>：报告页看得到前后对比</li>
+        </ul>
+      </div>
+      <div class="shot-frame"><img src="../assets/portal-shots/r1-voice-chat.png" alt="SpeakUp 陪练：说完即转写并内联纠错"></div>
+    </div>
+  </div>
+</section>
+
+<!-- 同一个 agent 三种用法 -->
+<section class="aud" id="who">
+  <div class="wrap">
+    <p class="eyebrow">适合谁</p>
+    <h2>同一个 SpeakUp，三种用法</h2>
+    <p class="sub" style="margin-top:12px;max-width:520px">不是三个孤立的产品，是同一个陪练在三种处境下的表现。你跟它说的每一句话，它都当成一件要帮你完成的事。</p>
+    <div class="aud-grid">
+      <div class="aud-card main">
+        <span class="aud-badge">主打</span>
+        <h3>求职面试</h3>
+        <div class="say">"帮我准备下周的后端面试，用这份简历。"</div>
+        <p>生成多轮角色化面试：HR 初面、工程经理深挖、系统设计、综合终面。练完给详细报告，错句进错题本复练。</p>
+      </div>
+      <div class="aud-card">
+        <h3>雅思托福</h3>
+        <div class="say">"陪我练 IELTS Part 2，计时并逐句反馈。"</div>
+        <p>按考试结构练：Part 1 快答、Part 2 限时独白、Part 3 讨论。逐句给反馈，按考试标准衡量表达。</p>
+      </div>
+      <div class="aud-card">
+        <h3>日常与职场</h3>
+        <div class="say">"周五要和海外客户开进度会，帮我排练。"</div>
+        <p>说一句话生成专属场景：客户会议、1-on-1 汇报、餐厅点餐。练的是你真实要面对的那一场。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 越用越懂你 -->
+<section class="memory" id="memory">
+  <div class="wrap">
+    <p class="eyebrow">记得你</p>
+    <h2>越用越懂你</h2>
+    <p class="sub" style="margin-top:12px;max-width:560px">工具每次从零开始，陪练记得你。它记得你的目标岗位和简历、记得你练到哪一轮、记得你上次错在哪一句——下一次开口，它接着上次的继续。</p>
+    <div class="mem-grid">
+      <div class="mem-card">
+        <span class="mno">记得 · 01</span>
+        <h3>记得你的目标</h3>
+        <p>你的目标岗位、简历、想练的场景，它都存着。不用每次重说，它出题越来越贴你的真实处境。</p>
+        <div class="memsay">"还是上次那个后端岗位，接着练。"</div>
+      </div>
+      <div class="mem-card">
+        <span class="mno">记得 · 02</span>
+        <h3>记得你的进度</h3>
+        <p>练到第几轮、哪场面试进行中，它都记得。随时停下，随时从断点继续，不用从头再来。</p>
+        <div class="memsay">"继续上次没练完的项目深挖。"</div>
+      </div>
+      <div class="mem-card">
+        <span class="mno">记得 · 03</span>
+        <h3>记得你错在哪</h3>
+        <p>你说错的每一句都进了错题本。下次练习，它优先复现这些句子，盯着你把同一个坑填平。</p>
+        <div class="memsay">"上次的 since / for，这次还会错吗？"</div>
+      </div>
+    </div>
+    <div class="mem-proof">
+      <div class="mem-shot">
+        <img src="../assets/portal-shots/r5-history.png" alt="练习记录：面试进度被完整保存">
+        <p>练习记录 · 进度随时接着练</p>
+      </div>
+      <div class="mem-shot">
+        <img src="../assets/portal-shots/r6-report.png" alt="面试报告：同题复练前后对比">
+        <p>面试报告 · 原回答 vs 复练对比</p>
+      </div>
+      <div class="mem-shot">
+        <img src="../assets/portal-shots/r4-mistakes.png" alt="错题回顾：说错的句子自动归集，下次优先复练">
+        <p>错句归集 · 下次优先复现</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 学习闭环 -->
+<section id="loop">
+  <div class="wrap">
+    <p class="eyebrow">学习闭环</p>
+    <h2>一条语音，它带你走完整个学习过程</h2>
+    <div class="loop-steps">
+      <div class="loop-step"><span class="n">1</span><b>你说处境</b><small>像发微信语音一样自然开口</small></div>
+      <span class="loop-arrow">→</span>
+      <div class="loop-step"><span class="n">2</span><b>它生成场景</b><small>伙伴、目标、开场白一次备好</small></div>
+      <span class="loop-arrow">→</span>
+      <div class="loop-step"><span class="n">3</span><b>陪练并纠错</b><small>说完即见错，讲规则给读法</small></div>
+      <span class="loop-arrow">→</span>
+      <div class="loop-step"><span class="n">4</span><b>错句复练</b><small>错题自动回来，直到说对</small></div>
+    </div>
+  </div>
+</section>
+
+<!-- 最终 CTA -->
+<section class="final" id="final" style="background:var(--panel)">
+  <div class="wrap">
+    <h2>第一次它听懂你，之后它记得你</h2>
+    <p class="sub">面试、雅思、职场协作——你负责说要面对什么，它负责让你说好，并且越陪越懂你。</p>
+    <a class="btn btn-pri" href="prototype.html" style="font-size:15px;padding:15px 34px">和 SpeakUp 说一句</a>
+    <p style="font-size:12px;color:var(--faint);margin-top:16px">在线体验真实产品原型 · 无需注册</p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>SpeakUp · AI 职业英语陪练</span>
+    <span>说一句话，它帮你搞定英文面试</span>
+  </div>
+</footer>
+
+</body>
+</html>
