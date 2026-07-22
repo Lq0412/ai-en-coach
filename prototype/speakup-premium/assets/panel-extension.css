@@ -297,8 +297,12 @@ html,body,.app-shell{background:#eef1ef!important;background-image:none!importan
 .app-menu-trigger{flex:0 0 50px;width:50px;height:50px;gap:7px;padding:0 14px;background:rgba(255,255,255,.94);box-shadow:0 5px 18px rgba(30,44,46,.08)}.app-menu-trigger i{width:22px;height:2px}.app-menu-trigger i:last-child{width:17px}
 .app-title-pill{min-width:104px;height:50px;display:grid;place-items:center;padding:0 20px;border-radius:25px;background:rgba(255,255,255,.94);box-shadow:0 5px 18px rgba(30,44,46,.08);font-size:16px!important}
 .app-new-chat{flex:0 0 50px;width:50px;height:50px;display:grid;place-items:center;margin-left:auto;border:0;border-radius:50%;background:rgba(255,255,255,.94);box-shadow:0 5px 18px rgba(30,44,46,.08);cursor:pointer}.app-new-chat i{position:relative;width:23px;height:20px;border:2px solid #171717;border-radius:50%}.app-new-chat i::after{content:"";position:absolute;right:1px;bottom:-4px;width:7px;height:7px;border-right:2px solid #171717;border-bottom:2px solid #171717;transform:rotate(25deg);background:#fff}
-.agent-simple-home{height:100%!important;min-height:680px!important;padding-bottom:0!important}
-.agent-simple-hero{margin:80px 0 0;padding:0 20px;text-align:center}
+.agent-simple-home{height:100%!important;min-height:680px!important;padding-bottom:0!important;display:flex;flex-direction:column;align-items:center;position:relative}
+.agent-orb-wrap{width:180px;height:180px;position:absolute;top:60px;left:50%;transform:translateX(-50%);flex-shrink:0;z-index:0;pointer-events:none}
+.agent-orb{width:180px;height:180px;border-radius:50%;position:relative;background:radial-gradient(circle at 38% 32%,rgba(230,240,255,.9) 0%,rgba(140,175,230,.7) 30%,rgba(100,145,210,.5) 60%,rgba(80,120,190,.35) 100%);box-shadow:inset -18px -18px 40px rgba(100,140,200,.35),inset 8px 8px 24px rgba(255,255,255,.75),0 30px 60px rgba(110,150,210,.28),0 10px 24px rgba(100,140,200,.2);overflow:hidden}
+.agent-orb::before{content:"";position:absolute;top:14%;left:22%;width:32%;height:24%;background:radial-gradient(ellipse,rgba(255,255,255,.92),transparent);border-radius:50%;filter:blur(4px);transform:rotate(-18deg)}
+.agent-orb::after{content:"";position:absolute;bottom:10%;right:18%;width:20%;height:14%;background:radial-gradient(ellipse,rgba(255,255,255,.5),transparent);border-radius:50%;filter:blur(6px)}
+.agent-simple-hero{margin:0;padding:260px 20px 0;text-align:center;position:relative;z-index:1}
 .agent-simple-hero h2{margin:0;font-size:28px;font-weight:600;color:#1a1a1a;letter-spacing:-0.02em;line-height:1.2}
 .agent-simple-hero p{margin-top:12px;font-size:13px;color:#6b6b6b;line-height:1.5}
 .agent-quick-actions{width:100%;display:flex;justify-content:flex-start;margin:auto 0 14px;padding:0}
@@ -615,6 +619,9 @@ html,body,.app-shell{background:#eef1ef!important;background-image:none!importan
 .drawer-account-chevron{width:9px;height:9px;border-right:1.6px solid #777773;border-bottom:1.6px solid #777773;transform:rotate(-45deg);transition:transform .16s ease}.drawer-account-chevron.open{transform:rotate(-135deg)}
 .app-drawer-account-menu{display:grid;gap:2px;margin-bottom:6px;padding-bottom:6px}.app-drawer-account-menu .app-drawer-item{min-height:44px!important}.app-drawer>footer.open>button{background:#f7f7f5!important;border-radius:12px!important}
 .app-drawer-recent>button{width:100%;min-height:42px;padding:0 14px;border:0;border-radius:10px;background:transparent;color:#343432;font:450 14px/1.35 inherit;text-align:left;cursor:pointer}.app-drawer-recent>button:hover{background:#f7f7f5}.app-drawer-recent>button.active{background:#f2f2f0;color:#151515}
+.app-drawer-scenes{display:grid;gap:2px;margin-bottom:20px!important}.app-drawer-scenes>small{padding:0 14px 8px;color:#949490;font-size:12px;font-weight:500}
+.app-drawer-scene-btn{display:flex;align-items:center;gap:10px;min-height:46px;padding:0 14px;border:0;border-radius:12px;background:transparent;color:#353533;cursor:pointer;text-align:left}.app-drawer-scene-btn:hover{background:#f7f7f5;color:#20201f}.app-drawer-scene-btn b{font-size:15px;font-weight:500}
+.drawer-scene-icon{flex-shrink:0;width:28px;height:28px;border-radius:8px;background:#f2f2f0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#5a8fd6}
 .agent-history-page{position:static!important;display:block!important;min-height:100%!important;padding-top:0!important;background:#fff!important}
 .agent-history-thread{position:absolute;top:130px;left:24px;right:24px;bottom:28px;overflow-y:auto}.agent-history-thread>small{display:block;color:#92928e;font-size:11px;font-weight:500}.agent-history-thread>h1{margin:7px 0 34px;color:#171717;font-size:24px;font-weight:650;letter-spacing:-.035em}
 .agent-history-message{color:#333330;font-size:14px;line-height:1.65}.agent-history-message.mine{max-width:82%;margin-left:auto;padding:12px 15px;border-radius:18px;background:#f2f2f0}.agent-history-message.speakup{display:grid;grid-template-columns:36px minmax(0,1fr);gap:10px;margin-top:22px}.agent-history-message.speakup img{width:36px;height:36px;object-fit:contain}.agent-history-message.speakup p{margin:0}.agent-history-message.speakup b{display:block;margin-bottom:5px;color:#171717;font-size:13px}.agent-history-saved{display:block;margin-top:28px;color:#999995;font-size:10px;text-align:center}
@@ -1065,3 +1072,334 @@ html,body,.app-shell{background:#eef1ef!important;background-image:none!importan
 .vc-field{flex:1;text-align:left;font-size:12px;color:#858581;border:0;background:transparent;cursor:pointer;padding:0 2px}
 .vc-mic{width:32px;height:36px;display:grid;place-items:center;color:#171717;border:0;background:transparent;cursor:pointer}
 .vc-voice{width:38px;height:38px;border-radius:50%;background:#151515;display:grid;place-items:center;border:0;cursor:pointer}
+
+/* === Orb + hero final layout override (终局覆盖) === */
+.screen.agent-canvas .agent-simple-home{position:static!important;display:block!important;height:auto!important;min-height:0!important;overflow:visible!important;padding:0!important}
+.screen.agent-canvas .agent-simple-home .agent-orb-wrap{position:absolute!important;top:120px!important;left:50%!important;transform:translateX(-50%)!important;width:120px!important;height:120px!important;flex-shrink:0;z-index:0!important;pointer-events:none;margin:0!important}
+.screen.agent-canvas .agent-simple-home .agent-orb{width:120px!important;height:120px!important;border-radius:50%!important;position:relative;background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.95) 0%,rgba(210,225,245,.7) 25%,rgba(155,185,230,.5) 55%,rgba(110,150,205,.3) 100%)!important;box-shadow:inset -12px -12px 28px rgba(120,155,200,.25),inset 6px 6px 16px rgba(255,255,255,.8),0 18px 40px rgba(130,165,210,.18),0 6px 14px rgba(120,155,200,.12)!important;overflow:hidden}
+.screen.agent-canvas .agent-simple-home .agent-orb::before{content:"";position:absolute;top:14%;left:20%;width:32%;height:24%;background:radial-gradient(ellipse,rgba(255,255,255,.88),transparent);border-radius:50%;filter:blur(3px);transform:rotate(-18deg)}
+.screen.agent-canvas .agent-simple-home .agent-orb::after{content:"";position:absolute;bottom:10%;right:16%;width:20%;height:14%;background:radial-gradient(ellipse,rgba(255,255,255,.42),transparent);border-radius:50%;filter:blur(4px)}
+.screen.agent-canvas .agent-simple-home .agent-simple-hero{position:absolute!important;top:270px!important;left:20px!important;right:20px!important;width:auto!important;margin:0!important;padding:0!important;text-align:center!important;z-index:1!important;display:block!important}
+.screen.agent-canvas .agent-simple-home .agent-simple-hero h2{margin:0!important;font-size:28px!important;font-weight:600!important;color:#1a1a1a!important;letter-spacing:-0.02em!important;line-height:1.2!important}
+.screen.agent-canvas .agent-simple-home .agent-simple-hero p{margin-top:12px!important;font-size:13px!important;color:#6b6b6b!important;line-height:1.5!important}
+
+/* === IELTS Speaking Practice Page === */
+.ielts-page{min-height:100%;background:#fff;padding:0 18px 20px}
+.ielts-page .topbar{margin-bottom:2px}
+.ielts-intro{padding:2px 0 10px}
+.ielts-intro h1{margin:0;font-size:20px;font-weight:700;color:#1a1a1a;letter-spacing:-0.02em;line-height:1.2}
+.ielts-intro p{margin:4px 0 0;font-size:11px;color:#6b6b6b;line-height:1.4}
+.ielts-full-test-btn{width:100%;padding:13px;border:0;border-radius:14px;background:#1a1a1a;color:#fff;font-size:14px;font-weight:600;cursor:pointer;margin-bottom:10px;transition:background .15s}
+.ielts-full-test-btn:active{background:#333}
+.ielts-list{display:flex;flex-direction:column;gap:8px}
+.ielts-card{display:flex;flex-direction:column;gap:6px;width:100%;padding:12px 14px;border:1px solid #e5e5e2;border-radius:14px;background:#fafaf8;text-align:left;cursor:pointer;transition:all .15s}
+.ielts-card:hover{border-color:#d8d8d5;background:#f5f5f3}
+.ielts-card:active{transform:scale(.98)}
+.ielts-card-header{display:flex;align-items:center;gap:10px}
+.ielts-card-icon{width:30px;height:30px;flex-shrink:0;border-radius:10px;background:#fff;border:1px solid #e5e5e2;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#5a5a58}
+.ielts-card-title{flex:1;display:flex;flex-direction:column;gap:1px;min-width:0}
+.ielts-card-title b{font-size:13px;font-weight:600;color:#1a1a1a;line-height:1.3}
+.ielts-card-title small{font-size:10px;color:#9a9a97}
+.ielts-card-arrow{font-size:18px;color:#9a9a97;flex-shrink:0}
+.ielts-card-desc{font-size:10px;color:#6b6b6b;line-height:1.4}
+.ielts-card-topics{display:flex;flex-wrap:wrap;gap:5px}
+.ielts-card-topics em{font-style:normal;font-size:9px;padding:2px 7px;border-radius:99px;background:#f0f0ed;color:#5a5a57}
+.ielts-tips{margin-top:12px;padding-top:10px;border-top:1px solid #e5e5e2}
+.ielts-tips>small{display:block;margin-bottom:6px;color:#9a9a97;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.ielts-criteria{display:flex;flex-wrap:wrap;gap:6px}
+.ielts-criteria span{font-size:9px;padding:4px 9px;border-radius:99px;border:1px solid #e5e5e2;background:#fafaf8;color:#5a5a57}
+
+/* === IELTS Test Pages === */
+.ielts-test-page{height:100%;background:#fff;padding:0 18px 16px;display:flex;flex-direction:column;overflow:hidden}
+.ielts-test-page .topbar{margin-bottom:8px;flex-shrink:0}
+.ielts-progress{display:flex;justify-content:space-between;font-size:12px;color:#9a9a97;margin-bottom:6px;flex-shrink:0}
+.ielts-progress-bar{height:4px;background:#f0f0ed;border-radius:2px;overflow:hidden;margin-bottom:16px;flex-shrink:0}
+.ielts-progress-bar>div{height:100%;background:#5a8fd6;border-radius:2px;transition:width .3s}
+.ielts-examiner-bubble{background:#f5f5f3;border:1px solid #e5e5e2;border-radius:14px;padding:14px 14px;font-size:13px;line-height:1.5;color:#3a3a38;margin-bottom:12px}
+.ielts-examiner-bubble b{color:#1a1a1a;font-weight:600}
+/* Voice bubbles */
+.ielts-bubbles{display:flex;flex-direction:column;gap:8px;margin-bottom:4px;flex:1 1 0;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;scroll-behavior:smooth}
+.ielts-vb{display:flex;flex-direction:column;gap:3px}
+.ielts-vb.examiner .ielts-vb-row{flex-direction:row}
+.ielts-vb.user .ielts-vb-row{flex-direction:row-reverse}
+.ielts-vb-row{display:flex;align-items:center;gap:8px}
+.ielts-vb-avatar{width:28px;height:28px;flex-shrink:0;border-radius:50%;background:#5a8fd6;color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700}
+.ielts-vb-avatar.me{background:#176872}
+.ielts-vb-body{max-width:70%;padding:8px 12px;border-radius:14px;cursor:pointer;transition:background .15s}
+.ielts-vb.examiner .ielts-vb-body{background:#f0f0ed;border-radius:4px 14px 14px 14px}
+.ielts-vb.user .ielts-vb-body{background:#176872;color:#fff;border-radius:14px 4px 14px 14px}
+.ielts-vb-body:active{opacity:.85}
+.ielts-vb-label{font-size:10px;font-weight:600;margin-bottom:3px;opacity:.7}
+.ielts-vb-bar{display:flex;align-items:center;gap:8px}
+.ielts-vb-wave{display:flex;align-items:center;gap:2px}
+.ielts-vb-wave i{width:3px;height:12px;border-radius:2px;background:currentColor;opacity:.6}
+.ielts-vb-wave i:nth-child(1){height:8px}
+.ielts-vb-wave i:nth-child(2){height:14px}
+.ielts-vb-wave i:nth-child(3){height:10px}
+.ielts-vb-wave i:nth-child(4){height:16px}
+.ielts-vb-time{font-size:11px;font-weight:600}
+.ielts-vb-expand{width:22px;height:22px;flex-shrink:0;border:0;border-radius:50%;background:transparent;color:#9a9a97;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.ielts-vb-expand svg{width:14px;height:14px}
+.ielts-vb-expand:active{background:#f0f0ed}
+.ielts-vb.expanded .ielts-vb-expand{transform:rotate(180deg)}
+.ielts-vb-text{font-size:12px;line-height:1.5;color:#3a3a38;padding:8px 12px;background:#fff;border:1px solid #e5e5e2;border-radius:10px;margin-top:2px}
+.ielts-vb.user .ielts-vb-text{align-self:flex-end;max-width:85%}
+.ielts-vb.examiner .ielts-vb-text{max-width:85%}
+.ielts-answer-area{margin-top:auto;padding-top:12px;flex-shrink:0}
+.ielts-voice-area{margin-top:auto;padding-top:16px;display:flex;flex-direction:column;align-items:center;gap:8px;flex-shrink:0}
+.ielts-voice-area.recording{gap:10px}
+.ielts-voice-status{font-size:13px;font-weight:600;color:#1a1a1a;display:flex;align-items:center;gap:6px}
+.ielts-voice-area.recording .ielts-voice-status{color:#176872}
+.ielts-rec-dot{width:8px;height:8px;border-radius:50%;background:#176872;animation:ieltsRecBlink 1s ease-in-out infinite}
+@keyframes ieltsRecBlink{0%,100%{opacity:1}50%{opacity:.3}}
+.ielts-mic-btn{width:72px;height:72px;border-radius:50%;border:0;background:#1a1a1a;color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s;box-shadow:0 4px 16px rgba(0,0,0,.15)}
+.ielts-mic-btn svg{width:28px;height:28px}
+.ielts-mic-btn.recording{background:#176872;box-shadow:0 4px 20px rgba(23,104,114,.4);animation:ieltsMicPulse 1.5s ease-in-out infinite}
+.ielts-mic-btn.recording svg{width:22px;height:22px}
+@keyframes ieltsMicPulse{0%,100%{transform:scale(1);box-shadow:0 4px 20px rgba(23,104,114,.4)}50%{transform:scale(1.06);box-shadow:0 6px 28px rgba(23,104,114,.55)}}
+.ielts-mic-waveform{display:flex;align-items:center;justify-content:center;gap:4px;height:32px}
+.ielts-mic-waveform span{width:4px;border-radius:2px;background:#176872;animation:ieltsWave 1s ease-in-out infinite}
+.ielts-mic-waveform span:nth-child(1){height:14px;animation-delay:0s}
+.ielts-mic-waveform span:nth-child(2){height:24px;animation-delay:.15s}
+.ielts-mic-waveform span:nth-child(3){height:18px;animation-delay:.3s}
+.ielts-mic-waveform span:nth-child(4){height:28px;animation-delay:.45s}
+.ielts-mic-waveform span:nth-child(5){height:16px;animation-delay:.6s}
+@keyframes ieltsWave{0%,100%{height:8px}50%{height:32px}}
+.ielts-voice-hint{font-size:12px;color:#9a9a97;text-align:center}
+.ielts-examiner-speaking{margin-top:auto;padding-top:20px;display:flex;flex-direction:column;align-items:center;gap:14px;flex-shrink:0}
+.ielts-examiner-avatar{width:64px;height:64px;border-radius:50%;background:linear-gradient(135deg,#5a8fd6,#3a6fb6);display:flex;align-items:center;justify-content:center;position:relative}
+.ielts-examiner-avatar span{width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,.85);animation:ieltsExaminerPulse 1.5s ease-in-out infinite}
+@keyframes ieltsExaminerPulse{0%,100%{transform:scale(1);opacity:.6}50%{transform:scale(1.15);opacity:1}}
+.ielts-examiner-avatar::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:2px solid rgba(90,143,214,.35);animation:ieltsRing 2s ease-out infinite}
+@keyframes ieltsRing{0%{transform:scale(.95);opacity:.6}100%{transform:scale(1.3);opacity:0}}
+.ielts-examiner-meta{font-size:13px;color:#5a8fd6;font-weight:600}
+.ielts-examiner-wave{display:flex;align-items:center;justify-content:center;gap:5px;height:36px}
+.ielts-examiner-wave span{width:5px;border-radius:3px;background:#5a8fd6;animation:ieltsExWave .8s ease-in-out infinite}
+.ielts-examiner-wave span:nth-child(1){height:12px;animation-delay:0s}
+.ielts-examiner-wave span:nth-child(2){height:24px;animation-delay:.1s}
+.ielts-examiner-wave span:nth-child(3){height:18px;animation-delay:.2s}
+.ielts-examiner-wave span:nth-child(4){height:28px;animation-delay:.3s}
+.ielts-examiner-wave span:nth-child(5){height:14px;animation-delay:.4s}
+@keyframes ieltsExWave{0%,100%{height:8px}50%{height:32px}}
+.ielts-start-btn{width:100%;margin-top:16px;padding:14px;border:0;border-radius:12px;background:#1a1a1a;color:#fff;font-size:14px;font-weight:600;cursor:pointer}
+.ielts-start-btn:active{background:#333}
+.ielts-timer{font-size:42px;font-weight:700;color:#1a1a1a;text-align:center;margin:8px 0 2px;font-variant-numeric:tabular-nums;letter-spacing:-0.02em}
+.ielts-timer.urgent{color:#d44}
+.ielts-timer-label{text-align:center;font-size:12px;color:#9a9a97;margin-bottom:16px}
+.ielts-cue-card{background:#fff;border:2px solid #1a1a1a;border-radius:14px;padding:18px 16px;margin-bottom:14px}
+.ielts-cue-card-header{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#9a9a97;margin-bottom:10px}
+.ielts-cue-topic{font-size:15px;font-weight:600;color:#1a1a1a;margin:0 0 12px;line-height:1.3}
+.ielts-cue-card p{font-size:12px;color:#6b6b6b;margin:0 0 6px}
+.ielts-cue-card ul{margin:0;padding-left:16px}
+.ielts-cue-card li{font-size:12px;color:#3a3a38;line-height:1.6}
+.ielts-cue-mini{border-width:1px;padding:12px 14px;margin-bottom:16px}
+.ielts-cue-mini .ielts-cue-topic{font-size:13px;margin:0}
+.ielts-notes-area{margin-bottom:14px}
+.ielts-notes-input{width:100%;min-height:60px;padding:10px 12px;border:1px dashed #d5d5d2;border-radius:10px;font-size:12px;line-height:1.5;resize:none;background:#fafaf8;color:#1a1a1a;font-family:inherit}
+.ielts-notes-input:focus{outline:none;border-color:#5a8fd6;border-style:solid}
+/* P2 Speak phase: compact timer + cue card + notes */
+.ielts-p2-speak-timer-row{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-shrink:0;margin-bottom:12px}
+.ielts-p2-speak-timer{display:flex;flex-direction:column;align-items:flex-start}
+.ielts-p2-speak-timer .ielts-timer{margin:0;font-size:32px}
+.ielts-p2-speak-timer .ielts-timer-label{margin:0;font-size:11px}
+.ielts-p2-speak-timer-row .ielts-speaking-pulse{margin:0}
+.ielts-p2-speak-timer-row .ielts-speaking-pulse span{width:8px;height:8px}
+.ielts-p2-cue-compact{border-width:1px;border-color:#d5d5d2;padding:12px 14px;margin-bottom:10px;flex-shrink:0}
+.ielts-p2-cue-compact .ielts-cue-card-header{margin-bottom:6px;font-size:10px}
+.ielts-p2-cue-compact .ielts-cue-topic{font-size:13px;font-weight:600;margin-bottom:4px}
+.ielts-p2-cue-compact ul{display:flex;flex-wrap:wrap;gap:4px 12px;padding-left:0;list-style:none}
+.ielts-p2-cue-compact li{font-size:11px;color:#6b6b6b;line-height:1.4}
+.ielts-p2-notes-readonly{background:#f5f5f3;border-left:3px solid #5a8fd6;border-radius:0 8px 8px 0;padding:10px 12px;margin-bottom:10px;flex-shrink:0;overflow-y:auto;max-height:120px;-webkit-overflow-scrolling:touch}
+.ielts-p2-notes-readonly small{font-size:10px;color:#9a9a97;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:4px}
+.ielts-p2-notes-readonly p{font-size:12px;color:#3a3a38;line-height:1.5;margin:0;white-space:pre-wrap}
+.ielts-p2-no-notes{text-align:center;padding:20px;background:#fafaf8;border-radius:10px;margin-bottom:10px;flex-shrink:0}
+.ielts-p2-no-notes small{font-size:12px;color:#9a9a97}
+.ielts-speaking-pulse{display:flex;gap:6px;justify-content:center;margin:20px 0}
+.ielts-speaking-pulse span{width:10px;height:10px;border-radius:50%;background:#5a8fd6;animation:ieltsPulse 1.2s ease-in-out infinite}
+.ielts-speaking-pulse span:nth-child(2){animation-delay:.2s}
+.ielts-speaking-pulse span:nth-child(3){animation-delay:.4s}
+@keyframes ieltsPulse{0%,100%{opacity:.3;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}
+.ielts-finish-page,.ielts-transition-page{text-align:center;justify-content:center;align-items:center}
+.ielts-finish-orb{width:80px;height:80px;border-radius:50%;margin:20px auto 16px;background:radial-gradient(circle at 35% 30%,rgba(255,255,255,.95),rgba(140,175,230,.7) 28%,rgba(95,138,205,.5) 58%,rgba(70,108,175,.4) 100%);box-shadow:inset -10px -10px 24px rgba(80,120,180,.3),inset 5px 5px 14px rgba(255,255,255,.7),0 12px 28px rgba(100,140,200,.2)}
+.ielts-finish-page h1,.ielts-transition-page h1{font-size:24px;font-weight:700;color:#1a1a1a;margin:0 0 8px}
+.ielts-finish-page p,.ielts-transition-page p{font-size:13px;color:#6b6b6b;line-height:1.5;margin:0 0 20px}
+.ielts-summary-cards{display:flex;gap:12px;margin-bottom:24px;width:100%}
+.ielts-summary-card{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 8px;border:1px solid #e5e5e2;border-radius:12px;background:#fafaf8}
+.ielts-summary-card .num{font-size:20px;font-weight:700;color:#1a1a1a}
+.ielts-summary-card .lbl{font-size:10px;color:#9a9a97;text-align:center;line-height:1.3}
+/* IELTS Report Page */
+.ielts-report-page{height:100%;background:#fff;padding:0 18px 24px;display:flex;flex-direction:column;overflow:hidden}
+.ielts-report-page .topbar{margin-bottom:4px;flex-shrink:0}
+.ielts-report-scroll{flex:1 1 0;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.ielts-report-header{margin-bottom:16px}
+.ielts-report-header>small{font-size:11px;color:#9a9a97;display:block;margin-bottom:10px}
+.ielts-report-score-hero{display:flex;align-items:center;gap:16px;background:linear-gradient(135deg,#f8faff,#f0f4ff);border-radius:16px;padding:16px}
+.ielts-report-overall{display:flex;flex-direction:column;align-items:center;justify-content:center;flex-shrink:0;width:80px;height:80px;border-radius:50%;background:#fff;box-shadow:0 2px 12px rgba(90,143,214,.15)}
+.ielts-report-overall-num{font-size:28px;font-weight:800;color:#5a8fd6;line-height:1}
+.ielts-report-overall-lbl{font-size:8px;color:#9a9a97;text-transform:uppercase;letter-spacing:.06em;margin-top:2px}
+.ielts-report-meta{display:flex;flex-direction:column;gap:6px;flex:1}
+.ielts-report-meta>div{display:flex;justify-content:space-between;align-items:center}
+.ielts-report-meta small{font-size:11px;color:#9a9a97}
+.ielts-report-meta b{font-size:13px;color:#1a1a1a}
+.ielts-report-scores{display:flex;flex-direction:column;gap:10px;margin-bottom:16px}
+.ielts-report-score-item{background:#fafaf8;border:1px solid #eee;border-radius:12px;padding:12px 14px}
+.ielts-report-score-left{display:flex;align-items:center;gap:12px}
+.ielts-report-score-ring{flex-shrink:0;width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;color:#fff;background:var(--score-color,#5a8fd6);box-shadow:0 2px 8px rgba(0,0,0,.1)}
+.ielts-report-score-info{flex:1;min-width:0}
+.ielts-report-score-info b{font-size:12px;font-weight:600;color:#1a1a1a;display:block;margin-bottom:2px}
+.ielts-report-score-info small{font-size:11px;color:#6b6b6b;line-height:1.4;display:block}
+.ielts-report-card{background:#fafaf8;border:1px solid #eee;border-radius:12px;padding:14px;margin-bottom:12px}
+.ielts-report-card h3{font-size:13px;font-weight:700;color:#1a1a1a;margin:0 0 8px}
+.ielts-report-card p{font-size:12px;color:#3a3a38;line-height:1.6;margin:0 0 6px}
+.ielts-report-card p:last-child{margin-bottom:0}
+.ielts-report-card p b{color:#1a1a1a;font-weight:600}
+.ielts-report-section-title{font-size:14px;font-weight:700;color:#1a1a1a;margin:16px 0 10px}
+.ielts-report-qcard{background:#fafaf8;border:1px solid #eee;border-radius:12px;margin-bottom:8px;overflow:hidden}
+.ielts-report-qcard-head{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer}
+.ielts-report-qcard-num{flex-shrink:0;font-size:10px;font-weight:700;color:#fff;background:#5a8fd6;padding:3px 7px;border-radius:6px}
+.ielts-report-qcard-q{flex:1;font-size:12px;color:#1a1a1a;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ielts-report-qcard-chevron{flex-shrink:0;color:#9a9a97;transition:transform .2s}
+.ielts-report-qcard-head:hover .ielts-report-qcard-chevron{color:#5a8fd6}
+.ielts-report-qcard-body{padding:0 14px 14px}
+.ielts-report-qcard-ans{margin-bottom:10px}
+.ielts-report-qcard-ans small,.ielts-report-qcard-feedback small{font-size:10px;color:#9a9a97;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:4px}
+.ielts-report-qcard-ans p{font-size:12px;color:#3a3a38;line-height:1.5;margin:0}
+.ielts-report-qcard-feedback{margin-bottom:10px}
+.ielts-report-qcard-feedback p{font-size:11px;color:#6b6b6b;line-height:1.5;margin:0}
+.ielts-report-retry-versions{margin-bottom:10px}
+.ielts-report-retry-versions>small{font-size:10px;color:#9a9a97;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:6px}
+.ielts-report-retry-version{background:#f0f4ff;border-radius:8px;padding:8px 10px;margin-bottom:6px}
+.ielts-report-retry-version b{font-size:11px;color:#5a8fd6;display:block;margin-bottom:2px}
+.ielts-report-retry-version p{font-size:11px;color:#6b6b6b;line-height:1.5;margin:0}
+.ielts-report-retry-btn{width:100%;padding:10px;border:1px solid #5a8fd6;background:#fff;color:#5a8fd6;font-size:12px;font-weight:600;border-radius:8px;cursor:pointer;transition:all .15s}
+.ielts-report-retry-btn:hover{background:#5a8fd6;color:#fff}
+/* IELTS Retry Page */
+.ielts-retry-page{background:#fff}
+.ielts-retry-meta{font-size:11px;color:#9a9a97;margin-bottom:12px}
+.ielts-retry-question{background:#f5f5f3;border-radius:12px;padding:14px;margin-bottom:12px}
+.ielts-retry-question small{font-size:10px;color:#9a9a97;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:6px}
+.ielts-retry-question h2{font-size:15px;font-weight:600;color:#1a1a1a;margin:0;line-height:1.4}
+.ielts-retry-original{margin-bottom:12px}
+.ielts-retry-original small,.ielts-retry-target small,.ielts-retry-transcript small{font-size:10px;color:#9a9a97;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:4px}
+.ielts-retry-original p,.ielts-retry-target p,.ielts-retry-transcript p{font-size:12px;color:#3a3a38;line-height:1.5;margin:0}
+.ielts-retry-target{background:#f0f4ff;border-radius:10px;padding:12px;margin-bottom:12px}
+.ielts-retry-target p{font-size:11px;color:#6b6b6b}
+.ielts-retry-transcript{background:#f5f5f3;border-radius:10px;padding:12px;margin-bottom:12px}
+.ielts-retry-feedback{display:flex;flex-direction:column;gap:10px;margin-bottom:16px}
+.ielts-retry-feedback>div{border-radius:8px;padding:10px}
+.ielts-retry-feedback>div:first-child{background:#e8f5e9}
+.ielts-retry-feedback>div:last-child{background:#fff3e0}
+.ielts-retry-feedback small{font-size:10px;color:#9a9a97;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:4px}
+.ielts-retry-feedback b{font-size:11px;color:#3a3a38;font-weight:500;line-height:1.5}
+.ielts-retry-versions-title{font-size:13px;font-weight:600;color:#1a1a1a;margin:16px 0 10px}
+.ielts-retry-version-item{display:flex;align-items:center;gap:10px;background:#fafaf8;border:1px solid #eee;border-radius:10px;padding:10px 12px;margin-bottom:8px}
+.ielts-retry-play{flex-shrink:0;width:32px;height:32px;border-radius:50%;background:#5a8fd6;color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px}
+.ielts-retry-version-item>div{flex:1;min-width:0}
+.ielts-retry-version-item b{font-size:12px;color:#1a1a1a;display:block}
+.ielts-retry-version-item small{font-size:11px;color:#9a9a97;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ielts-retry-actions{margin-top:auto;padding-top:16px;text-align:center;flex-shrink:0}
+.ielts-retry-actions small{font-size:11px;color:#9a9a97;display:block;margin-top:8px}
+.ielts-start-btn.recording{background:#d4565a!important}
+/* Scene Grid Card Selection Page */
+.scene-grid-page{height:100%;background:#f5f5f3;padding:0 16px 16px;display:flex;flex-direction:column;overflow:hidden}
+.scene-grid-page .topbar{margin-bottom:8px;flex-shrink:0}
+.scene-grid-scroll{flex:1 1 0;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.scene-grid-list{display:grid;grid-template-columns:1fr 1fr;gap:10px;padding-bottom:20px}
+.scene-grid-card{display:flex;flex-direction:column;align-items:flex-start;gap:8px;padding:14px 12px;border:1px solid #e5e5e2;border-radius:14px;background:#fff;text-align:left;cursor:pointer;transition:all .15s}
+.scene-grid-card:hover{border-color:#d0d0cd;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+.scene-grid-card:active{transform:scale(.97)}
+.scene-grid-card-icon{width:36px;height:36px;border-radius:10px;background:#f2f2f0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#5a8fd6}
+.scene-grid-card-body{display:flex;flex-direction:column;gap:3px;width:100%}
+.scene-grid-card-body b{font-size:13px;font-weight:600;color:#1a1a1a;line-height:1.3}
+.scene-grid-card-body small{font-size:11px;color:#6b6b6b;line-height:1.4}
+.scene-grid-card-meta{display:flex;align-items:center;gap:6px;margin-top:4px}
+.scene-grid-card-level{font-size:10px;color:#9a9a97}
+.scene-card-stars{display:inline-flex;gap:2px}
+.scene-card-stars i{width:8px;height:8px;border-radius:50%;background:#d8d8d5;display:inline-block}
+.scene-card-stars i.on{background:#f5a623}
+/* IELTS Card Page */
+.ielts-grid-page{background:#f5f5f3}
+.ielts-full-mock-card{display:flex;align-items:center;gap:14px;width:100%;padding:18px 16px;margin-bottom:16px;border:1px solid #e5e5e2;border-radius:16px;background:#fff;cursor:pointer;text-align:left;transition:transform .15s}
+.ielts-full-mock-card:active{transform:scale(.98)}
+.ielts-full-mock-icon{flex-shrink:0;width:44px;height:44px;border-radius:12px;background:#f2f2f0;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#5a8fd6}
+.ielts-full-mock-body{flex:1;display:flex;flex-direction:column;gap:2px}
+.ielts-full-mock-body b{font-size:16px;font-weight:700;color:#1a1a1a}
+.ielts-full-mock-body small{font-size:12px;color:#6b6b6b}
+.ielts-full-mock-arrow{font-size:13px;font-weight:600;color:#5a8fd6;background:rgba(90,143,214,.12);padding:6px 14px;border-radius:20px}
+.ielts-grid-section{margin-bottom:16px}
+.ielts-grid-section-title{display:block;font-size:13px;font-weight:700;color:#1a1a1a;margin-bottom:10px;padding:0 2px}
+.ielts-grid-card .scene-grid-card-icon{background:#e8f0fe;color:#5a8fd6}
+/* Manual Interview Wizard */
+.manual-interview-page{background:#f5f5f3;padding:0 16px 0;display:flex;flex-direction:column;overflow:hidden}
+.manual-interview-page .topbar{margin-bottom:8px;flex-shrink:0}
+.manual-interview-page .scene-grid-scroll{flex:1 1 0;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:80px}
+.mi-step-bar{display:flex;gap:0;margin-bottom:20px;position:relative}
+.mi-step-tab{flex:1;text-align:center;font-size:12px;font-weight:600;color:#9a9a97;padding-bottom:8px;position:relative;z-index:1}
+.mi-step-tab.active{color:#5a8fd6}
+.mi-step-tab.done{color:#5a8fd6}
+.mi-step-progress-line{position:absolute;bottom:0;left:0;right:0;height:2px;background:#e5e5e2}
+.mi-step-progress-fill{height:100%;background:#5a8fd6;transition:width .3s ease}
+.mi-card{background:#fff;border-radius:16px;padding:20px 16px;margin-bottom:16px}
+.mi-card-tag{display:inline-block;font-size:11px;font-weight:700;color:#5a8fd6;background:rgba(90,143,214,.1);padding:4px 10px;border-radius:20px;margin-bottom:12px}
+.mi-card-title{font-size:18px;font-weight:700;color:#1a1a1a;margin-bottom:8px}
+.mi-card-hint{font-size:13px;color:#6b6b6b;line-height:1.5;margin-bottom:16px}
+.mi-divider{height:1px;background:#e5e5e2;margin:16px 0}
+.mi-card-hint-small{font-size:11px;color:#9a9a97;margin-top:12px;text-align:center}
+.mi-field{margin-bottom:16px}
+.mi-field label{display:block;font-size:13px;font-weight:600;color:#1a1a1a;margin-bottom:6px}
+.mi-input{width:100%;padding:12px 14px;border:1px solid #e5e5e2;border-radius:10px;font-size:14px;color:#1a1a1a;background:#fff;box-sizing:border-box;outline:none}
+.mi-input:focus{border-color:#5a8fd6}
+.mi-textarea{width:100%;min-height:80px;padding:12px 14px;border:1px solid #e5e5e2;border-radius:10px;font-size:14px;color:#1a1a1a;background:#fff;box-sizing:border-box;resize:vertical;outline:none;font-family:inherit}
+.mi-textarea:focus{border-color:#5a8fd6}
+.mi-field-hint{display:block;font-size:11px;color:#9a9a97;margin-top:4px}
+.mi-section-label{display:block;font-size:13px;font-weight:700;color:#1a1a1a;margin:16px 0 10px}
+.mi-count-badge{font-size:10px;font-weight:600;color:#5a8fd6;background:rgba(90,143,214,.1);padding:2px 8px;border-radius:10px;margin-left:6px}
+.mi-upload-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}
+.mi-upload-option{display:flex;flex-direction:column;align-items:center;gap:6px;padding:16px 12px;border:1px solid #e5e5e2;border-radius:14px;background:#fff;cursor:pointer;transition:all .15s}
+.mi-upload-option.selected{border-color:#5a8fd6;background:#f0f6ff}
+.mi-upload-option-icon{width:36px;height:36px;border-radius:10px;background:#f2f2f0;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#5a8fd6}
+.mi-upload-option.selected .mi-upload-option-icon{background:#5a8fd6;color:#fff}
+.mi-upload-option b{font-size:13px;font-weight:600;color:#1a1a1a}
+.mi-upload-option small{font-size:11px;color:#9a9a97}
+.mi-file-card{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border:1px solid #5a8fd6;border-radius:12px;background:#f0f6ff;margin-bottom:16px}
+.mi-file-card-write{border-color:#e5e5e2;background:#f8f8f6}
+.mi-file-info b{display:block;font-size:13px;font-weight:600;color:#1a1a1a}
+.mi-file-info small{font-size:11px;color:#6b6b6b}
+.mi-file-badge{font-size:11px;font-weight:700;color:#fff;background:#5a8fd6;padding:4px 10px;border-radius:20px}
+.mi-upload-zone{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:32px 20px;border:2px dashed #c5c5c2;border-radius:14px;background:#fff;cursor:pointer;transition:all .15s;width:100%;box-sizing:border-box}
+.mi-upload-zone:active{transform:scale(.98);border-color:#5a8fd6}
+.mi-upload-zone-icon{width:40px;height:40px;border-radius:50%;background:#f2f2f0;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:300;color:#5a8fd6}
+.mi-upload-zone b{font-size:14px;font-weight:600;color:#1a1a1a}
+.mi-upload-zone small{font-size:12px;color:#9a9a97}
+.mi-resume-textarea{min-height:180px;line-height:1.6}
+.mi-exp-list{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}
+.mi-exp-card{display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border:1px solid #e5e5e2;border-radius:12px;background:#fff;cursor:pointer;transition:all .15s}
+.mi-exp-card:active{transform:scale(.99)}
+.mi-exp-card.expanded{border-color:#5a8fd6;background:#f8fbff}
+.mi-exp-num{flex-shrink:0;width:24px;height:24px;border-radius:8px;background:#f2f2f0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#5a8fd6;margin-top:1px}
+.mi-exp-body{flex:1}
+.mi-exp-body b{display:block;font-size:13px;font-weight:600;color:#1a1a1a}
+.mi-exp-body small{font-size:11px;color:#9a9a97}
+.mi-exp-detail{margin-top:8px;padding-top:8px;border-top:1px solid #e5e5e2}
+.mi-exp-detail p{font-size:12px;color:#6b6b6b;line-height:1.5}
+.mi-exp-chevron{flex-shrink:0;width:8px;height:8px;border-right:2px solid #c5c5c2;border-bottom:2px solid #c5c5c2;transform:rotate(45deg);margin-top:6px;transition:transform .2s}
+.mi-exp-card.expanded .mi-exp-chevron{transform:rotate(225deg);margin-top:10px}
+.mi-add-exp{width:100%;padding:12px;border:1px dashed #c5c5c2;border-radius:12px;background:transparent;font-size:13px;color:#6b6b6b;cursor:pointer}
+.mi-fmt-list{display:flex;flex-direction:column;gap:10px;margin-bottom:8px}
+.mi-fmt-card{display:flex;align-items:center;gap:12px;padding:14px 16px;border:1px solid #e5e5e2;border-radius:12px;background:#fff;cursor:pointer}
+.mi-fmt-card.selected{border-color:#5a8fd6;background:#f0f6ff}
+.mi-fmt-radio{flex-shrink:0;width:20px;height:20px;border-radius:50%;border:2px solid #d0d0cd;position:relative}
+.mi-fmt-card.selected .mi-fmt-radio{border-color:#5a8fd6}
+.mi-fmt-card.selected .mi-fmt-radio::after{content:'';position:absolute;top:3px;left:3px;width:10px;height:10px;border-radius:50%;background:#5a8fd6}
+.mi-fmt-card b{display:block;font-size:14px;font-weight:600;color:#1a1a1a}
+.mi-fmt-card small{font-size:12px;color:#6b6b6b}
+.mi-tag-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px}
+.mi-tag-pill{padding:8px 14px;border:1px solid #e5e5e2;border-radius:20px;font-size:12px;font-weight:600;color:#6b6b6b;background:#fff;cursor:pointer;transition:all .15s}
+.mi-tag-pill.active{color:#5a8fd6;background:rgba(90,143,214,.1);border-color:rgba(90,143,214,.3)}
+.mi-summary-card{background:#f8f8f6;border-radius:12px;padding:14px 16px;margin-top:16px}
+.mi-summary-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0}
+.mi-summary-row span{font-size:12px;color:#9a9a97}
+.mi-summary-row b{font-size:12px;font-weight:600;color:#1a1a1a;text-align:right;max-width:60%}
+.mi-bottom-bar{position:absolute;bottom:0;left:0;right:0;display:flex;gap:10px;padding:12px 16px;background:#fff;border-top:1px solid #e5e5e2;z-index:10}
+.mi-btn-secondary{flex:0 0 auto;padding:14px 20px;border:1px solid #e5e5e2;border-radius:12px;background:#fff;font-size:14px;font-weight:600;color:#6b6b6b;cursor:pointer}
+.mi-btn-primary{flex:1;padding:14px;border:0;border-radius:12px;background:#1a1a1a;font-size:14px;font-weight:700;color:#fff;cursor:pointer}
