@@ -35,7 +35,7 @@ test('错题页展示最近收藏的来源并使用动态数量',()=>{
 
 test('错题页改为黑白灰扁平布局而不再使用旧版 Banner 和紫色入口',()=>{
   const mistakes=core.slice(core.indexOf('function mistakes()'),core.indexOf('function mistakePractice()'));
-  const redesign=css.slice(css.indexOf('/* Mistake review: source-led tasks with a fixed page header. */'));
+  const redesign=css.slice(css.indexOf('/* Mistake review: source-led tasks with a fixed page header. */'),css.indexOf('/* Mistake practice: voice-first review with segmented progress. */'));
   assert.match(mistakes,/class="mistake-redesign"/);
   assert.match(mistakes,/class="mistake-source-list"/);
   assert.doesNotMatch(mistakes,/mistake-hero|review-definition|mistake-types|mistake-summary-count|条语言收藏|按类型复习|mistake-category-list/);

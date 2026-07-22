@@ -1,0 +1,13 @@
+Li Ming
+Go Backend Engineer
+
+Summary
+Built reliable distributed payment services using Go, PostgreSQL, Redis, and Kafka.
+
+Experience
+- Designed an idempotent payment event pipeline that reduced duplicate alerts by 80%.
+- Improved API p95 latency from 420 ms to 160 ms through caching and query optimization.
+- Led incident reviews and introduced SLO dashboards for critical services.
+
+Education
+Bachelor of Computer Science

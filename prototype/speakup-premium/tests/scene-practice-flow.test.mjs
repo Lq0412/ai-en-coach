@@ -135,7 +135,7 @@ test('场景总结为单层黑白灰信息页',()=>{
 });
 
 test('新场景页面保持单层扁平样式且不使用渐变或发光',()=>{
-  const sceneCss=css.slice(css.indexOf('/* Agent-driven scene practice'));
+  const sceneCss=css.slice(css.indexOf('/* Agent-driven scene practice'),css.indexOf('/* Scene voice practice:'));
   assert.match(sceneCss,/\.scene-agent-suggestions button\{[^}]*background:transparent/s);
   assert.match(sceneCss,/\.scene-confirm-card\{[^}]*background:#f3f3f1/s);
   assert.match(sceneCss,/\.scene-card-opening,.scene-card-goal\{[^}]*border-top/s);

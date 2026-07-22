@@ -27,7 +27,8 @@ test('进入语音模式后展示简洁的 Mock 一问一答气泡',()=>{
   assert.match(voice,/role:'agent'/);
   assert.match(voice,/role:'user'/);
   assert.match(voice,/class="agent-voice-thread"/);
-  assert.match(voice,/AGENT_VOICE_MOCK\.map/);
+  assert.match(voice,/voiceMock=state\.agentSceneVoiceMock\|\|AGENT_VOICE_MOCK/);
+  assert.match(voice,/voiceMock\.map/);
   assert.match(voice,/agent-voice-turn \$\{item\.role\}/);
   assert.doesNotMatch(voice,/agent-voice-orb|agent-operation-card/);
 });
