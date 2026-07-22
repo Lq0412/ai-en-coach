@@ -243,9 +243,15 @@ function appDrawer(){
   if(!state.appMenuOpen)return '';
   const item=(route,label,detail='')=>`<button class="app-drawer-item ${state.route===route?'active':''}" data-action="drawer-route" data-route-target="${route}"><b>${label}</b>${detail?`<small>${detail}</small>`:''}</button>`;
   return `<div class="app-drawer-backdrop" data-action="close-app-menu"><aside class="app-drawer" data-action="noop">
-    <header><span class="app-drawer-brand"><img src="../assets/speakup-agent.png" alt=""><b>SpeakUp</b></span><button data-action="close-app-menu" aria-label="关闭菜单">×</button></header>
+    <header><span class="app-drawer-brand"><b>SpeakUp</b></span><button data-action="close-app-menu" aria-label="关闭菜单">×</button></header>
     <button class="app-drawer-new ${state.route==='agent-chat'&&!state.agentConversationTitle?'active':''}" data-action="drawer-route" data-route-target="agent-chat"><span class="drawer-new-icon" aria-hidden="true"></span>开始新对话</button>
-    <button class="app-drawer-item ${state.route==='scenes'?'active':''}" data-action="drawer-route" data-route-target="scenes"><b>场景练习</b><small>浏览所有练习场景</small></button>
+    <section class="app-drawer-scenes">
+      <small>场景练习</small>
+      <button class="app-drawer-scene-btn" data-action="drawer-scene" data-command="create"><span class="drawer-scene-icon">M</span><b>Mock Interview</b></button>
+      <button class="app-drawer-scene-btn" data-action="drawer-scene" data-command="ielts"><span class="drawer-scene-icon">E</span><b>Speaking Test Prep</b></button>
+      <button class="app-drawer-scene-btn" data-action="drawer-scene" data-command="workplace"><span class="drawer-scene-icon">W</span><b>Workplace English</b></button>
+      <button class="app-drawer-scene-btn" data-action="drawer-scene" data-command="daily"><span class="drawer-scene-icon">D</span><b>Daily Life</b></button>
+    </section>
     <section><small>复盘</small>${item('home','练习记录')}${item('mistakes','错题回顾')}</section>
     <section class="app-drawer-recent"><small>最近对话</small>${AGENT_HISTORY.map(entry=>`<button class="${state.agentConversationTitle===entry.title?'active':''}" data-action="drawer-conversation" data-history-title="${entry.title}">${entry.title}</button>`).join('')}</section>
     <footer class="${state.appAccountOpen?'open':''}">
@@ -297,7 +303,22 @@ Object.assign(state,{
   sceneConfigId:state.sceneConfigId||'restaurant',
   scenePracticeHistory:Array.isArray(state.scenePracticeHistory)?state.scenePracticeHistory:[],
   scenePracticeSession:state.scenePracticeSession||null,
-  sceneActiveRecordId:state.sceneActiveRecordId||''
+  sceneActiveRecordId:state.sceneActiveRecordId||'',
+  ieltsActivePart:state.ieltsActivePart||'',
+  ieltsPart1Index:Number(state.ieltsPart1Index)||0,
+  ieltsPart1TopicIndex:Number(state.ieltsPart1TopicIndex)||0,
+  ieltsPart1Answers:Array.isArray(state.ieltsPart1Answers)?state.ieltsPart1Answers:[],
+  ieltsPart2Phase:state.ieltsPart2Phase||'',
+  ieltsPart2PrepLeft:Number(state.ieltsPart2PrepLeft)||60,
+  ieltsPart2SpeakLeft:Number(state.ieltsPart2SpeakLeft)||120,
+  ieltsPart2Notes:state.ieltsPart2Notes||'',
+  ieltsRecording:state.ieltsRecording||false,
+  ieltsRecTimer:Number(state.ieltsRecTimer)||0,
+  ieltsExaminerSpeaking:state.ieltsExaminerSpeaking||false,
+  ieltsExpandedBubble:state.ieltsExpandedBubble||null,
+  ieltsPart3Index:Number(state.ieltsPart3Index)||0,
+  ieltsPart3Answers:Array.isArray(state.ieltsPart3Answers)?state.ieltsPart3Answers:[],
+  ieltsCompleted:state.ieltsCompleted||false
 });
 if(typeof state.roleConversationVisible!=='boolean')state.roleConversationVisible=true;
 if(typeof state.roleAudioPlaying!=='boolean')state.roleAudioPlaying=false;
@@ -391,6 +412,205 @@ function roleComplete(){
   const completedLabels=turns.map(turn=>turn.label).filter(Boolean);
   return `<div class="role-complete-page">${topbar('练习总结','home')}<main class="role-complete-body"><header class="role-complete-hero"><span>${completed?'已完成':'已保存'}</span><h1>${completed?esc(config.summaryTitle):'本次练习已保存'}</h1><p>${completed?`你已经完成与 ${esc(config.partner)} 的四轮${esc(config.title)}对话。`:'当前进度已经保留，可以从记录中继续练习。'}</p></header><section class="role-complete-stats" aria-label="练习数据"><div><small>练习时长</small><b>${record.durationMinutes||1} 分钟</b></div><div><small>有效对话</small><b>${turns.length} / ${config.questions.length} 轮</b></div><div><small>表达建议</small><b>${corrections} 条</b></div></section><section class="role-complete-summary"><small>本次完成</small><h2>${completedLabels.length?completedLabels.join('、'):'还没有提交有效回答'}</h2><p>${completed?esc(config.summaryCopy):'继续完成剩余对话后，SpeakUp 会生成完整总结。'}</p></section>${corrections&&config.id==='restaurant'?`<section class="role-complete-correction"><span>Aa</span><div><small>本次表达建议</small><s>I would like order a local seafood dish.</s><b>I’d like to order a local seafood dish.</b></div></section>`:''}</main><footer class="role-complete-actions"><button class="secondary" data-route="home">返回记录</button><button class="primary" data-action="restart-role-chat">再练一次</button></footer></div>`
 }
+/* ===== Scene Card Selection Pages ===== */
+const DAILY_LIFE_SCENES=[
+  {id:'confession',title:'Expressing Feelings',subtitle:'Tell someone how you feel',level:'Intermediate',stars:2,icon:'CF',configId:'restaurant'},
+  {id:'restaurant',title:'Dining Out',subtitle:'Order food at a restaurant',level:'Advanced',stars:3,icon:'DN'},
+  {id:'hotel',title:'Hotel Check-in',subtitle:'Check in and ask about facilities',level:'Intermediate',stars:2,icon:'HT'},
+  {id:'travel',title:'Airport and Travel',subtitle:'Navigate the airport with confidence',level:'Intermediate',stars:2,icon:'TR'},
+  {id:'shopping',title:'Shopping for Clothes',subtitle:'Ask about sizes, colors, and prices',level:'Intermediate',stars:2,icon:'SH'},
+  {id:'doctor',title:'Visiting a Doctor',subtitle:'Describe symptoms and ask questions',level:'Advanced',stars:3,icon:'DR'},
+  {id:'pharmacy',title:'Pharmacy Visit',subtitle:'Buy medicine and ask for advice',level:'Intermediate',stars:2,icon:'PH'},
+  {id:'rental',title:'Renting an Apartment',subtitle:'Talk to a landlord about a rental',level:'Advanced',stars:3,icon:'RT'},
+  {id:'banking',title:'Banking and Finance',subtitle:'Open an account and ask about fees',level:'Advanced',stars:3,icon:'BK'},
+  {id:'gym',title:'Gym Membership',subtitle:'Sign up and ask about classes',level:'Intermediate',stars:2,icon:'GM'}
+];
+const WORKPLACE_SCENES=[
+  {id:'interview',title:'Job Interview',subtitle:'Practice common interview questions',level:'Basic',stars:1,icon:'JI'},
+  {id:'meeting',title:'Team Meeting',subtitle:'Present updates and discuss with colleagues',level:'Advanced',stars:3,icon:'TM'},
+  {id:'client',title:'Client Meeting',subtitle:'Meet a client and build rapport',level:'Advanced',stars:3,icon:'CL'},
+  {id:'contract',title:'Contract Negotiation',subtitle:'Discuss terms and reach agreement',level:'Advanced',stars:3,icon:'CN'},
+  {id:'report',title:'Reporting to Manager',subtitle:'Give updates and ask for guidance',level:'Advanced',stars:3,icon:'RP'},
+  {id:'sales',title:'Product Pitch',subtitle:'Present a product and handle questions',level:'Intermediate',stars:2,icon:'PS'},
+  {id:'schedule',title:'Scheduling and Calendar',subtitle:'Coordinate meetings and deadlines',level:'Intermediate',stars:2,icon:'SC'},
+  {id:'conflict',title:'Handling Conflict',subtitle:'Resolve disagreements professionally',level:'Advanced',stars:3,icon:'HC'},
+  {id:'email',title:'Email Etiquette',subtitle:'Write professional emails and replies',level:'Basic',stars:1,icon:'EM'},
+  {id:'onboarding',title:'New Employee Onboarding',subtitle:'Welcome and guide a new colleague',level:'Intermediate',stars:2,icon:'ON'}
+];
+function sceneCardsView(sceneType){
+  const scenes=sceneType==='daily'?DAILY_LIFE_SCENES:WORKPLACE_SCENES;
+  const title=sceneType==='daily'?'Daily Life':'Workplace English';
+  const backRoute='agent-chat';
+  const starHtml=n=>'<span class="scene-card-stars">'+Array.from({length:3},(_,i)=>'<i class="'+(i<n?'on':'')+'"></i>').join('')+'</span>';
+  const cardHtml=(s)=>`<button class="scene-grid-card" data-action="scene-card-select" data-scene-id="${s.id}" data-scene-type="${sceneType}">
+    <span class="scene-grid-card-icon">${s.icon}</span>
+    <span class="scene-grid-card-body">
+      <b>${s.title}</b>
+      <small>${s.subtitle}</small>
+      <span class="scene-grid-card-meta"><span class="scene-grid-card-level">${s.level}</span>${starHtml(s.stars)}</span>
+    </span>
+  </button>`;
+  return `<div class="scene-grid-page">
+    ${topbar(title,backRoute)}
+    <div class="scene-grid-scroll">
+      <div class="scene-grid-list">
+        ${scenes.map(cardHtml).join('')}
+      </div>
+    </div>
+  </div>`;
+}
+views['scene-grid-daily']=()=>sceneCardsView('daily');
+views['scene-grid-workplace']=()=>sceneCardsView('workplace');
+/* ===== IELTS Speaking Card Selection Page ===== */
+const IELTS_P1_CARDS=[
+  {id:'music',title:'Music',icon:'MU'},
+  {id:'teachers',title:'Teachers',icon:'TE'},
+  {id:'social-media',title:'Social Media',icon:'SM'},
+  {id:'shopping',title:'Shopping',icon:'SH'},
+  {id:'cars',title:'Cars',icon:'CA'},
+  {id:'science',title:'Science',icon:'SC'},
+  {id:'singing',title:'Singing',icon:'SI'},
+  {id:'clothing',title:'Clothing',icon:'CL'},
+  {id:'headphones',title:'Headphones',icon:'HP'},
+  {id:'food',title:'Food',icon:'FO'},
+  {id:'pets',title:'Pets and Animals',icon:'PA'},
+  {id:'hometown',title:'Hometown',icon:'HT'},
+  {id:'work-studies',title:'Work or Studies',icon:'WS'},
+  {id:'home',title:'Home and Accommodation',icon:'HO'},
+  {id:'reading',title:'Reading',icon:'RE'},
+  {id:'walking',title:'Walking',icon:'WA'}
+];
+const IELTS_P23_CARDS=[
+  {id:'tall-building',title:'A Tall Building You Like or Dislike',icon:'TB'},
+  {id:'interesting-video',title:'An Interesting Video',icon:'IV'},
+  {id:'boring-place',title:'A Boring Place',icon:'BP'},
+  {id:'got-up-early',title:'A Time When You Got Up Early',icon:'GE'},
+  {id:'grow-plants',title:'A Person Who Loves Growing Plants',icon:'GP'},
+  {id:'new-law',title:'A New Law You Would Introduce',icon:'NL'},
+  {id:'childhood-friend',title:'A Friend From Your Childhood',icon:'CF'},
+  {id:'successful-business',title:'A Person With a Successful Business',icon:'SB'},
+  {id:'changed-plan',title:'A Plan You Had to Change Recently',icon:'CP'},
+  {id:'group-work',title:'A Time You Worked in a Group',icon:'GW'},
+  {id:'important-decision',title:'An Important Decision You Made',icon:'ID'},
+  {id:'live-sports',title:'A Live Sports Event You Watched',icon:'LS'},
+  {id:'perfect-job',title:'A Perfect Job You Would Like to Have',icon:'PJ'},
+  {id:'famous-person',title:'A Famous Person You Would Like to Meet',icon:'FP'},
+  {id:'no-phone',title:'An Occasion You Could Not Use Your Phone',icon:'NP'},
+  {id:'gave-advice',title:'A Time You Gave Advice to Others',icon:'GA'}
+];
+function ieltsCardsView(){
+  const starHtml=n=>'<span class="scene-card-stars">'+Array.from({length:3},(_,i)=>'<i class="'+(i<n?'on':'')+'"></i>').join('')+'</span>';
+  const p1Card=(c)=>`<button class="scene-grid-card ielts-grid-card" data-action="noop" data-card-type="p1" data-card-id="${c.id}">
+    <span class="scene-grid-card-icon">${c.icon}</span>
+    <span class="scene-grid-card-body"><b>${c.title}</b><small>Part 1 Topic</small><span class="scene-grid-card-meta"><span class="scene-grid-card-level">4-5 min</span>${starHtml(1)}</span></span>
+  </button>`;
+  const p23Card=(c)=>`<button class="scene-grid-card ielts-grid-card" data-action="noop" data-card-type="p23" data-card-id="${c.id}">
+    <span class="scene-grid-card-icon">${c.icon}</span>
+    <span class="scene-grid-card-body"><b>${c.title}</b><small>Part 2 and 3 Topic</small><span class="scene-grid-card-meta"><span class="scene-grid-card-level">7-9 min</span>${starHtml(3)}</span></span>
+  </button>`;
+  return `<div class="scene-grid-page ielts-grid-page">
+    ${topbar('Speaking Test Prep','agent-chat')}
+    <div class="scene-grid-scroll">
+      <button class="ielts-full-mock-card" data-action="ielts-start-full-test">
+        <div class="ielts-full-mock-icon">R</div>
+        <div class="ielts-full-mock-body"><b>Random Mock Test</b><small>Part 1 + Part 2 and 3 · 11-14 min</small></div>
+        <span class="ielts-full-mock-arrow">Start</span>
+      </button>
+      <div class="ielts-grid-section">
+        <small class="ielts-grid-section-title">Part 1 Topics</small>
+        <div class="scene-grid-list">${IELTS_P1_CARDS.map(p1Card).join('')}</div>
+      </div>
+      <div class="ielts-grid-section">
+        <small class="ielts-grid-section-title">Part 2 and 3 Topics</small>
+        <div class="scene-grid-list">${IELTS_P23_CARDS.map(p23Card).join('')}</div>
+      </div>
+    </div>
+  </div>`;
+}
+views['ielts-cards']=ieltsCardsView;
+/* ===== Manual Interview Creation - 3-Step Wizard ===== */
+const MI_STEPS=[
+  {id:'job',label:'Position'},
+  {id:'resume',label:'Resume'},
+  {id:'format',label:'Format'}
+];
+const MI_FOCUS_TAGS=['Self-introduction','Resume deep-dive','Job competency','Project trade-offs','Situational questions','English expression'];
+const MI_PARSED_EXPERIENCES=[
+  {id:1,title:'High-Concurrency E-commerce Microservices',subtitle:'Backend project · 2025.11 - Present'},
+  {id:2,title:'URL Shortener & Analytics Service',subtitle:'Internship · 2025.03 - 2025.09'},
+  {id:3,title:'Real-time Chat & Message Push System',subtitle:'Personal project · 2024.02 - 2024.08'}
+];
+function manualInterviewView(){
+  const step=state.miStep||1;
+  const stepsHtml=MI_STEPS.map((s,i)=>`<span class="mi-step-tab${i+1===step?' active':''}${i+1<step?' done':''}">${s.label}</span>`).join('');
+  const progressBar=`<div class="mi-step-bar">${stepsHtml}<div class="mi-step-progress-line"><div class="mi-step-progress-fill" style="width:${(step-1)/2*100}%"></div></div></div>`;
+  let content='';
+  if(step===1){
+    const jobName=state.miJobName||'';
+    const jdText=state.miJdText||'';
+    content=`<div class="mi-card">
+      <span class="mi-card-tag">Position</span>
+      <h2 class="mi-card-title">Target Position</h2>
+      <p class="mi-card-hint">Both fields are optional. We'll use sample materials if left empty.</p>
+      <div class="mi-field"><label>Job Title</label><input class="mi-input" data-mi-job-name placeholder="e.g. Backend Developer" value="${esc(jobName)}"></div>
+      <div class="mi-field"><label>Job Description / JD</label><textarea class="mi-textarea" data-mi-jd-text placeholder="Paste job responsibilities and requirements">${esc(jdText)}</textarea></div>
+    </div>`;
+  }else if(step===2){
+    const uploadMode=state.miUploadMode||'upload';
+    const resumeText=state.miResumeText||'';
+    let resumeContent;
+    if(uploadMode==='upload'){
+      resumeContent=state.miFileUploaded?`<div class="mi-file-card"><div class="mi-file-info"><b>${esc(state.miFileName||'Resume.pdf')}</b><small>Uploaded</small></div><span class="mi-file-badge">Selected</span></div>`:`<button class="mi-upload-zone" data-action="mi-upload-file"><span class="mi-upload-zone-icon">+</span><b>Upload Resume</b><small>PDF, max 10 MB</small></button>`;
+    }else{
+      resumeContent=`<textarea class="mi-textarea mi-resume-textarea" data-mi-resume-text placeholder="Write your resume here. Include education, work experience, projects, and skills.">${esc(resumeText)}</textarea>`;
+    }
+    content=`<div class="mi-card">
+      <span class="mi-card-tag">Resume</span>
+      <h2 class="mi-card-title">Candidate Resume</h2>
+      <div class="mi-upload-row">
+        <button class="mi-upload-option${uploadMode==='upload'?' selected':''}" data-action="mi-upload-mode" data-mode="upload"><span class="mi-upload-option-icon">U</span><b>Upload</b><small>PDF, max 10 MB</small></button>
+        <button class="mi-upload-option${uploadMode==='write'?' selected':''}" data-action="mi-upload-mode" data-mode="write"><span class="mi-upload-option-icon">W</span><b>Write</b><small>Fill in manually</small></button>
+      </div>
+      ${resumeContent}
+    </div>`;
+  }else{
+    const selFormat=state.miSelectedFormatId||'single4';
+    const selTags=state.miSelectedTags||[...MI_FOCUS_TAGS];
+    const formatCards=`<div class="mi-fmt-card${selFormat==='single4'?' selected':''}" data-action="mi-select-format" data-format-id="single4"><span class="mi-fmt-radio"></span><div><b>Single Interview</b><small>1 interviewer, approx 15 min per round</small></div></div><div class="mi-fmt-card${selFormat==='panel'?' selected':''}" data-action="mi-select-format" data-format-id="panel"><span class="mi-fmt-radio"></span><div><b>Panel Interview</b><small>3 interviewers take turns, approx 25 min</small></div></div>`;
+    const tagPills=MI_FOCUS_TAGS.map(t=>`<button class="mi-tag-pill${selTags.includes(t)?' active':''}" data-action="mi-toggle-tag" data-tag="${t}">${t}</button>`).join('');
+    const extraReq=state.miExtraReq||'';
+    const jobName=state.miJobName||'Backend Developer';
+    const fmtLabel=selFormat==='panel'?'Panel · 3 interviewers':'Single · 1 interviewer';
+    const focusLabel=selTags.length?selTags.join(', '):'None';
+    content=`<div class="mi-card">
+      <span class="mi-card-tag">Format</span>
+      <h2 class="mi-card-title">Interview Format</h2>
+      <div class="mi-fmt-list">${formatCards}</div>
+      <small class="mi-section-label">Focus Areas (optional)</small>
+      <div class="mi-tag-row">${tagPills}</div>
+      <div class="mi-field"><label>Additional Requirements</label><textarea class="mi-textarea" data-mi-extra-req placeholder="e.g. Focus on my technical trade-offs">${esc(extraReq)}</textarea></div>
+      <div class="mi-summary-card">
+        <div class="mi-summary-row"><span>Position</span><b>${esc(jobName)}</b></div>
+        <div class="mi-summary-row"><span>Resume</span><b>${state.miUploadMode==='write'?(state.miResumeText?'Manual entry':'Not provided'):(state.miFileUploaded?(state.miFileName||'Resume.pdf'):'Not provided')}</b></div>
+        <div class="mi-summary-row"><span>Format</span><b>${fmtLabel}</b></div>
+        <div class="mi-summary-row"><span>Focus</span><b>${esc(focusLabel)}</b></div>
+      </div>
+    </div>`;
+  }
+  const nextLabel=step<3?'Continue':'Create Interview Plan';
+  return `<div class="scene-grid-page manual-interview-page">
+    ${topbar('Mock Interview','agent-chat')}
+    <div class="scene-grid-scroll">
+      ${progressBar}
+      ${content}
+    </div>
+    <div class="mi-bottom-bar">
+      <button class="mi-btn-secondary" data-action="mi-back">${step===1?'Cancel':'Back'}</button>
+      <button class="mi-btn-primary" data-action="mi-next">${nextLabel}</button>
+    </div>
+  </div>`;
+}
+views['manual-interview']=manualInterviewView;
 views['role-create']=roleCreate;
 views['role-generating']=roleGenerating;
 views['role-preview']=rolePreview;
@@ -406,6 +626,8 @@ const agentStateCopy={
 const AGENT_COMMANDS={
   create:'帮我创建一次后端开发工程师模拟面试',
   scene:'我想练习在英文餐厅点餐',
+  workplace:'我想练习职场英语沟通',
+  daily:'我想练习日常生活英语对话',
   continue:'继续上次的项目经历深挖',
   review:'分析我最近一次练习'
 };
@@ -467,9 +689,9 @@ function agentCreateFlow(){
 function scenesView(){
   const featured=[{icon:'INT',title:'Job interviews',desc:'Full mock interviews with multiple interviewers, resume deep dive, and detailed reports.',duration:'15-25 min',route:'create-job',featured:true}];
   const ieltsScenes=[
-    {icon:'P1',title:'Part 1 Q&A',desc:'Daily topic questions and answers',duration:'8 min',sceneId:'ielts-part1'},
-    {icon:'P2',title:'Part 2 Long turn',desc:'2-minute monologue on a given topic',duration:'10 min',sceneId:'ielts-part2'},
-    {icon:'P3',title:'Part 3 Discussion',desc:'In-depth discussion linked to Part 2',duration:'12 min',sceneId:'ielts-part3'}
+    {icon:'P1',title:'Part 1 Introduction',desc:'Identity check, hometown, technology, free time',duration:'4-5 min',sceneId:'ielts-part1'},
+    {icon:'P2',title:'Part 2 Long Turn',desc:'Cue card: 1 min prep + 2 min monologue + follow-up',duration:'3-4 min',sceneId:'ielts-part2'},
+    {icon:'P3',title:'Part 3 Discussion',desc:'Abstract discussion on skills and learning',duration:'4-5 min',sceneId:'ielts-part3'}
   ];
   const workplaceScenes=[
     {icon:'1:1',title:'1-on-1 meeting',desc:'Talk with your manager about progress',duration:'10 min',sceneId:'workplace-1on1'},
@@ -505,20 +727,491 @@ function scenesView(){
     </main>
   </div>`;
 }
+function ieltsView(){
+  const parts=[
+    {icon:'P1',title:'Part 1 · Introduction & Interview',desc:'Examiner checks identity, asks 2-3 daily topics with 3-4 questions each.',duration:'4-5 min',partId:'ielts-part1',topics:['Hometown','Technology / AI','Free Time']},
+    {icon:'P2',title:'Part 2 · Individual Long Turn',desc:'Cue card: 1 min prep (notes allowed), 2 min monologue.',duration:'3-4 min',partId:'ielts-part2',topics:['Describe a skill','Cue card','2 min talk']},
+    {icon:'P3',title:'Part 3 · Two-Way Discussion',desc:'In-depth discussion linked to Part 2. Abstract reasoning and opinions.',duration:'4-5 min',partId:'ielts-part3',topics:['Valuable skills','Lifelong learning','Practical vs academic','Technology & learning','Obsolete skills']}
+  ];
+  const card=(part)=>`<button class="ielts-card" data-action="ielts-select-part" data-part-id="${part.partId}">
+    <span class="ielts-card-header">
+      <span class="ielts-card-icon">${part.icon}</span>
+      <span class="ielts-card-title"><b>${part.title}</b><small>${part.duration}</small></span>
+      <span class="ielts-card-arrow">›</span>
+    </span>
+    <span class="ielts-card-desc">${part.desc}</span>
+    <span class="ielts-card-topics">${part.topics.map(t=>`<em>${t}</em>`).join('')}</span>
+  </button>`;
+  return `<div class="ielts-page">
+    ${topbar('IELTS Speaking','agent-chat')}
+    <section class="ielts-intro">
+      <h1>IELTS Speaking Practice</h1>
+      <p>Three-part mock test following the official IELTS speaking format. Each part simulates real exam conditions with instant feedback.</p>
+    </section>
+    <button class="ielts-full-test-btn" data-action="ielts-start-full-test">Start Full Mock Test · 11-14 min →</button>
+    <main class="ielts-list">
+      ${parts.map(card).join('')}
+    </main>
+    <section class="ielts-tips">
+      <small>Scoring Criteria</small>
+      <div class="ielts-criteria"><span>Fluency & Coherence</span><span>Lexical Resource</span><span>Grammar</span><span>Pronunciation</span></div>
+    </section>
+  </div>`;
+}
+/* ===== IELTS Speaking Mock Test Data ===== */
+const IELTS_TEST={
+  topic:'Skills & Learning',
+  part1:{
+    intro:"Good morning. My name is Daniel. Can you tell me your full name, please? Thank you. And what should I call you? In this first part, I'd like to ask you some questions about yourself. Let's talk about your hometown.",
+    topics:[
+      {name:'Hometown',questions:['Where is your hometown?',"Is there anything you don't like about your hometown?","Would you say it's a good place for young people to live?"],answers:['My hometown is Hangzhou, a picturesque city in eastern China, famous for its West Lake and long history as a cultural hub.','To be honest, the traffic congestion during rush hours can be quite frustrating. The city has grown rapidly, and the infrastructure hasn\'t quite caught up with the population.','Definitely. Hangzhou has a booming tech industry, plenty of job opportunities, and a vibrant lifestyle scene, so I think it\'s an attractive destination for young professionals.']},
+      {name:'Technology / AI',questions:['Do you use artificial intelligence in your daily life?','Has technology changed the way you learn things?','Is there any technology you find difficult to use?'],answers:['Yes, quite frequently. I use AI-powered tools for translation, writing assistance, and even scheduling. They\'ve become an integral part of my workflow.','Absolutely. With online courses and educational apps, I can learn at my own pace anytime, anywhere. It\'s made knowledge far more accessible than before.','I\'d say some professional design software has a steep learning curve. The interface is overwhelming at first, and it takes quite a while to get the hang of it.']},
+      {name:'Free Time',questions:['What do you usually do in your free time?','Do you prefer spending your free time alone or with others?'],answers:['I enjoy reading and going for walks in the park. It helps me unwind after a busy day and keeps me grounded.','It really depends on my mood. Sometimes I crave solitude to recharge, but other times I love catching up with friends over coffee.']}
+    ]
+  },
+  part2:{
+    instruction:"Now, I'm going to give you a topic and I'd like you to talk about it for one to two minutes. Before you talk, you'll have one minute to think about what you're going to say. You can make some notes if you wish. Do you understand?",
+    cueCard:{topic:'Describe a skill you would like to learn.',prompts:['What the skill is','Why you want to learn it','How you would learn it','And explain how learning this skill would benefit you']}
+  },
+  part3:{
+    intro:"We've been talking about learning a new skill, and I'd now like to ask you some questions related to this.",
+    questions:[
+      "What kinds of skills are most valuable in today's society?",
+      "Some people say it's never too late to learn a new skill. Do you agree?",
+      'Do you think schools should focus more on practical skills rather than academic knowledge?',
+      'How has technology changed the way people learn new skills compared to the past?',
+      'Do you think some skills will become obsolete in the future?'
+    ],
+    answers:[
+      "I'd argue that adaptability and digital literacy top the list. In a rapidly changing world, the ability to learn new tools quickly and adjust to shifting circumstances is far more valuable than any single technical skill.",
+      'I completely agree. Neuroplasticity research shows that our brains remain capable of learning throughout our lives. While it might take longer to pick up certain skills as we age, the motivation and life experience adults bring often make the learning process more efficient and meaningful.',
+      "It's a matter of balance, in my view. Academic knowledge builds the foundation for critical thinking and deep understanding, while practical skills prepare students for real-world challenges. Ideally, schools should integrate both.",
+      'The shift has been profound. In the past, learning a skill typically required formal classes or apprenticeships. Today, anyone with an internet connection can access world-class tutorials, interactive courses, and even AI tutors.',
+      'Undoubtedly. We are already seeing routine, repetitive tasks being automated away. Skills like basic data entry or simple translation are gradually being replaced by AI. That said, skills rooted in creativity, empathy, and complex problem-solving will remain relevant.'
+    ]
+  }
+};
+/* ===== IELTS Voice Button (shared) ===== */
+function ieltsVoiceArea(){
+  const rec=state.ieltsRecording;
+  const micSvg='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6.5 11.5a5.5 5.5 0 0 0 11 0M12 17v4M9 21h6"/></svg>';
+  const stopSvg='<svg viewBox="0 0 24 24" fill="currentColor"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>';
+  if(rec){
+    const secs=state.ieltsRecTimer||0;
+    const mm=Math.floor(secs/60),ss=secs%60;
+    return `<div class="ielts-voice-area recording">
+      <div class="ielts-voice-status"><span class="ielts-rec-dot"></span> Listening · ${mm}:${String(ss).padStart(2,'0')}</div>
+      <div class="ielts-mic-waveform"><span></span><span></span><span></span><span></span><span></span></div>
+      <button class="ielts-mic-btn recording" data-action="ielts-mic-toggle" aria-label="Submit answer">${stopSvg}</button>
+      <div class="ielts-voice-hint">Tap again to submit your answer</div>
+    </div>`;
+  }
+  return `<div class="ielts-voice-area">
+    <div class="ielts-voice-status">Ready to speak</div>
+    <button class="ielts-mic-btn" data-action="ielts-mic-toggle" aria-label="Start speaking">${micSvg}</button>
+    <div class="ielts-voice-hint">Tap to start recording your answer</div>
+  </div>`;
+}
+/* ===== IELTS Part 1 View ===== */
+function ieltsPart1View(){
+  const p=IELTS_TEST.part1;
+  const ti=state.ieltsPart1TopicIndex;
+  const topic=p.topics[ti];
+  const qi=state.ieltsPart1Index;
+  const totalQs=p.topics.reduce((s,t)=>s+t.questions.length,0);
+  const qDone=state.ieltsPart1Answers.length;
+  if(qi>=topic.questions.length){
+    if(ti<p.topics.length-1){
+      state.ieltsPart1TopicIndex=ti+1;
+      state.ieltsPart1Index=0;
+      return ieltsPart1View();
+    }
+    return ieltsCompleteView('Part 1','Part 2','ielts-part2');
+  }
+  const question=topic.questions[qi];
+  const answers=state.ieltsPart1Answers;
+  const allQuestions=p.topics.flatMap(t=>t.questions);
+  const pastBubbles=answers.map((a,i)=>{
+    const qText=allQuestions[i]||'';
+    return ieltsVoiceBubble('examiner','Examiner',qText,'p1e'+i)+ieltsVoiceBubble('user','You',a,'p1u'+i);
+  }).join('');
+  const currentQText=allQuestions[qDone]||question;
+  if(state.ieltsExaminerSpeaking){
+    return `<div class="ielts-test-page">
+      ${topbar('IELTS · Part 1','ielts-practice')}
+      <div class="ielts-progress"><span>Part 1</span><span>${qDone}/${totalQs}</span></div>
+      <div class="ielts-progress-bar"><div style="width:${(qDone/totalQs)*100}%"></div></div>
+      <div class="ielts-bubbles">${pastBubbles}</div>
+      ${ieltsExaminerArea()}
+    </div>`;
+  }
+  return `<div class="ielts-test-page">
+    ${topbar('IELTS · Part 1','ielts-practice')}
+    <div class="ielts-progress"><span>Part 1</span><span>${qDone}/${totalQs}</span></div>
+    <div class="ielts-progress-bar"><div style="width:${(qDone/totalQs)*100}%"></div></div>
+    <div class="ielts-bubbles">${pastBubbles}${ieltsVoiceBubble('examiner','Examiner',currentQText,'p1e'+qDone)}</div>
+    ${ieltsVoiceArea()}
+  </div>`;
+}
+/* ===== IELTS Part 2 View ===== */
+function ieltsPart2View(){
+  const p=IELTS_TEST.part2;
+  const phase=state.ieltsPart2Phase||'intro';
+  if(phase==='intro'){
+    if(state.ieltsExaminerSpeaking){
+      return `<div class="ielts-test-page">
+        ${topbar('IELTS · Part 2','ielts-practice')}
+        <div class="ielts-progress"><span>Part 2 · Long Turn</span><span>3-4 min</span></div>
+        ${ieltsExaminerArea()}
+      </div>`;
+    }
+    return `<div class="ielts-test-page">
+      ${topbar('IELTS · Part 2','ielts-practice')}
+      <div class="ielts-progress"><span>Part 2 · Long Turn</span><span>3-4 min</span></div>
+      <button class="ielts-start-btn" data-action="ielts-part2-start">I understand — Start →</button>
+    </div>`;
+  }
+  if(phase==='prep'){
+    const left=state.ieltsPart2PrepLeft;
+    return `<div class="ielts-test-page">
+      ${topbar('IELTS · Part 2','ielts-practice')}
+      <div class="ielts-timer ${left<=10?'urgent':''}">${left}s</div>
+      <div class="ielts-timer-label">Preparation time</div>
+      <div class="ielts-cue-card">
+        <div class="ielts-cue-card-header">Cue Card</div>
+        <p class="ielts-cue-topic">${esc(p.cueCard.topic)}</p>
+        <p>You should say:</p>
+        <ul>${p.cueCard.prompts.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>
+      </div>
+      <div class="ielts-notes-area">
+        <textarea class="ielts-notes-input" placeholder="Make notes here…" data-action="ielts-part2-notes">${esc(state.ieltsPart2Notes)}</textarea>
+      </div>
+      <button class="ielts-start-btn" data-action="ielts-part2-finish-prep">Start Speaking →</button>
+    </div>`;
+  }
+  if(phase==='speak'){
+    const left=state.ieltsPart2SpeakLeft;
+    const notes=state.ieltsPart2Notes||'';
+    return `<div class="ielts-test-page">
+      ${topbar('IELTS · Part 2','ielts-practice')}
+      <div class="ielts-p2-speak-timer-row">
+        <div class="ielts-p2-speak-timer">
+          <span class="ielts-timer ${left<=20?'urgent':''}">${Math.floor(left/60)}:${String(left%60).padStart(2,'0')}</span>
+          <span class="ielts-timer-label">Speaking time — talk now!</span>
+        </div>
+        <div class="ielts-speaking-pulse"><span></span><span></span><span></span></div>
+      </div>
+      ${notes.trim()?`<div class="ielts-p2-notes-readonly">
+        <small>Your Notes</small>
+        <p>${esc(notes)}</p>
+      </div>`:`<div class="ielts-p2-no-notes"><small>No notes were taken during prep.</small></div>`}
+      <button class="ielts-start-btn" data-action="ielts-part2-finish-speak">Finish Speaking →</button>
+    </div>`;
+  }
+  return ieltsCompleteView('Part 2','Part 3','ielts-part3');
+}
+/* ===== IELTS Part 3 View ===== */
+function ieltsPart3View(){
+  const p=IELTS_TEST.part3;
+  const qi=state.ieltsPart3Index;
+  const total=p.questions.length;
+  const qDone=state.ieltsPart3Answers.length;
+  if(qi>=total){
+    return ieltsCompleteView('Part 3','','done');
+  }
+  const question=p.questions[qi];
+  const pastBubbles=state.ieltsPart3Answers.map((a,i)=>{
+    return ieltsVoiceBubble('examiner','Examiner',p.questions[i],'p3e'+i)+ieltsVoiceBubble('user','You',a,'p3u'+i);
+  }).join('');
+  const currentQText=p.questions[qDone]||question;
+  if(state.ieltsExaminerSpeaking){
+    return `<div class="ielts-test-page">
+      ${topbar('IELTS · Part 3','ielts-practice')}
+      <div class="ielts-progress"><span>Part 3 · Discussion</span><span>${qDone}/${total}</span></div>
+      <div class="ielts-progress-bar"><div style="width:${(qDone/total)*100}%"></div></div>
+      <div class="ielts-bubbles">${pastBubbles}</div>
+      ${ieltsExaminerArea()}
+    </div>`;
+  }
+  return `<div class="ielts-test-page">
+    ${topbar('IELTS · Part 3','ielts-practice')}
+    <div class="ielts-progress"><span>Part 3 · Discussion</span><span>${qDone}/${total}</span></div>
+    <div class="ielts-progress-bar"><div style="width:${(qDone/total)*100}%"></div></div>
+    <div class="ielts-bubbles">${pastBubbles}${ieltsVoiceBubble('examiner','Examiner',currentQText,'p3e'+qDone)}</div>
+    ${ieltsVoiceArea()}
+  </div>`;
+}
+/* ===== IELTS Complete / Transition View ===== */
+function ieltsCompleteView(fromPart,nextPart,nextRoute){
+  if(nextRoute==='done'){
+    return ieltsReportView();
+  }
+  return `<div class="ielts-test-page ielts-transition-page">
+    ${topbar('IELTS Speaking','ielts-practice')}
+    <div class="ielts-finish-orb"></div>
+    <h1>${fromPart} Complete</h1>
+    <p>Well done! You've finished ${fromPart}. ${nextPart?'Next up: '+nextPart+'.':''}</p>
+    ${nextPart?`<button class="ielts-start-btn" data-action="ielts-go-next" data-next-route="${nextRoute}">Continue to ${nextPart} →</button>`:''}
+  </div>`;
+}
+/* ===== IELTS Report View ===== */
+const IELTS_SUB_SCORES=[
+  {label:'Fluency & Coherence',score:7.0,desc:'Speech is generally fluent with occasional hesitation. Ideas are connected logically.'},
+  {label:'Lexical Resource',score:6.5,desc:'Good vocabulary range with some topic-specific terms. Occasional repetition could be reduced.'},
+  {label:'Grammatical Range & Accuracy',score:7.0,desc:'Uses a mix of simple and complex structures with generally accurate grammar.'},
+  {label:'Pronunciation',score:6.5,desc:'Generally clear pronunciation. Intonation could be more varied.'}
+];
+const IELTS_RETRY_MOCKS=[
+  {transcript:'My hometown is Hangzhou, a city famous for the West Lake. I grew up near the lake, so I have many childhood memories there.',added:'Added: More specific details about childhood\nAdded: Personal connection to the place',missing:'Still needs: Broader comparison with other cities'},
+  {transcript:'I use my phone for communication and work. I check emails, attend video meetings, and message colleagues throughout the day.',added:'Added: Specific use cases\nAdded: Work context',missing:'Still needs: Opinion on technology dependency'},
+  {transcript:'I enjoy reading books and hiking on weekends. Reading helps me relax after a long week, while hiking keeps me physically active.',added:'Added: Reasons for each hobby\nAdded: Personal benefits',missing:'Still needs: More details about frequency'},
+  {transcript:'AI has changed the way we learn languages. Apps now offer real-time feedback on pronunciation, making practice more efficient.',added:'Added: Specific AI application\nAdded: Concrete benefit',missing:'Still needs: Personal experience with AI tools'},
+  {transcript:'I believe practical skills are more valuable in the workplace. Academic knowledge provides the foundation, but hands-on experience matters more.',added:'Added: Clear opinion with reasoning\nAdded: Comparison between practical and academic',missing:'Still needs: Specific example to support the claim'},
+  {transcript:'Lifelong learning is essential in todays fast-changing world. I try to learn something new every month, whether its a language or a technical skill.',added:'Added: Personal learning habit\nAdded: Concrete examples',missing:'Still needs: Connection to career goals'},
+  {transcript:'I think both practical and academic learning are important. Academic knowledge builds the theory, while practical experience tests it in real situations.',added:'Added: Balanced view\nAdded: How theory and practice interact',missing:'Still needs: Personal example of applying theory'},
+  {transcript:'Technology has made learning more accessible. Online courses allow anyone to study at their own pace, regardless of location.',added:'Added: Accessibility benefit\nAdded: Specific example',missing:'Still needs: Potential drawbacks of technology'}
+];
+/* Official IELTS rounding: average of 4 scores, .25 rounds up to .5, .75 rounds up to next whole */
+function ieltsRoundScore(avg){
+  const floor=Math.floor(avg);
+  const frac=avg-floor;
+  if(frac<0.25)return floor;
+  if(frac<0.75)return floor+0.5;
+  return floor+1;
+}
+function ieltsOverall(){
+  const sum=IELTS_SUB_SCORES.reduce((s,x)=>s+x.score,0);
+  const avg=sum/IELTS_SUB_SCORES.length;
+  return ieltsRoundScore(avg);
+}
+function ieltsReportView(){
+  const p1Count=state.ieltsPart1Answers.length;
+  const p3Count=state.ieltsPart3Answers.length;
+  const today=new Date();
+  const dateStr=`${today.getFullYear()}.${String(today.getMonth()+1).padStart(2,'0')}.${String(today.getDate()).padStart(2,'0')}`;
+  const overall=ieltsOverall();
+  const subScores=IELTS_SUB_SCORES;
+  const scoreColor=s=>s>=7.5?'#176872':s>=6.5?'#5a8fd6':'#d4865a';
+  const allAnswers=[...state.ieltsPart1Answers,...state.ieltsPart3Answers];
+  const allQuestions=[...IELTS_TEST.part1.topics.flatMap(t=>t.questions),...IELTS_TEST.part3.questions];
+  const feedbackItems=allAnswers.map((ans,i)=>{
+    const q=allQuestions[i]||'';
+    const mock=IELTS_RETRY_MOCKS[i%IELTS_RETRY_MOCKS.length];
+    const retryKey='ieltsRetry_'+i;
+    const attempts=state[retryKey]||[];
+    return {q,ans,mock,attempts,retryKey,index:i};
+  });
+  const summary=`You completed all three parts of the IELTS Speaking mock test. You spoke clearly and used a good range of vocabulary. Focus on reducing hesitation in Part 2 and developing more complex arguments in Part 3.`;
+  return `<div class="ielts-report-page">
+    ${topbar('IELTS Speaking Report','ielts-practice')}
+    <div class="ielts-report-scroll">
+    <div class="ielts-report-header">
+      <small>${dateStr} · IELTS Speaking Mock Test</small>
+      <div class="ielts-report-score-hero">
+        <div class="ielts-report-overall">
+          <span class="ielts-report-overall-num">${overall.toFixed(1)}</span>
+          <span class="ielts-report-overall-lbl">Overall Band</span>
+        </div>
+        <div class="ielts-report-meta">
+          <div><small>Part 1</small><b>${p1Count} answers</b></div>
+          <div><small>Part 2</small><b>2 min talk</b></div>
+          <div><small>Part 3</small><b>${p3Count} answers</b></div>
+        </div>
+      </div>
+    </div>
+    <div class="ielts-report-scores">
+      ${subScores.map(s=>`<div class="ielts-report-score-item">
+        <div class="ielts-report-score-left">
+          <span class="ielts-report-score-ring" style="--score-color:${scoreColor(s.score)}">${s.score.toFixed(1)}</span>
+          <div class="ielts-report-score-info"><b>${s.label}</b><small>${s.desc}</small></div>
+        </div>
+      </div>`).join('')}
+    </div>
+    <div class="ielts-report-card">
+      <h3>Summary</h3>
+      <p>${summary}</p>
+    </div>
+    <div class="ielts-report-card">
+      <h3>Detailed Feedback</h3>
+      <p><b>Part 1</b>　You answered identity and familiar-topic questions naturally. Try to extend answers with one more detail.</p>
+      <p><b>Part 2</b>　Your monologue covered all cue card prompts. Work on smoother transitions between points.</p>
+      <p><b>Part 3</b>　You showed good ability to discuss abstract topics. Add more examples to strengthen arguments.</p>
+    </div>
+    <h3 class="ielts-report-section-title">Answer Review & Retry</h3>
+    ${feedbackItems.map(f=>`<div class="ielts-report-qcard">
+      <div class="ielts-report-qcard-head" data-action="ielts-toggle-qcard" data-index="${f.index}">
+        <span class="ielts-report-qcard-num">Q${f.index+1}</span>
+        <span class="ielts-report-qcard-q">${f.q}</span>
+        <svg class="ielts-report-qcard-chevron" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+      <div class="ielts-report-qcard-body" style="display:${state.ieltsExpandedQ===f.index?'block':'none'}">
+        <div class="ielts-report-qcard-ans"><small>Your Answer</small><p>${f.ans}</p></div>
+        <div class="ielts-report-qcard-feedback"><small>Feedback</small><p>${f.mock.added.replace(/\n/g,'<br>')}<br>${f.mock.missing}</p></div>
+        ${f.attempts.length?`<div class="ielts-report-retry-versions"><small>Retry Versions (${f.attempts.length})</small>${f.attempts.map((a,n)=>`<div class="ielts-report-retry-version"><b>Retry ${n+1} · ${a.time}</b><p>${a.transcript}</p></div>`).join('')}</div>`:''}
+        <button class="ielts-report-retry-btn" data-action="ielts-open-retry" data-index="${f.index}">Retry This Question</button>
+      </div>
+    </div>`).join('')}
+    <button class="ielts-start-btn" data-action="ielts-restart">Back to Home →</button>
+    </div>
+  </div>`;
+}
+/* ===== IELTS Retry View ===== */
+function ieltsRetryView(){
+  const idx=state.ieltsRetryIndex||0;
+  const allQuestions=[...IELTS_TEST.part1.topics.flatMap(t=>t.questions),...IELTS_TEST.part3.questions];
+  const allAnswers=[...state.ieltsPart1Answers,...state.ieltsPart3Answers];
+  const question=allQuestions[idx]||'';
+  const originalAnswer=allAnswers[idx]||'';
+  const mock=IELTS_RETRY_MOCKS[idx%IELTS_RETRY_MOCKS.length];
+  const retryKey='ieltsRetry_'+idx;
+  const attempts=state[retryKey]||[];
+  const attemptNumber=attempts.length+1;
+  return `<div class="ielts-test-page ielts-retry-page">
+    ${topbar('Retry Question','ielts-report')}
+    <div class="ielts-retry-meta">Attempt ${attemptNumber}</div>
+    <div class="ielts-retry-question">
+      <small>Original Question</small>
+      <h2>${question}</h2>
+    </div>
+    <div class="ielts-retry-original">
+      <small>Your Original Answer</small>
+      <p>${originalAnswer}</p>
+    </div>
+    <div class="ielts-retry-target">
+      <small>Improvement Target</small>
+      <p>${mock.added.replace(/\n/g,'<br>')}<br>${mock.missing}</p>
+    </div>
+    ${state.ieltsRetryRecording?`<div class="ielts-retry-transcript">
+      <small>New Answer Transcript</small>
+      <p>${mock.transcript}</p>
+    </div>`:''}
+    ${state.ieltsRetryShowVersions?`<div class="ielts-retry-feedback">
+      <div><small>Improved</small><b>${mock.added.replace(/\n/g,'<br>')}</b></div>
+      <div><small>Still Missing</small><b>${mock.missing}</b></div>
+    </div>
+    <h3 class="ielts-retry-versions-title">Answer Versions</h3>
+    <div class="ielts-retry-version-item">
+      <span class="ielts-retry-play">▶</span>
+      <div><b>Original Answer</b><small>${originalAnswer.substring(0,60)}...</small></div>
+    </div>
+    ${attempts.map((a,n)=>`<div class="ielts-retry-version-item">
+      <span class="ielts-retry-play">▶</span>
+      <div><b>Retry ${n+1} · ${a.time}</b><small>${a.transcript.substring(0,60)}...</small></div>
+    </div>`).join('')}`:''}
+    <div class="ielts-retry-actions">
+      <button class="ielts-start-btn ${state.ieltsRetryRecording?'recording':''}" data-action="ielts-retry-record">${state.ieltsRetryRecording?'Submit Answer':state.ieltsRetryShowVersions?'Retry Again':'Start Speaking'}</button>
+      <small>Each retry saves as a new version without overwriting the original.</small>
+    </div>
+  </div>`;
+}
+/* ===== IELTS Router ===== */
+function ieltsTestView(){
+  const part=state.ieltsActivePart;
+  if(part==='ielts-part1')return ieltsPart1View();
+  if(part==='ielts-part2')return ieltsPart2View();
+  if(part==='ielts-part3')return ieltsPart3View();
+  return ieltsView();
+}
+let ieltsTimer=null;
+function ieltsCountdown(phase){
+  if(ieltsTimer)clearInterval(ieltsTimer);
+  ieltsTimer=setInterval(()=>{
+    if(state.ieltsActivePart!=='ielts-part2'){clearInterval(ieltsTimer);return}
+    if(phase==='prep'){
+      if(state.ieltsPart2Phase!=='prep'){clearInterval(ieltsTimer);return}
+      state.ieltsPart2PrepLeft--;
+      if(state.ieltsPart2PrepLeft<=0){clearInterval(ieltsTimer);state.ieltsPart2Phase='speak';state.ieltsPart2SpeakLeft=120;render();ieltsCountdown('speak');return}
+      render()
+    }else if(phase==='speak'){
+      if(state.ieltsPart2Phase!=='speak'){clearInterval(ieltsTimer);return}
+      state.ieltsPart2SpeakLeft--;
+      if(state.ieltsPart2SpeakLeft<=0){clearInterval(ieltsTimer);state.ieltsPart2Phase='complete';render();return}
+      render()
+    }
+  },1000);
+}
+let ieltsRecInterval=null;
+function ieltsRecStart(){if(ieltsRecInterval)clearInterval(ieltsRecInterval);state.ieltsRecTimer=0;ieltsRecInterval=setInterval(()=>{if(!state.ieltsRecording){clearInterval(ieltsRecInterval);return}state.ieltsRecTimer++;render()},1000)}
+function ieltsRecStop(){if(ieltsRecInterval){clearInterval(ieltsRecInterval);ieltsRecInterval=null}state.ieltsRecording=false;state.ieltsRecTimer=0}
+let ieltsExaminerTimer=null;
+function ieltsExaminerSpeak(text){
+  if(ieltsExaminerTimer)clearTimeout(ieltsExaminerTimer);
+  state.ieltsExaminerSpeaking=true;render();
+  const dur=Math.max(2500,Math.min(6000,text.length*55));
+  ieltsExaminerTimer=setTimeout(()=>{state.ieltsExaminerSpeaking=false;render()},dur);
+}
+function ieltsExaminerStop(){if(ieltsExaminerTimer){clearTimeout(ieltsExaminerTimer);ieltsExaminerTimer=null}state.ieltsExaminerSpeaking=false}
+function ieltsTriggerExaminerSpeak(){
+  const part=state.ieltsActivePart;
+  if(part==='ielts-part1'){
+    const p=IELTS_TEST.part1,ti=state.ieltsPart1TopicIndex,qi=state.ieltsPart1Index;
+    const topic=p.topics[ti];if(!topic)return;
+    const q=topic.questions[qi];if(!q)return;
+    const text=(ti===0&&qi===0?p.intro+' ':ti>0&&qi===0?"Let's move on and talk about "+topic.name.toLowerCase()+". ":'')+q;
+    ieltsExaminerSpeak(text);
+  }else if(part==='ielts-part2'){
+    if(state.ieltsPart2Phase==='intro')ieltsExaminerSpeak(IELTS_TEST.part2.instruction);
+  }else if(part==='ielts-part3'){
+    const p=IELTS_TEST.part3,qi=state.ieltsPart3Index,q=p.questions[qi];
+    if(!q)return;
+    const text=(qi===0?p.intro+' ':'')+q;
+    ieltsExaminerSpeak(text);
+  }
+}
+function ieltsExaminerArea(){
+  return `<div class="ielts-examiner-speaking">
+    <div class="ielts-examiner-avatar"><span></span></div>
+    <div class="ielts-examiner-meta"><small>Examiner is speaking…</small></div>
+    <div class="ielts-examiner-wave"><span></span><span></span><span></span><span></span><span></span></div>
+  </div>`;
+}
+/* Voice bubble for examiner questions and user answers */
+function ieltsVoiceBubble(side,label,text,bubbleId){
+  const expanded=state.ieltsExpandedBubble===bubbleId;
+  const isExaminer=side==='examiner';
+  const micIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v4M9 21h6"/></svg>';
+  const expandIcon='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>';
+  return `<div class="ielts-vb ${isExaminer?'examiner':'user'} ${expanded?'expanded':''}">
+    <div class="ielts-vb-row">
+      ${isExaminer?'<div class="ielts-vb-avatar">E</div>':''}
+      <div class="ielts-vb-body" data-action="ielts-toggle-bubble" data-bubble-id="${bubbleId}">
+        <div class="ielts-vb-label">${label}</div>
+        <div class="ielts-vb-bar"><span class="ielts-vb-wave"><i></i><i></i><i></i><i></i></span><span class="ielts-vb-time">${Math.max(2,Math.ceil(text.length/12))}″</span></div>
+      </div>
+      ${!isExaminer?'<div class="ielts-vb-avatar me">Me</div>':''}
+      <button class="ielts-vb-expand" data-action="ielts-toggle-bubble" data-bubble-id="${bubbleId}" aria-label="Show text">${expandIcon}</button>
+    </div>
+    ${expanded?`<div class="ielts-vb-text">${esc(text)}</div>`:''}
+  </div>`;
+}
+function ieltsCurrentMockAnswer(){
+  const part=state.ieltsActivePart;
+  if(part==='ielts-part1'){
+    const ti=state.ieltsPart1TopicIndex,qi=state.ieltsPart1Index;
+    const topic=IELTS_TEST.part1.topics[ti];
+    return topic&&topic.answers?topic.answers[qi]||'':'';
+  }
+  if(part==='ielts-part3'){
+    const qi=state.ieltsPart3Index;
+    return IELTS_TEST.part3.answers?IELTS_TEST.part3.answers[qi]||'':'';
+  }
+  return '';
+}
 function agentHome(){
   if(state.agentConversationTitle)return agentHistoryConversation();
   if(state.agentCreateStep>0)return agentCreateFlow();
   return `<div class="agent-page agent-home agent-simple-home agent-idle">
+    <div class="agent-orb-wrap"><div class="agent-orb"></div></div>
     <section class="agent-simple-hero">
       <h2>What would you like to practice?</h2>
       <p>Describe your goal or scenario, and I'll help you prepare.</p>
     </section>
     <div class="agent-quick-actions">
       <div class="quick-chips">
-        <button data-action="agent-command" data-command="create">Job interviews</button>
-        <button data-action="agent-command" data-command="ielts">IELTS / TOEFL</button>
-        <button data-action="agent-command" data-command="workplace">Workplace</button>
-        <button data-action="agent-command" data-command="continue">Continue session</button>
+        <button data-action="noop" data-command="create">Mock Interview</button>
+        <button data-action="noop" data-command="ielts">Speaking Test Prep</button>
+        <button data-action="noop" data-command="workplace">Workplace English</button>
+        <button data-action="noop" data-command="daily">Daily Life</button>
       </div>
     </div>
     ${state.agentKeyboardOpen?`<label class="agent-text-entry agent-home-text"><span>告诉 SpeakUp 你想完成什么</span><textarea data-agent-transcript placeholder="例如：帮我创建一次后端开发模拟面试"></textarea><button data-action="agent-send-text">发送</button></label>`:''}
@@ -558,11 +1251,29 @@ const AGENT_VOICE_MOCK=[
   {role:'user',text:'这次选择单面。'},
   {role:'agent',text:'已为你创建 4 轮面试和 4 位面试官，第一轮是 Mia 的 HR 初面。点击即可开始。',action:'interview'}
 ];
+const SCENE_VOICE_MOCKS={
+  confession:[
+    {role:'agent',text:"Hi there! I heard you'd like to practice expressing your feelings to someone special. Can you tell me a bit about the situation?"},
+    {role:'user',text:"There's someone I've liked for a while. We're classmates and I want to tell them how I feel, but I get nervous every time."},
+    {role:'agent',text:"That's completely normal! Expressing feelings takes courage. Let's role-play this together — I'll play your classmate, and you can practice what you'd like to say. Ready to start?"},
+    {role:'user',text:"Yes, I'm ready. Let's give it a try."},
+    {role:'agent',text:'Great! Let me start the conversation. Hey, thanks for meeting up. What did you want to talk about?'}
+  ],
+  interview:[
+    {role:'agent',text:"Hello! Let's get you ready for your job interview. What position are you applying for?"},
+    {role:'user',text:"I'm applying for a software engineer role at a tech company."},
+    {role:'agent',text:"Excellent choice! I'll be your interviewer today. I'll ask you some common interview questions, and you can practice your responses. Shall we begin?"},
+    {role:'user',text:"Yes, I'm ready to start."},
+    {role:'agent',text:'Perfect. Let\'s start with a classic. "Tell me a little bit about yourself."'}
+  ]
+};
 function agentConversation(){
   if(state.agentVoiceState==='idle')return agentHome();
+  const voiceMock=state.agentSceneVoiceMock||AGENT_VOICE_MOCK;
+  const sceneTitle=state.agentSceneTitle||'SpeakUp 语音';
   return `<div class="agent-page agent-voice-simple agent-${state.agentVoiceState}">
-    <header class="agent-voice-head"><button class="app-menu-trigger agent-voice-menu" data-action="open-app-menu" aria-label="打开菜单"><i></i><i></i></button><b>SpeakUp 语音</b><button class="agent-voice-info" data-action="agent-more" aria-label="语音说明">i</button></header>
-    <section class="agent-voice-thread" aria-label="语音对话转录" aria-live="polite">${AGENT_VOICE_MOCK.map(item=>`<article class="agent-voice-turn ${item.role}"><p>${esc(item.text)}</p>${item.action==='interview'?'<button class="agent-voice-enter" data-action="agent-voice-enter-interview">进入模拟面试</button>':''}</article>`).join('')}</section>
+    <header class="agent-voice-head"><button class="app-menu-trigger agent-voice-menu" data-action="open-app-menu" aria-label="打开菜单"><i></i><i></i></button><b>${esc(sceneTitle)}</b><button class="agent-voice-info" data-action="agent-more" aria-label="语音说明">i</button></header>
+    <section class="agent-voice-thread" aria-label="语音对话转录" aria-live="polite">${voiceMock.map(item=>`<article class="agent-voice-turn ${item.role}"><p>${esc(item.text)}</p>${item.action==='interview'?'<button class="agent-voice-enter" data-action="agent-voice-enter-interview">进入模拟面试</button>':''}</article>`).join('')}</section>
     ${state.agentKeyboardOpen?`<label class="agent-text-entry agent-voice-text"><span>输入消息</span><textarea data-agent-transcript placeholder="问问 SpeakUp">${esc(state.agentTranscript)}</textarea><button data-action="agent-send-text">发送</button></label>`:''}
     <footer class="agent-voice-dock">
       <div class="agent-voice-input"><button data-action="agent-more" aria-label="更多输入方式">＋</button><button data-action="agent-keyboard">问问 SpeakUp</button></div>
@@ -582,6 +1293,9 @@ ms1CreateHub=function(){
 };
 views['create-hub']=ms1CreateHub;
 views['scenes']=scenesView;
+views['ielts-practice']=ieltsTestView;
+views['ielts-report']=ieltsReportView;
+views['ielts-retry']=ieltsRetryView;
 views['correction-mock']=correctionMockView;
 
 function voiceChatView(){
@@ -624,9 +1338,23 @@ window.addEventListener('click',event=>{
   else if(action==='toggle-account-menu'){event.preventDefault();event.stopImmediatePropagation();state.appAccountOpen=!state.appAccountOpen;render()}
   else if(action==='drawer-route'){event.preventDefault();event.stopImmediatePropagation();const target=el.dataset.routeTarget;state.appMenuOpen=false;state.appAccountOpen=false;state.drawerEntryRoute=target==='agent-chat'?'':target;if(target==='agent-chat')state.agentConversationTitle='';if(target==='role-create')state.sceneAgentReady=false;go(target)}
   else if(action==='drawer-conversation'){event.preventDefault();event.stopImmediatePropagation();state.appMenuOpen=false;state.appAccountOpen=false;state.drawerEntryRoute='';resetAgentCreateFlow();state.agentConversationTitle=el.dataset.historyTitle||'';state.agentVoiceState='idle';state.agentVoiceMuted=false;state.agentDictating=false;state.agentKeyboardOpen=false;state.route='agent-chat';render()}
-  else if(action==='agent-new-chat'){event.preventDefault();event.stopImmediatePropagation();state.appMenuOpen=false;state.drawerEntryRoute='';resetAgentCreateFlow();state.agentConversationTitle='';state.agentVoiceState='idle';state.agentVoiceMuted=false;state.agentDictating=false;state.agentIntent='';state.agentOperation='';state.agentTranscript='';state.agentKeyboardOpen=false;state.sceneAgentReady=false;state.route='agent-chat';render();toast('已开始新对话')}
+  else if(action==='agent-new-chat'){event.preventDefault();event.stopImmediatePropagation();state.appMenuOpen=false;state.drawerEntryRoute='';resetAgentCreateFlow();state.agentConversationTitle='';state.agentVoiceState='idle';state.agentVoiceMuted=false;state.agentDictating=false;state.agentIntent='';state.agentOperation='';state.agentTranscript='';state.agentKeyboardOpen=false;state.sceneAgentReady=false;state.agentSceneVoiceMock=null;state.agentSceneTitle='';state.route='agent-chat';render();toast('已开始新对话')}
   else if(action==='agent-dictate'){event.preventDefault();event.stopImmediatePropagation();state.agentDictating=!state.agentDictating;state.agentKeyboardOpen=false;render()}
-  else if(action==='agent-command'){event.preventDefault();event.stopImmediatePropagation();const command=el.dataset.command;state.agentIntent=command;if(command==='create'){startAgentCreateFlow();render()}else if(command==='scene'){resetAgentCreateFlow();state.sceneAgentReady=false;state.drawerEntryRoute='role-create';state.route='role-create';render()}else{resetAgentCreateFlow();state.agentTranscript=AGENT_COMMANDS[command]||state.agentTranscript;state.agentOperation='draft';state.agentKeyboardOpen=false;state.agentVoiceState='thinking';render();setTimeout(()=>{if(state.route==='agent-chat'&&state.agentVoiceState==='thinking'){state.agentVoiceState='speaking';render()}},650)}}
+  else if(action==='agent-command'){event.preventDefault();event.stopImmediatePropagation();const command=el.dataset.command;state.agentIntent=command;if(command==='create'){startAgentCreateFlow();render()}else if(command==='scene'){resetAgentCreateFlow();state.sceneAgentReady=false;state.drawerEntryRoute='role-create';state.route='role-create';render()}else if(command==='ielts'){resetAgentCreateFlow();state.agentKeyboardOpen=false;state.route='ielts-practice';render()}else{resetAgentCreateFlow();state.agentTranscript=AGENT_COMMANDS[command]||state.agentTranscript;state.agentOperation='draft';state.agentKeyboardOpen=false;state.agentVoiceState='thinking';render();setTimeout(()=>{if(state.route==='agent-chat'&&state.agentVoiceState==='thinking'){state.agentVoiceState='speaking';render()}},650)}}
+  else if(action==='drawer-scene'){event.preventDefault();event.stopImmediatePropagation();state.appMenuOpen=false;state.appAccountOpen=false;const command=el.dataset.command;state.agentIntent=command;if(command==='create'){resetAgentCreateFlow();state.miStep=1;state.miJobName='';state.miJdText='';state.miUploadMode='upload';state.miFileUploaded=false;state.miFileName='';state.miResumeText='';state.miSelectedFormatId='single4';state.miSelectedTags=[...MI_FOCUS_TAGS];state.miExtraReq='';state.route='manual-interview';render()}else if(command==='ielts'){resetAgentCreateFlow();state.agentKeyboardOpen=false;state.route='ielts-cards';render()}else if(command==='daily'){resetAgentCreateFlow();state.route='scene-grid-daily';render()}else if(command==='workplace'){resetAgentCreateFlow();state.route='scene-grid-workplace';render()}else{resetAgentCreateFlow();state.agentTranscript=AGENT_COMMANDS[command]||state.agentTranscript;state.agentOperation='draft';state.agentKeyboardOpen=false;state.agentVoiceState='thinking';render();setTimeout(()=>{if(state.route==='agent-chat'&&state.agentVoiceState==='thinking'){state.agentVoiceState='speaking';render()}},650)}}
+  else if(action==='scene-card-select'){event.preventDefault();event.stopImmediatePropagation();const sceneId=el.dataset.sceneId;const sceneType=el.dataset.sceneType;const sceneList=sceneType==='daily'?DAILY_LIFE_SCENES:WORKPLACE_SCENES;const scene=sceneList.find(s=>s.id===sceneId);if(!scene)return;const mockKey=sceneType==='daily'?'confession':'interview';const sceneMock=SCENE_VOICE_MOCKS[mockKey];if(!sceneMock)return;resetAgentCreateFlow();state.agentSceneVoiceMock=sceneMock;state.agentSceneTitle=scene.title;state.agentTranscript='';state.agentOperation='draft';state.agentKeyboardOpen=false;state.agentVoiceState='thinking';state.route='agent-chat';render();setTimeout(()=>{if(state.route==='agent-chat'&&state.agentVoiceState==='thinking'){state.agentVoiceState='speaking';render()}},650)}
+  else if(action==='mi-select-job'){event.preventDefault();event.stopImmediatePropagation();state.miSelectedJobId=el.dataset.jobId;state.miSelectedJobName=el.dataset.jobName;render()}
+  else if(action==='mi-select-format'){event.preventDefault();event.stopImmediatePropagation();state.miSelectedFormatId=el.dataset.formatId;state.miSelectedFormatValue=el.dataset.formatValue;render()}
+  else if(action==='mi-upload-resume'){event.preventDefault();event.stopImmediatePropagation();toast('Resume selection (demo)')}
+  else if(action==='mi-create-interview'){event.preventDefault();event.stopImmediatePropagation();const jobName=state.miSelectedJobName||'Backend Developer';const formatValue=state.miSelectedFormatValue||'单面计划 · 4 轮 · 约 70 分钟';state.agentCreateDraft={job:jobName,resume:'Backend_Developer_Resume.pdf',format:formatValue,answers:{}};createAgentMockPlan();state.route='rounds';render();toast('面试计划已创建')}
+  else if(action==='mi-upload-mode'){event.preventDefault();event.stopImmediatePropagation();state.miUploadMode=el.dataset.mode;render()}
+  else if(action==='mi-upload-file'){event.preventDefault();event.stopImmediatePropagation();state.miFileUploaded=true;state.miFileName='Backend_Developer_Resume.pdf';render();toast('Resume uploaded')}
+  else if(action==='mi-exp-toggle'){event.preventDefault();event.stopImmediatePropagation();const expId=Number(el.dataset.expId);const exps=state.miExpandedExps||[];const idx=exps.indexOf(expId);if(idx>=0)exps.splice(idx,1);else exps.push(expId);state.miExpandedExps=exps;render()}
+  else if(action==='mi-add-exp'){event.preventDefault();event.stopImmediatePropagation();toast('Add experience (demo)')}
+  else if(action==='mi-toggle-tag'){event.preventDefault();event.stopImmediatePropagation();const tag=el.dataset.tag;const tags=state.miSelectedTags||[...MI_FOCUS_TAGS];const idx=tags.indexOf(tag);if(idx>=0)tags.splice(idx,1);else tags.push(tag);state.miSelectedTags=tags;render()}
+  else if(action==='mi-back'){event.preventDefault();event.stopImmediatePropagation();const step=state.miStep||1;if(step<=1){state.miStep=1;state.route='agent-chat';render()}else{state.miStep=step-1;render()}}
+  else if(action==='mi-next'){event.preventDefault();event.stopImmediatePropagation();const step=state.miStep||1;if(step<3){state.miStep=step+1;render()}else{const jobName=state.miJobName||'Backend Developer';const formatValue=(state.miSelectedFormatId||'single4')==='panel'?'群面模拟 · 1 场 · 约 25 分钟':'单面计划 · 4 轮 · 约 70 分钟';state.agentCreateDraft={job:jobName,resume:'Backend_Developer_Resume.pdf',format:formatValue,answers:{}};createAgentMockPlan();state.miStep=1;state.route='rounds';render();toast('面试计划已创建')}}
+  else if(action==='ielts-card-select'){event.preventDefault();event.stopImmediatePropagation();const cardType=el.dataset.cardType;const cardId=el.dataset.cardId;ieltsRecStop();ieltsExaminerStop();state.ieltsExpandedBubble=null;state.ieltsPart1Index=0;state.ieltsPart1TopicIndex=0;state.ieltsPart1Answers=[];state.ieltsPart2Phase='';state.ieltsPart2PrepLeft=60;state.ieltsPart2SpeakLeft=120;state.ieltsPart2Notes='';state.ieltsPart3Index=0;state.ieltsPart3Answers=[];if(cardType==='p1'){state.ieltsActivePart='ielts-part1';state.route='ielts-practice';render();ieltsTriggerExaminerSpeak()}else{state.ieltsActivePart='ielts-part2';state.ieltsPart2Phase='intro';state.route='ielts-practice';render();ieltsExaminerSpeak(IELTS_TEST.part2.instruction)}}
   else if(action==='scene-agent-example'){event.preventDefault();event.stopImmediatePropagation();state.sceneConfigId=el.dataset.sceneId||state.sceneConfigId||'restaurant';state.sceneAgentReady=true;state.recording=false;alignPersist();render()}
   else if(action==='restart-role'){event.preventDefault();event.stopImmediatePropagation();state.sceneAgentReady=false;state.recording=false;state.liveMode=false;state.roleConversationVisible=true;state.route='role-create';render()}
   else if(action==='agent-create-select'){event.preventDefault();event.stopImmediatePropagation();const field=el.dataset.field,value=el.dataset.value||'',answer=el.dataset.answer||value;state.agentCreateDraft[field]=value;state.agentCreateDraft.answers??={};state.agentCreateDraft.answers[field]=answer;state.agentCreateStep=Math.min(4,state.agentCreateStep+1);state.agentKeyboardOpen=false;state.agentTranscript='';render()}
@@ -634,8 +1362,26 @@ window.addEventListener('click',event=>{
   else if(action==='agent-create-confirm'){event.preventDefault();event.stopImmediatePropagation();createAgentMockPlan();state.agentCreateStatus='created';render();toast('模拟面试已创建')}
   else if(action==='scene-featured'){event.preventDefault();event.stopImmediatePropagation();const target=el.dataset.routeTarget;state.appMenuOpen=false;go(target)}
   else if(action==='scene-select'){event.preventDefault();event.stopImmediatePropagation();const sceneId=el.dataset.sceneId;const sceneMap={restaurant:'restaurant',hotel:'hotel',airport:'project'};const configId=sceneMap[sceneId]||'restaurant';state.sceneConfigId=configId;state.sceneAgentReady=true;startScenePracticeSession(configId);go('role-preview')}
+  else if(action==='ielts-select-part'){event.preventDefault();event.stopImmediatePropagation();ieltsRecStop();ieltsExaminerStop();state.ieltsExpandedBubble=null;const partId=el.dataset.partId;state.ieltsActivePart=partId;if(partId==='ielts-part1'){state.ieltsPart1Index=0;state.ieltsPart1TopicIndex=0;state.ieltsPart1Answers=[];render();ieltsTriggerExaminerSpeak()}else if(partId==='ielts-part2'){state.ieltsPart2Phase='intro';state.ieltsPart2PrepLeft=60;state.ieltsPart2SpeakLeft=120;state.ieltsPart2Notes='';render();ieltsExaminerSpeak(IELTS_TEST.part2.instruction)}else if(partId==='ielts-part3'){state.ieltsPart3Index=0;state.ieltsPart3Answers=[];render();ieltsTriggerExaminerSpeak()}}
+  else if(action==='ielts-start-full-test'){event.preventDefault();event.stopImmediatePropagation();ieltsRecStop();ieltsExaminerStop();state.ieltsExpandedBubble=null;state.ieltsActivePart='ielts-part1';state.ieltsPart1Index=0;state.ieltsPart1TopicIndex=0;state.ieltsPart1Answers=[];state.ieltsPart2Phase='';state.ieltsPart2PrepLeft=60;state.ieltsPart2SpeakLeft=120;state.ieltsPart2Notes='';state.ieltsPart3Index=0;state.ieltsPart3Answers=[];state.route='ielts-practice';render();ieltsTriggerExaminerSpeak()}
   else if(action==='open-correction-drawer'){event.preventDefault();event.stopImmediatePropagation();state.correctionDrawerOpen=true;render()}
   else if(action==='close-correction-drawer'){event.preventDefault();event.stopImmediatePropagation();state.correctionDrawerOpen=false;render()}
+  /* IELTS Part 1 */
+  else if(action==='ielts-toggle-bubble'){event.preventDefault();event.stopImmediatePropagation();const id=el.dataset.bubbleId;state.ieltsExpandedBubble=state.ieltsExpandedBubble===id?null:id;render()}
+  else if(action==='ielts-mic-toggle'){event.preventDefault();event.stopImmediatePropagation();if(!state.ieltsRecording){state.ieltsRecording=true;state.ieltsRecTimer=0;render();ieltsRecStart();toast('正在聆听，再次点击提交')}else{ieltsRecStop();const answer=ieltsCurrentMockAnswer();if(answer){const part=state.ieltsActivePart;if(part==='ielts-part1'){state.ieltsPart1Answers=[...state.ieltsPart1Answers,answer];state.ieltsPart1Index++;render();ieltsTriggerExaminerSpeak()}else if(part==='ielts-part3'){state.ieltsPart3Answers=[...state.ieltsPart3Answers,answer];state.ieltsPart3Index++;render();ieltsTriggerExaminerSpeak()}}}}
+  /* IELTS Part 2 */
+  else if(action==='ielts-part2-start'){event.preventDefault();event.stopImmediatePropagation();state.ieltsPart2Phase='prep';state.ieltsPart2PrepLeft=60;render();ieltsCountdown('prep')}
+  else if(action==='ielts-part2-finish-prep'){event.preventDefault();event.stopImmediatePropagation();state.ieltsPart2Phase='speak';state.ieltsPart2SpeakLeft=120;render();ieltsCountdown('speak')}
+  else if(action==='ielts-part2-finish-speak'){event.preventDefault();event.stopImmediatePropagation();if(ieltsTimer)clearInterval(ieltsTimer);state.ieltsPart2Phase='complete';render()}
+  else if(action==='ielts-part2-notes'){/* live notes via input event, handled separately */}
+  /* IELTS Part 3 — uses shared ielts-mic-toggle handler */
+  /* IELTS navigation */
+  else if(action==='ielts-go-next'){event.preventDefault();event.stopImmediatePropagation();ieltsRecStop();ieltsExaminerStop();state.ieltsExpandedBubble=null;const next=el.dataset.nextRoute;state.ieltsActivePart=next;if(next==='ielts-part2'){state.ieltsPart2Phase='intro';state.ieltsPart2PrepLeft=60;state.ieltsPart2SpeakLeft=120;state.ieltsPart2Notes='';render();ieltsExaminerSpeak(IELTS_TEST.part2.instruction)}else if(next==='ielts-part3'){state.ieltsPart3Index=0;state.ieltsPart3Answers=[];render();ieltsTriggerExaminerSpeak()}}
+  else if(action==='ielts-restart'){event.preventDefault();event.stopImmediatePropagation();ieltsRecStop();ieltsExaminerStop();state.ieltsExpandedBubble=null;state.ieltsActivePart='';state.ieltsPart1Index=0;state.ieltsPart1TopicIndex=0;state.ieltsPart1Answers=[];state.ieltsPart2Phase='';state.ieltsPart2Notes='';state.ieltsPart3Index=0;state.ieltsPart3Answers=[];state.ieltsCompleted=false;state.ieltsExpandedQ=null;state.ieltsRetryIndex=0;state.ieltsRetryRecording=false;state.ieltsRetryShowVersions=false;state.route='agent-chat';render()}
+  /* IELTS Report & Retry */
+  else if(action==='ielts-toggle-qcard'){event.preventDefault();event.stopImmediatePropagation();const idx=Number(el.dataset.index);state.ieltsExpandedQ=state.ieltsExpandedQ===idx?null:idx;render()}
+  else if(action==='ielts-open-retry'){event.preventDefault();event.stopImmediatePropagation();state.ieltsRetryIndex=Number(el.dataset.index);state.ieltsRetryRecording=false;state.ieltsRetryShowVersions=false;state.route='ielts-retry';render()}
+  else if(action==='ielts-retry-record'){event.preventDefault();event.stopImmediatePropagation();if(!state.ieltsRetryRecording){state.ieltsRetryRecording=true;render();toast('Recording your answer...')}else{state.ieltsRetryRecording=false;const idx=state.ieltsRetryIndex;const mock=IELTS_RETRY_MOCKS[idx%IELTS_RETRY_MOCKS.length];const retryKey='ieltsRetry_'+idx;if(!state[retryKey])state[retryKey]=[];state[retryKey].push({time:'just now',transcript:mock.transcript});state.ieltsRetryShowVersions=true;render();toast('New version saved! Original answer preserved.')}}
   else if(action==='agent-cycle'){event.preventDefault();event.stopImmediatePropagation();if(state.agentVoiceState==='idle'){state.agentIntent='';state.agentOperation='';state.agentTranscript='';state.agentVoiceMuted=false;state.agentDictating=false;state.agentVoiceState='listening'}render()}
   else if(action==='agent-voice-enter-interview'){event.preventDefault();event.stopImmediatePropagation();createAgentMockPlan();state.agentVoiceState='idle';state.agentVoiceMuted=false;state.activeInterviewer=0;state.practiceSelection={type:'full',specialtyId:null};alignStartSession()}
   else if(action==='agent-voice-mute'){event.preventDefault();event.stopImmediatePropagation();state.agentVoiceMuted=!state.agentVoiceMuted;render();toast(state.agentVoiceMuted?'麦克风已关闭':'麦克风已打开')}
@@ -645,7 +1391,7 @@ window.addEventListener('click',event=>{
   else if(action==='agent-edit-draft'){event.preventDefault();event.stopImmediatePropagation();state.route='create-plan';render()}
   else if(action==='toggle-agent-feedback'){event.preventDefault();event.stopImmediatePropagation();state.agentFeedbackOpen=!state.agentFeedbackOpen;render()}
   else if(action==='agent-more'){event.preventDefault();event.stopImmediatePropagation();toast('更多选项：切换音色、字幕与语速')}
-  else if(action==='agent-exit'){event.preventDefault();event.stopImmediatePropagation();state.agentVoiceState='idle';state.agentVoiceMuted=false;state.agentDictating=false;state.agentIntent='';state.agentOperation='';state.agentKeyboardOpen=false;render();toast('对话已保存')}
+  else if(action==='agent-exit'){event.preventDefault();event.stopImmediatePropagation();state.agentVoiceState='idle';state.agentVoiceMuted=false;state.agentDictating=false;state.agentIntent='';state.agentOperation='';state.agentKeyboardOpen=false;state.agentSceneVoiceMock=null;state.agentSceneTitle='';render();toast('对话已保存')}
   else if(action==='toggle-role-conversation'){event.preventDefault();event.stopImmediatePropagation();state.roleConversationVisible=!state.roleConversationVisible;render()}
   else if(action==='role-replay'){event.preventDefault();event.stopImmediatePropagation();toast(`正在重听 ${sceneConfig().partner} 的上一句话`)}
   else if(action==='role-talk'){event.preventDefault();event.stopImmediatePropagation();const session=currentSceneSession();if(!session)return;const config=sceneConfig(session);if(!state.recording){state.recording=true;state.roleFeedbackVisible=false;state.roleConversationVisible=false;render();toast('正在聆听，再次点击提交')}else{const index=Math.min(session.currentTurn,config.questions.length-1),answer=config.answers[index],suggestion=config.id==='restaurant'&&index===0?'would like 后面补上 to':'';session.turns.push({index,label:config.labels[index],question:config.questions[index],answer,suggestion});session.currentTurn+=1;state.roleChatTranscript=answer;state.recording=false;state.bubbleMode=false;if(session.currentTurn>=config.questions.length){finalizeScenePractice('completed');state.roleFeedbackVisible=false;state.roleConversationVisible=true;state.route='role-complete';render();toast('四轮场景练习已完成')}else{state.roleFeedbackVisible=true;state.roleConversationVisible=true;render();toast(`已完成第 ${session.currentTurn} / ${config.questions.length} 轮`)}}}
@@ -655,6 +1401,11 @@ window.addEventListener('click',event=>{
 },true);
 window.addEventListener('input',event=>{if(event.target.matches('[data-role-chat-transcript]'))state.roleChatTranscript=event.target.value},true);
 window.addEventListener('input',event=>{if(event.target.matches('[data-agent-transcript]'))state.agentTranscript=event.target.value},true);
+window.addEventListener('input',event=>{if(event.target.matches('[data-action="ielts-part2-notes"]'))state.ieltsPart2Notes=event.target.value},true);
+window.addEventListener('input',event=>{if(event.target.matches('[data-mi-job-name]'))state.miJobName=event.target.value},true);
+window.addEventListener('input',event=>{if(event.target.matches('[data-mi-jd-text]'))state.miJdText=event.target.value},true);
+window.addEventListener('input',event=>{if(event.target.matches('[data-mi-extra-req]'))state.miExtraReq=event.target.value},true);
+window.addEventListener('input',event=>{if(event.target.matches('[data-mi-resume-text]'))state.miResumeText=event.target.value},true);
 
 function alignedCandidateAsResumes(){
   const prevReturn=state.resumeReturnRoute;
@@ -673,10 +1424,12 @@ render=function(){
   if(state.route==='auth')state.route='create-hub';
   if(state.route==='sessions'){state.route='home';state.reportFromHistory=false}
   originalRender();
-  S.classList.toggle('agent-canvas',state.route==='agent-chat');
-  S.classList.toggle('has-app-menu',['agent-chat','home','profile'].includes(state.route)&&!(state.route==='agent-chat'&&state.agentVoiceState!=='idle'));
+  S.classList.toggle('agent-canvas',state.route==='agent-chat'||state.route==='ielts-practice'||state.route==='ielts-report'||state.route==='ielts-retry'||state.route==='ielts-cards'||state.route==='manual-interview'||state.route==='scene-grid-daily'||state.route==='scene-grid-workplace');
+  S.classList.toggle('has-app-menu',['agent-chat','home','profile','ielts-practice'].includes(state.route)&&!(state.route==='agent-chat'&&state.agentVoiceState!=='idle'));
   const createThread=S.querySelector('.agent-create-thread');
   if(createThread)requestAnimationFrame(()=>{createThread.scrollTop=createThread.scrollHeight});
+  const ieltsBubbles=S.querySelector('.ielts-bubbles');
+  if(ieltsBubbles)requestAnimationFrame(()=>{ieltsBubbles.scrollTop=ieltsBubbles.scrollHeight});
 };
 
 const originalGo=go;
