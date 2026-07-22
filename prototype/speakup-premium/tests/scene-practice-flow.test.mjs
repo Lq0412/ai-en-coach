@@ -16,9 +16,9 @@ test('场景练习从 SpeakUp 首页作为 Agent 指令进入',()=>{
 
 test('场景创建收敛为一句话描述而不是五步角色问卷',()=>{
   const flow=panel.slice(panel.indexOf('roleCreate=function()'),panel.indexOf('roleGenerating=function()'));
-  assert.match(flow,/告诉我你想练习的英语场景/);
+  assert.match(flow,/告诉我下一场重要的英文沟通/);
   assert.match(panel,/request:'我想练习在英文餐厅点餐/);
-  assert.match(panel,/request:'我想练习和海外同事讨论项目/);
+  assert.match(panel,/request:'下周我要和海外客户开项目进度会/);
   assert.match(panel,/request:'我想练习入住酒店并询问设施/);
   assert.match(flow,/data-scene-id=/);
   assert.match(flow,/data-action="scene-agent-example"/);
@@ -29,11 +29,11 @@ test('场景创建收敛为一句话描述而不是五步角色问卷',()=>{
 
 test('场景确认使用整页场景卡，突出角色、开场白和开始入口',()=>{
   const confirm=panel.slice(panel.indexOf('rolePreview=function()'),panel.indexOf('function alignedRoleConversation'));
-  assert.match(confirm,/场景确认/);
+  assert.match(confirm,/准备方案/);
   assert.match(confirm,/config\.title/);
   assert.match(confirm,/scene-confirm-card/);
   assert.match(confirm,/config\.partner/);
-  assert.match(confirm,/练习目标/);
+  assert.match(confirm,/本次目标/);
   assert.match(confirm,/config\.level/);
   assert.match(confirm,/config\.duration/);
   assert.match(confirm,/data-action="role-start-chat"/);
@@ -85,7 +85,7 @@ test('场景练习使用独立 Session，不覆盖模拟面试计划状态',()=>
 test('场景练习按四轮推进并写入练习记录',()=>{
   assert.match(panel,/const SCENE_CONFIGS=\{/);
   assert.match(panel,/restaurant:\{[^}]*title:'英文餐厅点餐'/s);
-  assert.match(panel,/project:\{[^}]*title:'海外项目沟通'/s);
+  assert.match(panel,/project:\{[^}]*title:'海外客户进度会'/s);
   assert.match(panel,/hotel:\{[^}]*title:'酒店入住沟通'/s);
   assert.match(panel,/session\.currentTurn\+=1/);
   assert.match(panel,/session\.currentTurn>=config\.questions\.length/);
