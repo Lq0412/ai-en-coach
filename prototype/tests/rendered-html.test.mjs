@@ -23,11 +23,14 @@ async function readActivePrototype() {
   ]);
 }
 
-test("renders the current SpeakUp prototype shell", async () => {
+test("renders the SpeakUp portal with a path into the current prototype", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   const html = await response.text();
-  assert.match(html, /SpeakUp 产品原型/);
+  assert.match(html, /AI 英文模拟面试/);
+  assert.match(html, /下一场英文面试/);
+  assert.match(html, /职业上下文连续/);
+  assert.match(html, /昨天那场面试怎么样/);
   assert.match(html, /pages\/prototype\.html/);
 });
 
