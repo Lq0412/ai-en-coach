@@ -213,11 +213,29 @@ h2 {
 }
 
 .hero-subtitle {
-  max-width: 700px;
+  max-width: 830px;
   margin: 34px auto 28px;
-  color: var(--muted);
-  font-size: clamp(17px, 1.6vw, 22px);
-  line-height: 1.65;
+  color: rgba(26, 26, 26, 0.78);
+  font-size: clamp(19px, 1.75vw, 25px);
+  font-weight: 450;
+  line-height: 1.55;
+}
+
+.hero-scenario-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin: 0 auto 28px;
+}
+
+.hero-scenario-links a {
+  padding: 8px 14px;
+  border: 1.5px solid var(--ink);
+  border-radius: 999px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .hero-note {
@@ -636,7 +654,9 @@ h2 {
 }
 
 .comparison-section,
+.journey-section,
 .features-section,
+.scenario-proof-section,
 .principles-section,
 .use-cases-section {
   padding: 132px max(24px, calc((100% - 1240px) / 2));
@@ -732,98 +752,282 @@ h2 {
   color: var(--fathom);
 }
 
-.features-section {
-  padding-top: 132px;
-}
-
-.feature-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
-  margin-top: 64px;
-}
-
-.feature-card {
-  display: flex;
-  flex-direction: column;
-  min-height: 700px;
+.journey-section {
+  margin: 0 24px;
   border: 2px solid var(--ink);
-  border-radius: 44px;
-  overflow: hidden;
+  border-radius: 64px;
+  background: var(--dawn);
 }
 
-.feature-card:nth-child(1) { background: var(--glow); }
-.feature-card:nth-child(2) { background: var(--fathom); color: var(--lumen); }
-.feature-card:nth-child(3) { background: var(--dawn); }
-.feature-card:nth-child(4) { background: var(--lumen-dark); }
-
-.feature-card-copy {
-  min-height: 270px;
-  padding: 34px;
+.journey-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-top: 64px;
+  border-top: 2px solid var(--ink);
+  border-bottom: 2px solid var(--ink);
 }
 
-.feature-card-meta {
+.journey-card {
+  display: flex;
+  min-height: 330px;
+  flex-direction: column;
+  padding: 28px 24px;
+  border-right: 2px solid var(--ink);
+}
+
+.journey-card:last-child {
+  border-right: 0;
+}
+
+.journey-meta {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  gap: 16px;
-  margin-bottom: 28px;
+  gap: 12px;
   font-size: 12px;
   font-weight: 750;
 }
 
-.feature-card-meta em {
-  padding: 6px 9px;
-  border: 1.5px solid currentColor;
+.journey-meta em {
+  font-style: normal;
+}
+
+.journey-card h3 {
+  margin-top: 46px;
+  font-family: "Songti SC", STSong, Georgia, serif;
+  font-size: 36px;
+  font-weight: 400;
+  letter-spacing: -0.04em;
+}
+
+.journey-card p {
+  margin-top: 16px;
+  color: rgba(26, 26, 26, 0.7);
+  line-height: 1.65;
+}
+
+.journey-card > a {
+  margin-top: auto;
+  padding-top: 26px;
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 750;
+  text-decoration: underline;
+  text-underline-offset: 5px;
+}
+
+.features-section {
+  padding-top: 132px;
+}
+
+.demo-sequence {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  height: 624px;
+  margin-top: 56px;
+  border-top: 2px solid var(--ink);
+  border-bottom: 2px solid var(--ink);
+  background: var(--paper);
+  transition: background-color 180ms ease;
+}
+
+.demo-tone-1 { background: var(--glow); }
+.demo-tone-2 { background: var(--lumen-dark); }
+.demo-tone-3 { background: var(--dawn); }
+.demo-tone-4 { background: var(--lumen); }
+
+.demo-step-list {
+  display: grid;
+  grid-template-rows: repeat(4, minmax(0, 1fr));
+  min-height: 0;
+  border-right: 2px solid var(--ink);
+}
+
+.demo-step {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  gap: 7px;
+  padding: 16px 20px;
+  border: 0;
+  border-bottom: 1px solid rgba(26, 26, 26, 0.28);
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.demo-step:last-child { border-bottom: 0; }
+.demo-step[aria-selected="true"] { background: rgba(255, 255, 255, 0.62); }
+
+.demo-step > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  font-size: 11px;
+}
+
+.demo-step > span b { font-weight: 800; }
+.demo-step > span em { font-style: normal; font-weight: 750; }
+
+.demo-step > strong {
+  font-family: "Songti SC", STSong, Georgia, serif;
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1.18;
+  letter-spacing: -0.035em;
+}
+
+.demo-step > small {
+  height: 38px;
+  overflow: hidden;
+  color: rgba(26, 26, 26, 0.7);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.demo-step[aria-selected="false"] > small { visibility: hidden; }
+
+.demo-step:focus-visible {
+  outline: 3px solid var(--fathom);
+  outline-offset: -4px;
+}
+
+.demo-stage {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 16px;
+  height: 620px;
+  padding: 22px;
+}
+
+.demo-stage > header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-height: 28px;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.demo-stage > header em {
+  padding: 5px 8px;
+  border: 1px solid currentColor;
   border-radius: 999px;
   font-style: normal;
 }
 
-.feature-card h3 {
-  font-family: "Songti SC", STSong, Georgia, serif;
-  font-size: 36px;
-  font-weight: 400;
-  line-height: 1.1;
-  letter-spacing: -0.04em;
+.demo-stage > header a {
+  margin-left: auto;
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 4px;
 }
 
-.feature-card-copy p {
-  margin-top: 18px;
-  color: currentColor;
-  line-height: 1.7;
-  opacity: 0.72;
-}
-
-.feature-shot {
+.demo-stage-frame {
   flex: 1;
-  margin: 0 20px -2px;
-  padding: 10px 10px 0;
+  min-height: 0;
+  padding: 10px;
   border: 2px solid var(--ink);
-  border-bottom: 0;
-  border-radius: 34px 34px 0 0;
+  border-radius: 28px;
   background: var(--paper);
   overflow: hidden;
 }
 
-.feature-card:nth-child(2) .feature-shot {
-  border-color: var(--lumen);
-}
-
-.feature-shot img {
+.demo-stage-frame img {
   width: 100%;
   height: 100%;
-  max-height: 430px;
+  border-radius: 19px;
+  object-fit: cover;
+  object-position: center 16%;
+}
+
+.demo-tone-2 .demo-stage-frame img { object-position: center top; }
+.demo-tone-3 .demo-stage-frame img { object-position: center 17%; }
+.demo-tone-4 .demo-stage-frame img { object-position: center 52%; }
+
+.scenario-proof-section {
+  padding-top: 80px;
+}
+
+.scenario-proof-list {
+  margin-top: 72px;
+  border-bottom: 2px solid var(--ink);
+}
+
+.scenario-proof-card {
+  display: grid;
+  grid-template-columns: minmax(290px, 0.78fr) minmax(0, 1.22fr);
+  gap: 56px;
+  align-items: center;
+  padding: 46px 0;
+  border-top: 2px solid var(--ink);
+}
+
+.scenario-proof-card:nth-child(even) .scenario-proof-copy { order: 2; }
+.scenario-proof-card:nth-child(even) .scenario-proof-shot { order: 1; }
+
+.scenario-proof-copy > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.scenario-proof-copy > div em {
+  font-style: normal;
+}
+
+.scenario-proof-copy h3 {
+  margin-top: 42px;
+  font-family: "Songti SC", STSong, Georgia, serif;
+  font-size: clamp(38px, 3.7vw, 54px);
+  font-weight: 400;
+  line-height: 1.08;
+  letter-spacing: -0.045em;
+}
+
+.scenario-proof-copy > p {
+  margin-top: 22px;
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1.7;
+}
+
+.scenario-proof-copy > a {
+  display: inline-block;
+  margin-top: 28px;
+  color: var(--fathom);
+  font-size: 14px;
+  font-weight: 750;
+  text-decoration: underline;
+  text-underline-offset: 5px;
+}
+
+.scenario-proof-shot {
+  height: 560px;
+  padding: 10px;
+  border: 2px solid var(--ink);
+  border-radius: 38px;
+  background: var(--paper);
+  overflow: hidden;
+}
+
+.scenario-proof-shot img {
+  width: 100%;
+  height: 100%;
+  border-radius: 29px;
   object-fit: cover;
   object-position: top;
-  border-radius: 25px 25px 0 0;
 }
 
-.feature-card:nth-child(4) .feature-shot img {
-  object-position: center 48%;
-}
+.scenario-proof-card:nth-child(1) .scenario-proof-shot img { object-position: center 14%; }
+.scenario-proof-card:nth-child(2) .scenario-proof-shot img { object-position: center 18%; }
+.scenario-proof-card:nth-child(3) .scenario-proof-shot img { object-position: center 16%; }
 
 .principles-section {
-  padding-top: 80px;
+  padding-top: 96px;
 }
 
 .principle-grid {
@@ -1117,9 +1321,29 @@ footer > span {
   }
 
   .comparison-grid,
-  .feature-grid,
   .principle-grid {
     grid-template-columns: 1fr;
+  }
+
+  .journey-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .journey-card:nth-child(2) {
+    border-right: 0;
+  }
+
+  .journey-card:nth-child(-n+2) {
+    border-bottom: 2px solid var(--ink);
+  }
+
+  .scenario-proof-card {
+    grid-template-columns: 1fr;
+  }
+
+  .scenario-proof-card:nth-child(even) .scenario-proof-copy,
+  .scenario-proof-card:nth-child(even) .scenario-proof-shot {
+    order: initial;
   }
 
   .principle-grid {
@@ -1130,16 +1354,14 @@ footer > span {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .feature-card {
-    min-height: 620px;
+  .demo-sequence { grid-template-columns: 280px minmax(0, 1fr); }
+
+  .scenario-proof-card {
+    gap: 32px;
   }
 
-  .feature-card-copy {
-    min-height: 0;
-  }
-
-  .feature-shot img {
-    max-height: 500px;
+  .scenario-proof-shot {
+    height: 620px;
   }
 
   .context-copy {
@@ -1198,7 +1420,20 @@ footer > span {
   }
 
   .hero-subtitle {
-    font-size: 16px;
+    color: rgba(26, 26, 26, 0.82);
+    font-size: 18px;
+    line-height: 1.55;
+  }
+
+  .hero-scenario-links {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .hero-scenario-links a {
+    padding: 9px 10px;
+    text-align: center;
   }
 
   .button-group .button {
@@ -1253,7 +1488,9 @@ footer > span {
 
   .dark-section,
   .comparison-section,
+  .journey-section,
   .features-section,
+  .scenario-proof-section,
   .principles-section,
   .use-cases-section,
   .context-section,
@@ -1298,7 +1535,9 @@ footer > span {
   }
 
   .comparison-section,
+  .journey-section,
   .features-section,
+  .scenario-proof-section,
   .principles-section,
   .use-cases-section {
     padding-top: 90px;
@@ -1308,6 +1547,34 @@ footer > span {
   .use-cases-section {
     margin: 0 14px 86px;
     border-radius: 38px;
+  }
+
+  .journey-section {
+    margin: 0 14px;
+    border-radius: 38px;
+  }
+
+  .journey-grid {
+    grid-template-columns: 1fr;
+    margin-top: 44px;
+  }
+
+  .journey-card,
+  .journey-card:nth-child(2),
+  .journey-card:nth-child(-n+2) {
+    min-height: 0;
+    padding: 26px 6px;
+    border-right: 0;
+    border-bottom: 2px solid var(--ink);
+  }
+
+  .journey-card:last-child {
+    border-bottom: 0;
+  }
+
+  .journey-card h3 {
+    margin-top: 24px;
+    font-size: 34px;
   }
 
   .principle-grid {
@@ -1328,17 +1595,67 @@ footer > span {
     flex-direction: column;
   }
 
-  .feature-card {
-    min-height: 570px;
-    border-radius: 32px;
+  .demo-sequence {
+    grid-template-columns: 1fr;
+    height: 655px;
+    margin-top: 44px;
   }
 
-  .feature-card-copy {
-    padding: 28px;
+  .demo-step-list {
+    display: flex;
+    min-height: 183px;
+    height: 183px;
+    flex: 0 0 183px;
+    overflow-x: auto;
+    border-right: 0;
+    border-bottom: 2px solid var(--ink);
+    scroll-snap-type: x mandatory;
+    scrollbar-width: none;
   }
 
-  .feature-card h3 {
-    font-size: 32px;
+  .demo-step-list::-webkit-scrollbar { display: none; }
+
+  .demo-step {
+    flex: 0 0 76%;
+    height: 181px;
+    min-height: 181px;
+    gap: 9px;
+    padding: 17px 18px;
+    border-right: 1px solid rgba(26, 26, 26, 0.28);
+    border-bottom: 0;
+    scroll-snap-align: start;
+  }
+
+  .demo-step:last-child { border-right: 0; }
+  .demo-step > strong { font-size: 21px; }
+
+  .demo-stage {
+    height: 470px;
+    padding: 14px 0 0;
+  }
+
+  .demo-stage > header { padding: 0 4px; }
+  .demo-stage > header em { display: none; }
+  .demo-stage-frame { border-radius: 26px; }
+  .demo-stage-frame img { border-radius: 17px; }
+
+  .scenario-proof-card {
+    gap: 26px;
+    padding: 40px 0;
+  }
+
+  .scenario-proof-copy h3 {
+    margin-top: 28px;
+    font-size: 36px;
+  }
+
+  .scenario-proof-shot {
+    height: 480px;
+    border-radius: 28px;
+  }
+
+  .scenario-proof-shot img {
+    border-radius: 20px;
   }
 
   .context-shot {

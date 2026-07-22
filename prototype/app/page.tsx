@@ -1,25 +1,69 @@
+import InterviewDemo from "./InterviewDemo";
+
 const prototypeHref = "/pages/prototype.html";
 
-const taskExamples = [
+const journeyStages = [
   {
+    index: "01",
+    stage: "考出去",
+    type: "雅思口语",
+    copy: "按 Part 1、2、3 的真实结构限时作答，从逐句证据回到同题复练。",
+    action: "开始 Part 2 模拟",
+    href: `${prototypeHref}#ielts-part2-practice`,
+  },
+  {
+    index: "02",
+    stage: "面进去",
     type: "英文面试",
-    copy: "我下周要面试这家公司。",
-    detail: "结合 JD、简历和项目经历，完成多轮追问与复练。",
+    copy: "结合 JD、简历和项目经历，生成多轮面试计划并持续压力追问。",
+    action: "生成面试方案",
+    href: `${prototypeHref}#portal-interview-start`,
   },
   {
-    type: "客户沟通",
-    copy: "明天我要向客户解释延期。",
-    detail: "先讲清现状，再回应质疑并准备补救方案。",
+    index: "03",
+    stage: "活下来",
+    type: "海外日常",
+    copy: "把下一件要办的事直接告诉 Agent。它会识别对方、目标和不能遗漏的信息，再接管角色追问。",
+    action: "告诉 Agent 一件事",
+    href: `${prototypeHref}#daily-doctor-brief`,
   },
   {
-    type: "会议表达",
-    copy: "这场会议上我要反对老板的方案。",
-    detail: "提出不同意见，解释依据，并推动下一步决策。",
+    index: "04",
+    stage: "发展好",
+    type: "国际职场",
+    copy: "先拿到能直接使用的表达，再排练客户、会议和绩效沟通中的追问。",
+    action: "准备客户会议",
+    href: `${prototypeHref}#workplace-client-brief`,
+  },
+];
+
+const scenarioProofs = [
+  {
+    type: "雅思口语",
+    title: "不只给一个分数，而是保留每一句回答的证据。",
+    copy: "题卡、计时、转写和逐句建议在同一页完成，用户可以直接回到同一道题继续说。",
+    image: "/assets/portal-shots/portal-ielts-part2.jpg",
+    alt: "SpeakUp IELTS Part 2 限时作答与逐句反馈界面",
+    href: `${prototypeHref}#ielts-part2-practice`,
+    action: "查看雅思口语 Mock",
   },
   {
-    type: "绩效沟通",
-    copy: "我要和海外主管谈绩效。",
-    detail: "围绕贡献、反馈和职业发展进行关键对话。",
+    type: "海外日常",
+    title: "不需要创建“场景”，把眼前的事直接告诉 Agent。",
+    copy: "SpeakUp 会从自然语言里识别人物、目标和限制条件，先给出能直接使用的表达，再接管角色进行追问。",
+    image: "/assets/portal-shots/portal-daily-doctor.jpg",
+    alt: "SpeakUp 从自然语言中理解海外就医任务并给出可直接使用的表达",
+    href: `${prototypeHref}#daily-doctor-brief`,
+    action: "看看 Agent 如何接住就医任务",
+  },
+  {
+    type: "国际职场",
+    title: "先拿到可直接使用的表达，再进入客户压力追问。",
+    copy: "结合项目背景、客户关注点和承诺边界，先准备表达，再模拟对方最可能提出的质疑。",
+    image: "/assets/portal-shots/portal-workplace-client.jpg",
+    alt: "SpeakUp 海外客户延期沟通准备与压力排练方案",
+    href: `${prototypeHref}#workplace-client-brief`,
+    action: "查看工作沟通 Mock",
   },
 ];
 
@@ -31,30 +75,38 @@ const productFeatures = [
     image: "/assets/portal-shots/portal-interview-start.jpg",
     alt: "SpeakUp 根据后端开发工程师 JD 和简历生成四轮一对一面试计划",
     status: "提出任务",
+    href: `${prototypeHref}#portal-interview-start`,
+    action: "查看任务理解",
   },
   {
     index: "02",
-    title: "进入一对一压力排练",
-    copy: "围绕同一份岗位与项目经历持续追问，在语音回答中暴露真正容易卡住的技术表达。",
-    image: "/assets/portal-shots/portal-interview-practice.jpg",
-    alt: "SpeakUp 角色化英文面试连续追问界面",
-    status: "语音排练",
+    title: "单面之外，也能应对多人连续追问",
+    copy: "三位面试官共享同一份 JD、简历与回答上下文，下一位会沿着刚才的回答继续深挖。",
+    image: "/assets/portal-shots/portal-panel-practice.jpg",
+    alt: "SpeakUp 多面试官模拟中三位面试官根据同一段回答连续追问",
+    status: "单面 / 群面",
+    href: `${prototypeHref}#portal-panel-practice`,
+    action: "体验多面试官模拟",
   },
   {
     index: "03",
-    title: "用回答证据决定下一次练什么",
-    copy: "逐题保留原回答、转写、诊断和改进目标，并从同一道问题开始下一次复练。",
+    title: "练完以后，Agent 直接告诉你下一步",
+    copy: "不是把用户丢进一份长报告。SpeakUp 会判断最值得先改的一点、说明依据，并直接发起下一轮追问。",
     image: "/assets/portal-shots/portal-evidence-report.jpg",
-    alt: "SpeakUp 英文沟通练后报告界面",
-    status: "报告复练",
+    alt: "SpeakUp 在面试结束后给出一条优先级明确的精简建议",
+    status: "即时建议",
+    href: `${prototypeHref}#portal-agent-debrief`,
+    action: "查看 Agent 建议",
   },
   {
     index: "04",
-    title: "回来时，直接从上次继续",
-    copy: "SpeakUp 会在普通对话中引用上次卡点和已经改善的地方，并据此改变下一轮练习重点。",
+    title: "它记得的，是你的目标和能力变化",
+    copy: "Memory 会持续记住岗位、真实项目、反复卡点和已经改善的能力，并据此重新排序下一轮重点。",
     image: "/assets/portal-shots/portal-memory-chat.jpg",
-    alt: "SpeakUp 在普通对话中引用过往练习证据并安排下一轮重点",
-    status: "继续推进",
+    alt: "SpeakUp Memory 在对话中使用长期目标、真实项目、重复卡点与能力变化",
+    status: "Memory 驱动",
+    href: `${prototypeHref}#career-context`,
+    action: "查看 Memory 如何工作",
   },
 ];
 
@@ -66,8 +118,8 @@ const productPrinciples = [
   },
   {
     index: "02",
-    title: "不用每次从头解释",
-    copy: "SpeakUp 会在后续对话里引用已经确认的岗位、经历、卡点和改善，不让每次练习重新开始。",
+    title: "Memory 记住成长轨迹",
+    copy: "不只是聊天历史。SpeakUp 记得你要面对谁、用过哪些真实经历、哪些能力反复卡住、哪些已经改善。",
   },
   {
     index: "03",
@@ -93,36 +145,42 @@ export default function Home() {
           <span>SpeakUp</span>
         </a>
         <div className="nav-links">
+          <a href="#use-cases">适用任务</a>
           <a href="#demo">完整演示</a>
           <a href="#how-it-works">产品方式</a>
-          <a href="#use-cases">适用场景</a>
         </div>
-        <a className="button button-small" href={prototypeHref} target="_blank" rel="noreferrer">
-          体验模拟面试
+        <a className="button button-small" href={`${prototypeHref}#agent-chat`} target="_blank" rel="noreferrer">
+          体验 SpeakUp
         </a>
       </nav>
 
       <header className="hero" id="top">
         <div className="hero-copy">
-          <p className="eyebrow">你的职业英语联系人</p>
+          <p className="eyebrow">面向真实任务的英语沟通 Agent</p>
           <h1>
             <span className="headline-muted">下一场重要的英文沟通，</span>
             <br />
-            先和 SpeakUp 说一遍。
+            先和 SpeakUp 练一遍。
           </h1>
           <p className="hero-subtitle">
-            带着明天的面试、客户会议或绩效沟通来。SpeakUp 结合你的职业背景，
-            先帮你准备能直接使用的表达，需要时模拟追问，事情结束后继续复盘。
+            说出你接下来要面对什么，SpeakUp 会结合目标、经历和过往练习，帮你准备、排练和复盘。
           </p>
+          <div className="hero-scenario-links" aria-label="选择想准备的英语任务">
+            {journeyStages.map((item) => (
+              <a key={item.type} href={item.href} target="_blank" rel="noreferrer" data-scenario={item.type}>
+                {item.type}
+              </a>
+            ))}
+          </div>
           <div className="button-group">
-            <a className="button" href={prototypeHref} target="_blank" rel="noreferrer">
-              体验模拟面试 <span aria-hidden="true">↗</span>
+            <a className="button" href={`${prototypeHref}#agent-chat`} target="_blank" rel="noreferrer">
+              告诉 SpeakUp 我要面对什么 <span aria-hidden="true">↗</span>
             </a>
-            <a className="button button-secondary" href="#demo">
-              查看完整演示
+            <a className="button button-secondary" href="#use-cases">
+              查看四类任务
             </a>
           </div>
-          <p className="hero-note">完整案例：后端开发工程师英文面试</p>
+          <p className="hero-note">当前完整演示：后端开发工程师英文面试</p>
         </div>
 
         <div className="hero-product" aria-label="SpeakUp 后端开发工程师模拟面试示例">
@@ -136,10 +194,10 @@ export default function Home() {
               </div>
               <span>0:16</span>
             </div>
-            <p className="demo-answer">收到。我会先按常见的一对一流程，结合岗位要求和你的项目经历安排练习。</p>
+            <p className="demo-answer">收到。我会结合岗位要求和项目经历，先确认单面或群面，再安排对应的连续追问。</p>
             <div className="instant-feedback">
               <span>完整流程</span>
-              <p><strong>确认任务</strong> → 一对一排练 → 证据复盘 → 从上次继续</p>
+              <p><strong>确认任务</strong> → 单面 / 群面 → Agent 建议 → Memory 调整</p>
             </div>
           </div>
           <div className="hero-phone">
@@ -149,27 +207,58 @@ export default function Home() {
             />
           </div>
           <span className="floating-chip chip-top">岗位与经历</span>
-          <span className="floating-chip chip-bottom">先从一对一开始</span>
+          <span className="floating-chip chip-bottom">单面 / 群面可选</span>
         </div>
       </header>
+
+      <section className="journey-section" id="use-cases">
+        <div className="section-intro dark-copy">
+          <p className="eyebrow">从任何阶段开始</p>
+          <h2>考出去、面进去、活下来，<br />再到真正发展好。</h2>
+          <p>四类任务共用同一个 SpeakUp：先理解下一件要发生的事，再准备、排练、复盘，并把结果带到下一次。</p>
+        </div>
+        <div className="journey-grid" aria-label="SpeakUp 覆盖的四类真实英语任务">
+          {journeyStages.map((item) => (
+            <article className="journey-card" key={item.type}>
+              <div className="journey-meta"><span>{item.index}</span><em>{item.stage}</em></div>
+              <h3>{item.type}</h3>
+              <p>{item.copy}</p>
+              <a href={item.href} target="_blank" rel="noreferrer" data-scenario={item.type}>
+                {item.action} <span aria-hidden="true">↗</span>
+              </a>
+            </article>
+          ))}
+        </div>
+      </section>
 
       <section className="features-section" id="demo">
         <div className="section-intro dark-copy">
           <p className="eyebrow">完整演示 · 后端开发工程师英文面试</p>
-          <h2>说出任务、练一遍、看证据，<br />再从上次继续。</h2>
-          <p>四个界面属于同一位候选人和同一个目标岗位，完整展示 SpeakUp 如何让一次练习继续服务下一次表现。</p>
+          <h2>一次面试任务，<br />看见 Agent 的四种能力。</h2>
+          <p>从理解任务到单面 / 多面试官模拟，再到即时建议和长期 Memory；四步共用同一位候选人与同一个目标岗位。</p>
         </div>
+        <InterviewDemo features={productFeatures} />
+      </section>
 
-        <div className="feature-grid">
-          {productFeatures.map((feature) => (
-            <article className="feature-card" key={feature.index}>
-              <div className="feature-card-copy">
-                <div className="feature-card-meta"><span>{feature.index}</span><em>{feature.status}</em></div>
-                <h3>{feature.title}</h3>
-                <p>{feature.copy}</p>
+      <section className="scenario-proof-section">
+        <div className="section-intro dark-copy">
+          <p className="eyebrow">不只是一场英文面试</p>
+          <h2>同一个 Agent，<br />接住不同的真实任务。</h2>
+          <p>结构化考试可以进入专门训练；生活与工作不要求用户先创建场景，只需把事情说出来，SpeakUp 负责理解背景、整理表达并模拟对方。</p>
+        </div>
+        <div className="scenario-proof-list">
+          {scenarioProofs.map((proof, index) => (
+            <article className="scenario-proof-card" key={proof.type}>
+              <div className="scenario-proof-copy">
+                <div><span>{String(index + 1).padStart(2, "0")}</span><em>{proof.type}</em></div>
+                <h3>{proof.title}</h3>
+                <p>{proof.copy}</p>
+                <a href={proof.href} target="_blank" rel="noreferrer" data-scenario={proof.type}>
+                  {proof.action} <span aria-hidden="true">↗</span>
+                </a>
               </div>
-              <div className="feature-shot">
-                <img src={feature.image} alt={feature.alt} />
+              <div className="scenario-proof-shot">
+                <img src={proof.image} alt={proof.alt} />
               </div>
             </article>
           ))}
@@ -178,7 +267,7 @@ export default function Home() {
 
       <section className="principles-section" id="how-it-works">
         <div className="section-intro centered dark-copy">
-          <p className="eyebrow">它不只是一次模拟</p>
+          <p className="eyebrow">四类任务，共用同一个 SpeakUp</p>
           <h2>围绕真实任务，<br />形成<em>长期进步</em>。</h2>
           <p>一次练习的内容会继续服务下一次准备，而不是在对话关闭后消失。</p>
         </div>
@@ -193,36 +282,19 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="use-cases-section" id="use-cases">
-        <div className="section-intro dark-copy">
-          <p className="eyebrow">不只用于面试</p>
-          <h2>下一场重要沟通，<br />都可以从这里开始。</h2>
-          <p>模拟面试提供从准备到复练的完整流程；同样的任务准备方式，也适用于客户、会议和绩效沟通。</p>
-        </div>
-        <div className="task-examples" aria-label="SpeakUp 可以帮助准备的真实任务">
-          {taskExamples.map((task) => (
-            <article className="task-example" key={task.type}>
-              <div className="task-example-meta"><span>{task.type}</span></div>
-              <p>“{task.copy}”</p>
-              <small>{task.detail}</small>
-            </article>
-          ))}
-        </div>
-      </section>
-
       <section className="final-cta">
-        <p className="eyebrow eyebrow-light">从下一场英文面试开始</p>
-        <h2>上传岗位和经历，<br />开始第一轮模拟。</h2>
-        <p>先完成一场后端开发工程师模拟面试，再让 SpeakUp 在下一次沟通中接着帮助你。</p>
+        <p className="eyebrow eyebrow-light">从下一件必须说清楚的事开始</p>
+        <h2>告诉 SpeakUp，<br />接下来要面对什么。</h2>
+        <p>可以是一场雅思口语考试、英文面试，也可以是海外生活和工作里马上要发生的关键沟通。</p>
         <div className="button-group">
-          <a className="button" href={prototypeHref} target="_blank" rel="noreferrer">开始模拟面试 ↗</a>
+          <a className="button" href={`${prototypeHref}#agent-chat`} target="_blank" rel="noreferrer">开始一次任务准备 ↗</a>
           <a className="button button-dark-secondary" href="#top">回到顶部</a>
         </div>
       </section>
 
       <footer>
         <a className="brand" href="#top"><span className="brand-mark" aria-hidden="true">S</span><span>SpeakUp</span></a>
-        <p>AI 职业英文沟通 Agent</p>
+        <p>面向真实任务的英语沟通 Agent</p>
         <span>© 2026 SpeakUp</span>
       </footer>
     </main>

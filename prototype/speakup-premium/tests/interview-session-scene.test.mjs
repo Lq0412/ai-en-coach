@@ -61,16 +61,20 @@ test('群面页复用统一语音场景和底部三项操作',()=>{
   assert.match(view,/data-action="toggle-interview-chat"/);
   assert.match(view,/data-action="ms1-answer"/);
   assert.match(view,/data-action="end-early"/);
+  assert.match(view,/基于你刚才的回答继续追问/);
+  assert.match(view,/panel-scene-initial/);
+  assert.doesNotMatch(view,/characterAvatar/);
   assert.doesNotMatch(view,/panel-practice-head|turn-progress|compact-live-toggle|💬|⏹/);
 });
 
 test('群面页保持黑白灰与轻量青色选中态',()=>{
-  const sceneStart=css.indexOf('/* Group interview uses the same quiet');
-  const sceneCss=css.slice(sceneStart,css.indexOf('/* Practice records:',sceneStart));
-  assert.match(sceneCss,/\.panel-session-scene\{[^}]*background:#fff/s);
-  assert.match(sceneCss,/\.panel-scene-member\{[^}]*border:0[^}]*background:#f3f3f1/s);
-  assert.match(sceneCss,/\.panel-scene-member\.active\{[^}]*background:#e5f2f4/s);
-  assert.doesNotMatch(sceneCss,/gradient|box-shadow|#7c3aed|#6d28d9/i);
+  const formalStart=css.indexOf('/* Formal panel interview plan and live session. */');
+  const formalCss=css.slice(formalStart,css.indexOf('html.portal-capture-3x',formalStart));
+  assert.match(css,/\.panel-session-scene\{[^}]*background:#fff/s);
+  assert.match(formalCss,/\.panel-scene-member\{[^}]*background:transparent/s);
+  assert.match(formalCss,/\.panel-scene-member\.active\{[^}]*background:transparent/s);
+  assert.match(formalCss,/\.panel-scene-speaker-initial\{[^}]*background:#171717/s);
+  assert.doesNotMatch(formalCss,/gradient|box-shadow|#7c3aed|#6d28d9/i);
 });
 
 test('已绕过的面试前准备页代码被删除',()=>{

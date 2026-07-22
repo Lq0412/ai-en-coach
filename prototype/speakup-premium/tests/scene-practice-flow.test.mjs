@@ -87,6 +87,9 @@ test('场景练习按四轮推进并写入练习记录',()=>{
   assert.match(panel,/restaurant:\{[^}]*title:'英文餐厅点餐'/s);
   assert.match(panel,/project:\{[^}]*title:'海外客户进度会'/s);
   assert.match(panel,/hotel:\{[^}]*title:'酒店入住沟通'/s);
+  assert.match(panel,/clinic:\{[^}]*title:'诊所就医沟通'/s);
+  assert.match(panel,/'ielts-part2':\{[^}]*title:'IELTS Speaking · Part 2'/s);
+  assert.match(panel,/'workplace-1on1':\{[^}]*title:'海外主管 1-on-1'/s);
   assert.match(panel,/session\.currentTurn\+=1/);
   assert.match(panel,/session\.currentTurn>=config\.questions\.length/);
   assert.match(panel,/scenePracticeHistory\.unshift/);
