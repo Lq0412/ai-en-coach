@@ -1,0 +1,1310 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WISPR-FLOW-DESIGN Preview</title>
+    <meta name="color-scheme" content="light" />
+    <style>
+      :root {
+        --page-bg: #fafafa;
+        --page-bg-muted: rgb(253, 253, 253);
+        --surface-bg: #ffffff;
+        --surface-bg-muted: rgb(253, 253, 253);
+        --surface-border: #ebebeb;
+        --surface-border-strong: rgb(218, 218, 218);
+        --surface-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 2px 2px rgba(0, 0, 0, 0.04), 0 8px 8px -8px rgba(0, 0, 0, 0.04);
+        --surface-shadow-soft: 0 0 0 1px #ebebeb;
+        --ink: #171717;
+        --muted: #4d4d4d;
+        --subtle: rgb(146, 146, 146);
+        --accent: #0072f5;
+        --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+        --font-display: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+        --font-mono: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, monospace;
+        --body-size: 16px;
+        --body-line: 24px;
+        --body-weight: 400;
+        --label-size: 12px;
+        --label-line: 20px;
+        --label-track: 0.04em;
+        --title-size: 28px;
+        --title-line: 32px;
+        --title-track: -0.03em;
+        --section-size: 24px;
+        --section-line: 32px;
+        --section-track: -0.02em;
+        --source-size: 13px;
+        --source-line: 22px;
+        --space-1: 8px;
+        --space-2: 12px;
+        --space-3: 16px;
+        --space-4: 24px;
+        --space-5: 32px;
+        --space-6: 40px;
+        --radius-panel: 8px;
+        --radius-card: 8px;
+        --radius-micro: 6px;
+        --radius-pill: 999px;
+        --button-height: 40px;
+        --button-font-size: 12px;
+        --button-weight: 500;
+        --button-radius: 999px;
+        --secondary-button-radius: 999px;
+        --layout-gap: 24px;
+        --page-padding: 24px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        min-width: 320px;
+        color: var(--ink);
+        font-family: var(--font-body);
+        font-size: var(--body-size);
+        font-weight: var(--body-weight);
+        line-height: var(--body-line);
+        background:
+          radial-gradient(circle at top, color-mix(in srgb, var(--accent) 8%, transparent), transparent 30%),
+          linear-gradient(180deg, var(--page-bg) 0%, var(--page-bg-muted) 100%);
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        background-image:
+          linear-gradient(color-mix(in srgb, var(--surface-border) 56%, transparent) 1px, transparent 1px),
+          linear-gradient(90deg, color-mix(in srgb, var(--surface-border) 56%, transparent) 1px, transparent 1px);
+        background-size: 100% calc(48px), calc(48px) 100%;
+        mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.3), transparent 88%);
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      button {
+        font: inherit;
+      }
+
+      .shell {
+        width: min(1440px, calc(100vw - (var(--page-padding) * 2)));
+        margin: 0 auto;
+        padding: var(--page-padding) 0 calc(var(--page-padding) * 1.2);
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: minmax(340px, 0.92fr) minmax(420px, 1fr);
+        gap: var(--layout-gap);
+        align-items: start;
+      }
+
+      .stack {
+        display: grid;
+        gap: var(--space-4);
+      }
+
+      .panel {
+        overflow: hidden;
+        border: 1px solid var(--surface-border);
+        border-radius: var(--radius-panel);
+        background: linear-gradient(180deg, color-mix(in srgb, var(--surface-bg) 88%, white) 0%, var(--surface-bg) 100%);
+        box-shadow: var(--surface-shadow);
+      }
+
+      .panel-inner {
+        padding: var(--space-4);
+      }
+
+      .hero-card {
+        position: relative;
+      }
+
+      .hero-card::before {
+        content: "";
+        position: absolute;
+        left: var(--space-4);
+        right: var(--space-4);
+        top: 0;
+        height: 3px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #fafafa 0%, #ffffff 33%, #171717 67%, #4d4d4d 100%);
+      }
+
+      .eyebrow {
+        margin-bottom: var(--space-2);
+        color: var(--muted);
+        font-size: var(--label-size);
+        line-height: var(--label-line);
+        letter-spacing: var(--label-track);
+        text-transform: uppercase;
+      }
+
+      .site-title,
+      .section-title {
+        margin: 0;
+        color: var(--ink);
+        font-family: var(--font-display);
+        font-weight: 600;
+      }
+
+      .site-title {
+        font-size: var(--title-size);
+        line-height: var(--title-line);
+        letter-spacing: var(--title-track);
+      }
+
+      .descriptor {
+        margin: var(--space-2) 0 0;
+        max-width: 42ch;
+        color: var(--muted);
+        font-size: var(--body-size);
+        line-height: var(--body-line);
+      }
+
+      .summary {
+        margin: var(--space-3) 0 0;
+        max-width: 56ch;
+        color: var(--muted);
+        font-size: var(--body-size);
+        line-height: var(--body-line);
+      }
+
+      .chip-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+        margin: var(--space-3) 0 0;
+      }
+
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        min-height: calc(8px * 3);
+        padding: 0 var(--space-2);
+        border: 1px solid var(--surface-border);
+        border-radius: var(--radius-pill);
+        background: var(--surface-bg);
+        color: var(--ink);
+        font-size: var(--label-size);
+        line-height: var(--label-line);
+        box-shadow: var(--surface-shadow-soft);
+      }
+
+      .observed-link {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-2);
+        margin-top: var(--space-4);
+        padding-top: var(--space-3);
+        border-top: 1px solid var(--surface-border);
+        color: var(--muted);
+        font-size: var(--label-size);
+        overflow-wrap: anywhere;
+      }
+
+      .observed-link::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+        background: var(--accent);
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent);
+      }
+
+      .section-title {
+        font-size: var(--section-size);
+        line-height: var(--section-line);
+        letter-spacing: var(--section-track);
+      }
+
+      .section-subtitle {
+        margin: var(--space-2) 0 var(--space-4);
+        color: var(--muted);
+        font-size: var(--body-size);
+        line-height: var(--body-line);
+      }
+
+      .palette-grid,
+      .theme-mode-grid,
+      .type-list,
+      .component-card,
+      .prompt-list,
+      .mini-grid,
+      .token-table {
+        display: grid;
+        gap: var(--space-2);
+      }
+
+      .palette-row {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: var(--space-2);
+      }
+
+      .palette-row.neutral-row {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .theme-mode-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--space-3);
+      }
+
+      .theme-mode-card {
+        display: grid;
+        gap: var(--space-2);
+        padding: var(--space-3);
+        border: 1px solid var(--surface-border);
+        border-radius: var(--radius-card);
+        background: color-mix(in srgb, var(--surface-bg) 92%, white);
+      }
+
+      .theme-mode-card.is-dark {
+        background: #111111;
+        color: #f4f4f4;
+        border-color: rgba(255, 255, 255, 0.12);
+      }
+
+      .theme-mode-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-2);
+      }
+
+      .theme-mode-label {
+        color: var(--subtle);
+        font-size: var(--label-size);
+        line-height: var(--label-line);
+        letter-spacing: var(--label-track);
+        text-transform: uppercase;
+      }
+
+      .theme-mode-card.is-dark .theme-mode-label {
+        color: rgba(255, 255, 255, 0.7);
+      }
+
+      .theme-mode-note {
+        margin: 0;
+        color: var(--muted);
+        font-size: calc(var(--body-size) - 1px);
+        line-height: calc(var(--body-line) - 4px);
+      }
+
+      .theme-mode-card.is-dark .theme-mode-note {
+        color: rgba(255, 255, 255, 0.82);
+      }
+
+      .theme-swatch-row {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: var(--space-2);
+      }
+
+      .theme-swatch {
+        display: grid;
+        gap: 6px;
+      }
+
+      .theme-swatch-box {
+        height: 72px;
+        border-radius: calc(var(--radius-card) - 4px);
+        border: 1px solid color-mix(in srgb, var(--surface-border-strong) 75%, transparent);
+      }
+
+      .theme-mode-card.is-dark .theme-swatch-box {
+        border-color: rgba(255, 255, 255, 0.14);
+      }
+
+      .theme-swatch-name {
+        color: inherit;
+        font-size: 12px;
+        line-height: 1.3;
+      }
+
+      .theme-swatch-value {
+        color: var(--subtle);
+        font-size: 11px;
+        line-height: 1.3;
+      }
+
+      .theme-mode-card.is-dark .theme-swatch-value {
+        color: rgba(255, 255, 255, 0.62);
+      }
+
+      .swatch {
+        display: grid;
+        gap: var(--space-2);
+      }
+
+      .swatch-box {
+        min-height: calc(8px * 12);
+        border-radius: var(--radius-card);
+        border: 1px solid color-mix(in srgb, var(--surface-border-strong) 75%, transparent);
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 4%, transparent);
+      }
+
+      .swatch-label,
+      .token-heading,
+      .prompt-card strong,
+      .card-preview h4 {
+        color: var(--ink);
+        font-family: var(--font-display);
+        font-size: var(--body-size);
+        line-height: var(--body-line);
+        font-weight: 600;
+      }
+
+      .swatch-meta,
+      .type-metrics,
+      .mini-label,
+      .copy-state,
+      .file-tab,
+      .ghost-button,
+      .segmented button {
+        color: var(--muted);
+        font-size: var(--label-size);
+        line-height: var(--label-line);
+      }
+
+      .type-row {
+        display: grid;
+        grid-template-columns: 72px minmax(0, 1fr) auto;
+        gap: var(--space-2);
+        align-items: baseline;
+        padding: var(--space-2) 0;
+        border-top: 1px solid var(--surface-border);
+      }
+
+      .type-row:first-child,
+      .mini-row:first-child,
+      .token-row:first-child {
+        border-top: 0;
+        padding-top: 0;
+      }
+
+      .type-role {
+        color: var(--muted);
+        font-size: var(--label-size);
+        line-height: var(--label-line);
+        letter-spacing: var(--label-track);
+        text-transform: uppercase;
+      }
+
+      .type-sample {
+        color: var(--ink);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .split-card {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: var(--space-4);
+      }
+
+      .token-row,
+      .mini-row {
+        display: grid;
+        gap: var(--space-2);
+        align-items: start;
+        padding-top: var(--space-2);
+        border-top: 1px solid var(--surface-border);
+      }
+
+      .token-row {
+        grid-template-columns: 1fr auto;
+      }
+
+      .mini-row {
+        grid-template-columns: 88px minmax(0, 1fr);
+      }
+
+      .mini-content,
+      .prompt-card p,
+      .card-preview p {
+        color: var(--muted);
+        font-size: var(--body-size);
+        line-height: var(--body-line);
+      }
+
+      .radius-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: var(--space-2);
+      }
+
+      .radius-card,
+      .prompt-card {
+        padding: var(--space-3);
+        border: 1px solid var(--surface-border);
+        border-radius: var(--radius-card);
+        background: var(--surface-bg-muted);
+        box-shadow: var(--surface-shadow-soft);
+      }
+
+      .radius-demo {
+        aspect-ratio: 1;
+        width: 100%;
+        border: 1px solid var(--surface-border-strong);
+        background: var(--surface-bg);
+      }
+
+      .radius-name {
+        margin-top: var(--space-2);
+        color: var(--ink);
+        font-size: var(--body-size);
+        line-height: var(--body-line);
+        font-weight: 600;
+      }
+
+      .radius-value {
+        margin-top: 4px;
+        color: var(--muted);
+        font-size: var(--label-size);
+      }
+
+      .button-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+      }
+
+      .cta {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: var(--button-height);
+        padding: 0 var(--space-3);
+        border-radius: var(--button-radius);
+        font-family: var(--font-body);
+        font-size: var(--button-font-size);
+        font-weight: var(--button-weight);
+        line-height: 1;
+        letter-spacing: normal;
+      }
+
+      .cta-primary {
+        border: 1px solid transparent;
+        background: #171717;
+        color: #ffffff;
+        border-radius: 999px;
+      }
+
+      .cta-secondary {
+        border: 1px solid #171717;
+        background: #ffffff;
+        color: #171717;
+        border-radius: 999px;
+        box-shadow: var(--surface-shadow-soft);
+      }
+
+      .card-preview {
+        padding: 16px;
+        border-radius: 8px;
+        border: 1px solid color-mix(in srgb, var(--surface-border-strong) 72%, transparent);
+        background: var(--surface-bg);
+        color: var(--ink);
+        box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 2px 2px rgba(0, 0, 0, 0.04), 0 8px 8px -8px rgba(0, 0, 0, 0.04);
+      }
+
+      .card-preview h4 {
+        margin: 0 0 var(--space-1);
+      }
+
+      .source-shell {
+        position: sticky;
+        top: var(--page-padding);
+      }
+
+      .source-header {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-2);
+        padding: var(--space-3) var(--space-4) var(--space-2);
+        border-bottom: 1px solid var(--surface-border);
+      }
+
+      .file-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 2px var(--space-3);
+      }
+
+      .file-tab {
+        padding: 0 0 var(--space-2);
+        border-bottom: 2px solid transparent;
+      }
+
+      .file-tab.active {
+        color: var(--ink);
+        border-bottom-color: var(--ink);
+        font-weight: 600;
+      }
+
+      .source-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--space-2);
+        padding: var(--space-2) var(--space-4);
+        border-bottom: 1px solid var(--surface-border);
+      }
+
+      .segmented {
+        display: inline-flex;
+        padding: 3px;
+        border: 1px solid var(--surface-border);
+        border-radius: var(--radius-pill);
+        background: var(--surface-bg-muted);
+      }
+
+      .segmented button {
+        border: 0;
+        border-radius: var(--radius-pill);
+        background: transparent;
+        padding: 6px 12px;
+        cursor: pointer;
+      }
+
+      .segmented button.is-active {
+        background: var(--surface-bg);
+        color: var(--ink);
+        box-shadow: var(--surface-shadow-soft);
+      }
+
+      .toolbar-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+        margin-left: auto;
+      }
+
+      .ghost-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 12px;
+        border: 1px solid var(--surface-border);
+        border-radius: 6px;
+        background: var(--surface-bg);
+        box-shadow: var(--surface-shadow-soft);
+        cursor: pointer;
+      }
+
+      .source-body {
+        max-height: calc(100vh - (var(--page-padding) * 2) - 120px);
+        overflow: auto;
+      }
+
+      .source-view,
+      .rendered-view {
+        margin: 0;
+        padding: var(--space-4);
+      }
+
+      .source-view {
+        color: var(--ink);
+        font-family: var(--font-mono);
+        font-size: var(--source-size);
+        line-height: var(--source-line);
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: var(--surface-bg);
+      }
+
+      .rendered-view {
+        color: var(--ink);
+        font-family: var(--font-body);
+        font-size: var(--body-size);
+        line-height: var(--body-line);
+        background: var(--surface-bg);
+      }
+
+      .rendered-view[hidden],
+      .source-view[hidden] {
+        display: none;
+      }
+
+      .rendered-view h2,
+      .rendered-view h3 {
+        margin: var(--space-4) 0 var(--space-2);
+        color: var(--ink);
+        font-family: var(--font-display);
+        font-weight: 600;
+      }
+
+      .rendered-view h2 {
+        font-size: var(--section-size);
+        line-height: var(--section-line);
+        letter-spacing: var(--section-track);
+      }
+
+      .rendered-view h2:first-child {
+        margin-top: 0;
+      }
+
+      .rendered-view h3 {
+        color: var(--muted);
+        font-size: calc(28px - 4px);
+        line-height: calc(32px - 4px);
+      }
+
+      .rendered-view p,
+      .rendered-view li {
+        color: var(--muted);
+      }
+
+      .rendered-view ul,
+      .rendered-view ol {
+        margin: 0 0 var(--space-3) 20px;
+        padding: 0;
+      }
+
+      .rendered-view table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: var(--space-2) 0 var(--space-4);
+      }
+
+      .rendered-view th,
+      .rendered-view td {
+        padding: var(--space-2) var(--space-2);
+        border: 1px solid var(--surface-border);
+        text-align: left;
+        vertical-align: top;
+        font-size: var(--label-size);
+        line-height: var(--label-line);
+      }
+
+      .rendered-view th {
+        color: var(--ink);
+        background: var(--surface-bg-muted);
+      }
+
+      .rendered-view code {
+        padding: 0.14em 0.4em;
+        border-radius: 6px;
+        background: var(--surface-bg-muted);
+        color: var(--ink);
+        font-family: var(--font-mono);
+        font-size: 0.92em;
+      }
+
+      @media (max-width: 1120px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+
+        .source-shell {
+          position: relative;
+          top: 0;
+        }
+
+        .source-body {
+          max-height: none;
+        }
+      }
+
+      @media (max-width: 760px) {
+        .shell {
+          width: min(100vw - (12px * 2), 100%);
+          padding-top: 12px;
+        }
+
+        .panel-inner,
+        .source-view,
+        .rendered-view {
+          padding-left: var(--space-3);
+          padding-right: var(--space-3);
+        }
+
+        .palette-row,
+        .palette-row.neutral-row,
+        .theme-mode-grid,
+        .theme-swatch-row,
+        .split-card,
+        .radius-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .type-row,
+        .mini-row {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <div class="layout">
+        <section class="stack">
+          <article class="panel hero-card">
+            <div class="panel-inner">
+              <div class="eyebrow">Design Preview</div>
+              <h1 class="site-title">WISPR-FLOW-DESIGN</h1>
+              <p class="descriptor">Wispr Flow 的营销页不是常见的“蓝紫渐变 SaaS”。它使用编辑感强的超大衬线标题、暖米白底色、接近黑色的整段分区，以及淡紫、橙色作为少量高饱和强调色。大面积留白负责建立高级...</p>
+              <div class="chip-row"></div>
+              <p class="summary">Wispr Flow 的营销页不是常见的“蓝紫渐变 SaaS”。它使用编辑感强的超大衬线标题、暖米白底色、接近黑色的整段分区，以及淡紫、橙色作为少量高饱和强调色。大面积留白负责建立高级感，2px 实线边框和夸张圆角负责让页面保持友好、可触摸。</p>
+              <a class="observed-link" href="https://wisprflow.ai/" target="_blank" rel="noreferrer">https://wisprflow.ai/</a>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-inner">
+              <h2 class="section-title">Palette</h2>
+              <p class="section-subtitle">Roles and neutrals rendered using the extracted design system rather than a separate display theme.</p>
+              <div class="palette-grid"><div class="palette-row"><div class="swatch">
+    <div class="swatch-box" style="background:#fafafa;"></div>
+    <div class="swatch-label">Background</div>
+    <div class="swatch-meta">
+      <span>#fafafa</span>
+      <span>Page surface</span>
+    </div>
+  </div><div class="swatch">
+    <div class="swatch-box" style="background:#ffffff;"></div>
+    <div class="swatch-label">Surface</div>
+    <div class="swatch-meta">
+      <span>#ffffff</span>
+      <span>Elevated surface</span>
+    </div>
+  </div><div class="swatch">
+    <div class="swatch-box" style="background:#171717;"></div>
+    <div class="swatch-label">Ink</div>
+    <div class="swatch-meta">
+      <span>#171717</span>
+      <span>Primary text</span>
+    </div>
+  </div></div><div class="palette-row neutral-row"><div class="swatch">
+    <div class="swatch-box" style="background:#4d4d4d;"></div>
+    <div class="swatch-label">Muted</div>
+    <div class="swatch-meta">
+      <span>#4d4d4d</span>
+      <span>Supporting text</span>
+    </div>
+  </div><div class="swatch">
+    <div class="swatch-box" style="background:#0072f5;"></div>
+    <div class="swatch-label">Accent</div>
+    <div class="swatch-meta">
+      <span>#0072f5</span>
+      <span>Interactive accent</span>
+    </div>
+  </div><div class="swatch">
+    <div class="swatch-box" style="background:#ebebeb;"></div>
+    <div class="swatch-label">Border</div>
+    <div class="swatch-meta">
+      <span>#ebebeb</span>
+      <span>Divider</span>
+    </div>
+  </div></div></div>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-inner">
+              <h2 class="section-title">Theme Modes</h2>
+              <p class="section-subtitle">If the product supports light and dark themes, both modes should stay visible in the exported design system and preview.</p>
+              <div class="prompt-card"><strong>Single mode detected</strong><p>No explicit <code>Theme Modes</code> section was detected in the markdown. If the product supports both light and dark themes, document both so the preview can render them side by side.</p></div>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-inner">
+              <h2 class="section-title">Typography</h2>
+              <p class="section-subtitle">The preview shell itself now uses the extracted typography stack, sizes, line heights, and tracking.</p>
+              <div class="type-list"><div class="type-row">
+        <div class="type-role">undefined</div>
+        <div
+          class="type-sample"
+          style="font-size:16px; line-height:22px; font-weight:500; letter-spacing:normal; font-family:-apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Arial, sans-serif;"
+        >
+          The quick brown fox jumps
+        </div>
+        <div class="type-metrics">undefined • undefined • undefined</div>
+      </div><div class="type-row">
+        <div class="type-role">undefined</div>
+        <div
+          class="type-sample"
+          style="font-size:16px; line-height:22px; font-weight:500; letter-spacing:normal; font-family:-apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Arial, sans-serif;"
+        >
+          The quick brown fox jumps
+        </div>
+        <div class="type-metrics">undefined • undefined • undefined</div>
+      </div><div class="type-row">
+        <div class="type-role">undefined</div>
+        <div
+          class="type-sample"
+          style="font-size:16px; line-height:22px; font-weight:500; letter-spacing:normal; font-family:-apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Arial, sans-serif;"
+        >
+          The quick brown fox jumps
+        </div>
+        <div class="type-metrics">undefined • undefined • undefined</div>
+      </div><div class="type-row">
+        <div class="type-role">undefined</div>
+        <div
+          class="type-sample"
+          style="font-size:16px; line-height:22px; font-weight:500; letter-spacing:normal; font-family:-apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Arial, sans-serif;"
+        >
+          The quick brown fox jumps
+        </div>
+        <div class="type-metrics">undefined • undefined • undefined</div>
+      </div><div class="type-row">
+        <div class="type-role">undefined</div>
+        <div
+          class="type-sample"
+          style="font-size:16px; line-height:22px; font-weight:500; letter-spacing:normal; font-family:-apple-system, BlinkMacSystemFont, &quot;Segoe UI&quot;, Arial, sans-serif;"
+        >
+          The quick brown fox jumps
+        </div>
+        <div class="type-metrics">undefined • undefined • undefined</div>
+      </div></div>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-inner">
+              <h2 class="section-title">Spacing &amp; Shape</h2>
+              <p class="section-subtitle">Spacing, panel padding, and radius tokens are mapped directly from the layout rules in the markdown.</p>
+              <div class="split-card">
+    <div>
+      <h3 class="token-heading">Spacing</h3>
+      <div class="token-table"><div class="token-row">
+        <span>Base unit</span>
+        <span>8px</span>
+      </div><div class="token-row">
+        <span>Step 2</span>
+        <span>12px</span>
+      </div><div class="token-row">
+        <span>Step 3</span>
+        <span>16px</span>
+      </div><div class="token-row">
+        <span>Step 4</span>
+        <span>24px</span>
+      </div><div class="token-row">
+        <span>Step 5</span>
+        <span>32px</span>
+      </div></div>
+    </div>
+    <div>
+      <h3 class="token-heading">Border Radius</h3>
+      <div class="radius-grid"><div class="radius-card">
+        <div class="radius-demo" style="border-radius:6px;"></div>
+        <div class="radius-name">Micro utility</div>
+        <div class="radius-value">6px</div>
+      </div><div class="radius-card">
+        <div class="radius-demo" style="border-radius:8px;"></div>
+        <div class="radius-name">Standard module</div>
+        <div class="radius-value">8px</div>
+      </div><div class="radius-card">
+        <div class="radius-demo" style="border-radius:999px;"></div>
+        <div class="radius-name">Category rail</div>
+        <div class="radius-value">999px</div>
+      </div><div class="radius-card">
+        <div class="radius-demo" style="border-radius:999px;"></div>
+        <div class="radius-name">CTA pill</div>
+        <div class="radius-value">999px</div>
+      </div></div>
+    </div>
+  </div>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-inner">
+              <h2 class="section-title">Components</h2>
+              <p class="section-subtitle">Buttons and cards use the documented height, weight, radius, colors, and surface treatment.</p>
+              <div class="component-card">
+    <div class="button-row">
+      <span class="cta cta-primary">Start Deploying</span>
+      <span class="cta cta-secondary">Get a Demo</span>
+    </div>
+    <div class="card-preview">
+      <h4>System Card Preview</h4>
+      <p>White framed module with restrained shadow and precise spacing.</p>
+    </div>
+  </div>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-inner">
+              <h2 class="section-title">System Notes</h2>
+              <p class="section-subtitle">Responsive behavior and depth rules stay visible while keeping the overall proportions calm and readable.</p>
+              <div class="split-card">
+    <div>
+      <h3 class="token-heading">Breakpoints</h3>
+      <div class="mini-grid"><div class="mini-row">
+            <div class="mini-label">undefined</div>
+            <div class="mini-content"><strong>undefined</strong><br />undefined</div>
+          </div><div class="mini-row">
+            <div class="mini-label">undefined</div>
+            <div class="mini-content"><strong>undefined</strong><br />undefined</div>
+          </div><div class="mini-row">
+            <div class="mini-label">undefined</div>
+            <div class="mini-content"><strong>undefined</strong><br />undefined</div>
+          </div></div>
+    </div>
+    <div>
+      <h3 class="token-heading">Elevation</h3>
+      <div class="mini-grid"><div class="mini-row">
+            <div class="mini-label">undefined</div>
+            <div class="mini-content"><strong>undefined</strong><br />undefined</div>
+          </div><div class="mini-row">
+            <div class="mini-label">undefined</div>
+            <div class="mini-content"><strong>undefined</strong><br />undefined</div>
+          </div><div class="mini-row">
+            <div class="mini-label">undefined</div>
+            <div class="mini-content"><strong>undefined</strong><br />undefined</div>
+          </div><div class="mini-row">
+            <div class="mini-label">undefined</div>
+            <div class="mini-content"><strong>undefined</strong><br />undefined</div>
+          </div></div>
+    </div>
+  </div>
+            </div>
+          </article>
+
+          <article class="panel">
+            <div class="panel-inner">
+              <h2 class="section-title">Prompt Guide</h2>
+              <p class="section-subtitle">Prompt snippets are shown in the same typography and spacing language as the extracted design system.</p>
+              <div class="prompt-list"><div class="prompt-card"><strong>Quick Summary</strong><p>创建一个受 Wispr Flow 启发、但属于 SpeakUp 的中文产品门户。使用暖米白背景、近黑深色分区、淡紫 CTA、宋体超大标题、2px 实线边框和 40–80px 大圆角。首屏只讲英文模拟面试，并马上展示现有产品原型。下面按模拟面试、即时反馈、报告与复练展开；缺少的社会证明使用明确占位，不制造完成度。</p></div><div class="prompt-card"><strong>Prompt guide</strong><p>No example prompts detected.</p></div><div class="prompt-card"><strong>Ready-to-Use Prompt</strong><p>&gt; 基于本设计系统修改 SpeakUp 门户。保留 Wispr Flow 的编辑感、大圆角分区、暖米白/近黑/淡紫配色和产品演示节奏，但不得复制其品牌资产。使用仓库现有模拟面试截图，首屏聚焦“下一场英文面试，先和 SpeakUp 练一遍”。缺失内容用可替换占位，保证 390px、768px、1440px 三档布局可用。</p></div></div>
+              <div class="split-card" style="margin-top:var(--space-4);">
+    <div>
+      <h3 class="token-heading">Do</h3>
+      <div class="mini-grid"><div class="mini-row"><div class="mini-label">Do</div><div class="mini-content">首屏只讲“模拟面试”一个动作。</div></div><div class="mini-row"><div class="mini-label">Do</div><div class="mini-content">把真实原型直接放进页面，缺失处标注占位。</div></div><div class="mini-row"><div class="mini-label">Do</div><div class="mini-content">使用大字号、强留白和单个强调色建立节奏。</div></div><div class="mini-row"><div class="mini-label">Do</div><div class="mini-content">用“原回答 / 反馈后”展示产品价值。</div></div></div>
+    </div>
+    <div>
+      <h3 class="token-heading">Don't</h3>
+      <div class="mini-grid"><div class="mini-row"><div class="mini-label">Don't</div><div class="mini-content">不复制 Wispr 的 Logo、插画、动画文件或营销文案。</div></div><div class="mini-row"><div class="mini-label">Don't</div><div class="mini-content">不在首屏并列面试、雅思、生活、职场四大入口。</div></div><div class="mini-row"><div class="mini-label">Don't</div><div class="mini-content">不使用虚构用户评价、虚构数据和虚构合作 Logo。</div></div><div class="mini-row"><div class="mini-label">Don't</div><div class="mini-content">不把完整 70 分钟计划作为第一次价值体验。</div></div></div>
+    </div>
+  </div>
+            </div>
+          </article>
+        </section>
+
+        <section class="source-shell">
+          <article class="panel">
+            <div class="source-header">
+              <div class="file-tabs">
+                <span class="file-tab">design-system.md</span>
+                <span class="file-tab active">WISPR-FLOW-DESIGN.md</span>
+                <span class="file-tab">Design JSON</span>
+                <span class="file-tab">CSS Variables</span>
+                <span class="file-tab">Design Tokens</span>
+              </div>
+            </div>
+            <div class="source-toolbar">
+              <div class="segmented" role="tablist" aria-label="View Switcher">
+                <button class="is-active" data-view="source" type="button">Source</button>
+                <button data-view="preview" type="button">Preview</button>
+              </div>
+              <div class="toolbar-actions">
+                <button class="ghost-button" id="copyButton" type="button">Copy</button>
+                <a class="ghost-button" href="WISPR-FLOW-DESIGN.md" download>Open .md</a>
+                <span class="copy-state" id="copyState"></span>
+              </div>
+            </div>
+            <div class="source-body">
+              <pre class="source-view" id="sourceView"># Wispr Flow → SpeakUp 门户设计系统
+
+&gt; 提取日期：2026-07-22
+&gt;
+&gt; 观察页面：https://wisprflow.ai/
+&gt;
+&gt; 用途：复刻 Wispr Flow 的前端设计语言，并映射到 SpeakUp 产品验证门户。本文记录结构与规则，不复制对方品牌资产、Logo、插画或源代码。
+
+## 1. Visual Theme &amp; Atmosphere
+
+Wispr Flow 的营销页不是常见的“蓝紫渐变 SaaS”。它使用编辑感强的超大衬线标题、暖米白底色、接近黑色的整段分区，以及淡紫、橙色作为少量高饱和强调色。大面积留白负责建立高级感，2px 实线边框和夸张圆角负责让页面保持友好、可触摸。
+
+- 整体感觉：编辑感、直白、温暖、产品优先。
+- 视觉密度：首屏极低，产品演示区中等，功能区较高。
+- 品牌姿态：一个动作讲清价值，再用真实界面证明。
+- 标志性元素：超大衬线标题、80px 大圆角深色分区、带边框按钮、胶囊选项、产品界面动画。
+
+### SpeakUp 采用
+
+- 采用“一个明确动作 + 一个真实产品演示”的首屏结构。
+- 采用米白、近黑、淡紫、深绿、橙色的色彩角色。
+- 采用大圆角整段分区和粗边框，不使用渐变发光。
+- 用现有原型截图替换 Wispr 的产品动画；缺失画面明确标注占位。
+
+## 2. Color Palette &amp; Roles
+
+以下数值来自页面 CSS 变量和 computed style。
+
+| 角色 | 名称 | 数值 | SpeakUp 用法 |
+| --- | --- | --- | --- |
+| 主背景 | Lumen | `#FFFFEB` | 全页暖米白背景 |
+| 主文字/深色面 | Vast | `#1A1A1A` | 标题、边框、深色整段分区 |
+| 主强调 | Dawn | `#F0D7FF` | CTA、选中态、产品演示底色 |
+| 深色辅助 | Fathom | `#034F46` | 公告栏、结果正向状态 |
+| 暖色辅助 | Glow | `#FFA946` | 小范围高亮和占位图形 |
+| 粉色辅助 | Signal | `#FFBCF2` | 语音与短促提醒，不做大面积背景 |
+| 次级背景 | Lumen Dark | `#E4E4D0` | 对照演示的弱侧 |
+| 纸张表面 | Paper | `#FFFDF9` | 产品界面、卡片内部 |
+| 聚焦状态 | System Focus | `#2D62FF` | 键盘 focus ring |
+
+### Theme Modes
+
+Wispr Flow 首页没有全局明暗模式切换，而是在同一页面中交替使用亮色和深色分区。SpeakUp 沿用这种“区块主题”而不是增加主题切换。
+
+### Shadows &amp; Depth
+
+- 主要深度来自边框、背景切换和局部错位，不靠大面积模糊阴影。
+- 按钮：2px 深色边框，默认无阴影。
+- 产品设备框可以使用一个实色错位阴影，避免玻璃感。
+- focus ring：3px 蓝色外描边，和品牌装饰色分离。
+
+## 3. Typography Rules
+
+### Font Family
+
+- Wispr 标题：`EB Garamond`，常规字重。
+- Wispr 正文：`Figtree`。
+- SpeakUp 中文标题映射：`Songti SC`, `STSong`, `Georgia`, serif。
+- SpeakUp 中文正文映射：`PingFang SC`, `Microsoft YaHei`, system-ui。
+- 英文回答与问题：`Georgia`, `Times New Roman`, serif，可强化编辑与口语稿件感。
+
+### Hierarchy
+
+| 角色 | 桌面 | 移动 | 字重 | 行高 | 字距 |
+| --- | --- | --- | --- | --- | --- |
+| Hero | 120px（观察值）/ SpeakUp 最高 116px | 56px（观察值）/ SpeakUp 47–68px | 400 | 0.85–0.96 | `-5%` |
+| Section H2 | 64–84px | 48px | 400 | 0.95–1.02 | `-4%` |
+| Card H3 | 32–40px | 30–34px | 400 | 1.05–1.15 | `-3%` |
+| Lead body | 18–22px | 16px | 400 | 1.6–1.7 | normal |
+| Label | 12–13px | 12px | 700 | 1.3 | `0.08–0.12em` |
+
+### Principles
+
+- 标题短，尽量使用动词和一个强对比。
+- 中文标题用宋体产生编辑感，正文保持无衬线保证阅读。
+- 不用粗黑大标题模拟力量感；力量来自字号、留白和对比。
+- 一屏只允许一个最高层级标题。
+
+## 4. Component Stylings
+
+### Buttons and Links
+
+观察值：主要按钮 `#F0D7FF` 背景、2px `#1A1A1A` 边框、12px 圆角、`16px 24px` 内边距、600 字重；hover 为 `scale(.98)`。
+
+- 主按钮：淡紫填充、2px 黑边、12px 圆角。
+- 次按钮：透明或米白填充，保留同样边框。
+- 深色区次按钮：透明底、米白边和文字。
+- 文本链接：下划线偏移 3–5px，不用灰色小箭头代替可点击性。
+
+### Cards and Containers
+
+- 普通信息卡：2px 边框，30–44px 圆角，无阴影。
+- 整段分区：40–80px 圆角；桌面 80px，移动 42px 左右。
+- 内边距：桌面 34–68px，移动 20–32px。
+- 禁止卡片套卡片；产品截图设备框属于内容展示，不再包一层装饰卡。
+
+### Inputs and Interactive Controls
+
+- 输入框保持纸张表面和 2px 边框。
+- 场景选择使用 999px 胶囊；观察到选中项使用淡紫填充并旋转约 `-4deg`。
+- 所有触摸目标最少 42px 高。
+
+### Navigation
+
+- 桌面为品牌 / 中部链接 / 右侧 CTA 的三列结构。
+- 移动隐藏中部链接，只保留品牌和 CTA。
+- 当前门户不使用复杂下拉导航，避免在验证阶段分散注意力。
+
+### Image Treatment
+
+- 原型截图放入大面积彩色区，使用粗边框设备框。
+- 截图不加多层渐变、光晕和玻璃模糊。
+- 图片统一顶部对齐裁切；不把多张手机图硬挤在一屏。
+
+## 5. Layout Principles
+
+### Spacing System
+
+- 基础单位：8px。
+- 常用：12、20、28、34、44、64、86、128px。
+- 观察到 Wispr section padding 主要为 96、128、160px 等大尺度。
+
+### Grid &amp; Container
+
+- 最大内容宽度：1240px。
+- Hero 文案最大宽度约 1030px，副文案 700px。
+- 两栏演示比例不必 1:1，优先让产品画面和结果占更大空间。
+- 功能区桌面三列，平板与手机单列。
+
+### Border Radius Scale
+
+- Micro：8–12px，用于按钮和标签。
+- Standard：16–24px，用于输入和小模块。
+- Large：34–48px，用于产品框和功能卡。
+- Section：72–80px；移动缩至 38–42px。
+- Pill：999px。
+
+## 6. Depth &amp; Elevation
+
+| 层级 | 处理 | 用途 |
+| --- | --- | --- |
+| Flat | 纯背景，无边框 | 页面基础和文字区 |
+| Ring | 2px 实线边框 | 按钮、胶囊、产品模块 |
+| Product | 实线边框 + 单层错位阴影 | 手机原型截图 |
+| Focus | 3px `#2D62FF` 外圈 | 键盘操作 |
+
+### Depth Principles
+
+- 深度首先依靠颜色和边界，不依靠模糊阴影。
+- 同一模块最多一个阴影层级。
+- 不使用玻璃拟态、霓虹发光、紫蓝渐变。
+
+## 7. Do&#39;s and Don&#39;ts
+
+### Do
+
+- 首屏只讲“模拟面试”一个动作。
+- 把真实原型直接放进页面，缺失处标注占位。
+- 使用大字号、强留白和单个强调色建立节奏。
+- 用“原回答 / 反馈后”展示产品价值。
+- 保留模拟面试、报告、复练之间的实际入口。
+
+### Don&#39;t
+
+- 不复制 Wispr 的 Logo、插画、动画文件或营销文案。
+- 不在首屏并列面试、雅思、生活、职场四大入口。
+- 不使用虚构用户评价、虚构数据和虚构合作 Logo。
+- 不把完整 70 分钟计划作为第一次价值体验。
+- 不把通用 Agent 当成差异化主卖点。
+
+## 8. Responsive Behavior
+
+| 名称 | 宽度 | 关键变化 |
+| --- | --- | --- |
+| Mobile | ≤640px | 单列、标题 47–68px、整段圆角 42px、按钮全宽 |
+| Tablet | 641–980px | Hero 和产品演示改单列，功能卡改单列 |
+| Desktop | ≥981px | 1240px 容器、两栏产品演示、三列功能卡 |
+
+- 移动端保留大标题，但不把字号压成普通落地页。
+- 浮动装饰胶囊在手机隐藏，避免遮挡内容。
+- 面试官列表在手机隐藏时长列，保留角色和关注点。
+- 导航移动端只保留品牌和主 CTA。
+
+## 9. Agent Prompt Guide
+
+### Quick Color Reference
+
+- Primary CTA：`#F0D7FF`
+- Background：`#FFFFEB`
+- Heading：`#1A1A1A`
+- Dark section：`#1A1A1A`
+- Success / deep accent：`#034F46`
+- Warm accent：`#FFA946`
+- Border：`#1A1A1A` 或 18% alpha
+
+### Quick Summary
+
+创建一个受 Wispr Flow 启发、但属于 SpeakUp 的中文产品门户。使用暖米白背景、近黑深色分区、淡紫 CTA、宋体超大标题、2px 实线边框和 40–80px 大圆角。首屏只讲英文模拟面试，并马上展示现有产品原型。下面按模拟面试、即时反馈、报告与复练展开；缺少的社会证明使用明确占位，不制造完成度。
+
+### Example Component Prompts
+
+- Hero：用超大中文宋体标题“下一场英文面试，先和 SpeakUp 练一遍”，配一个真实语音回答和即时纠错演示，米白背景、淡紫产品舞台、2px 黑边。
+- 模拟面试区：黑色 80px 圆角整段背景，左侧米白面试官计划，右侧短文案；面试阶段用胶囊切换，当前项淡紫并轻微旋转。
+- 原型卡：三张高卡片，分别用橙、深绿、淡紫作为背景，下半部嵌入真实手机截图，状态明确标为“现有原型”或“待继续美化”。
+- 占位区：使用虚线边框和空白引号，明确写“真实用户反馈待验证后补充”，不伪造 testimonial。
+
+### Ready-to-Use Prompt
+
+&gt; 基于本设计系统修改 SpeakUp 门户。保留 Wispr Flow 的编辑感、大圆角分区、暖米白/近黑/淡紫配色和产品演示节奏，但不得复制其品牌资产。使用仓库现有模拟面试截图，首屏聚焦“下一场英文面试，先和 SpeakUp 练一遍”。缺失内容用可替换占位，保证 390px、768px、1440px 三档布局可用。
+
+## Appendix A. Interaction Patterns
+
+- 按钮 hover：200ms，`scale(.98)`。
+- 胶囊选中：淡紫填充，轻微旋转。
+- 页面滚动：普通纵向长页；整段分区通过背景和圆角切换节奏。
+- 动效基调：短、直接、服务产品演示；尊重 `prefers-reduced-motion`。
+
+## Appendix B. Content &amp; Messaging
+
+- 标题模式：一个直接动作，通常 8–18 个中文字符。
+- 副文案：一句说明输入，一句说明结果。
+- CTA：使用“开始模拟面试”“打开产品原型”等明确动词。
+- 信任信息：只展示真实原型、真实访谈和真实数据。
+
+## Appendix C. Evidence Notes
+
+### 直接观察
+
+- 桌面 1440px：H1 为 120px、`EB Garamond`、400 字重、102px 行高、`-6px` 字距。
+- 手机 390px：H1 为 56px、47.6px 行高、`-2.8px` 字距。
+- 主按钮：淡紫背景、2px 黑边、12px 圆角、`16px 24px` padding；移动端约 8px 圆角和更紧凑 padding。
+- 页面主背景 `#FFFFEB`，主文字 `#1A1A1A`，深绿 `#034F46`，橙色 `#FFA946`。
+- 大分区 CSS 变量包含 40、48、64、80px 圆角层级。
+- 用例选项为 2px 米白边的胶囊；当前项淡紫填充并旋转约 `-4deg`。
+- 按钮 hover 使用 `transform: scale(.98)`。
+
+### 推断与 SpeakUp 取舍
+
+- 推断：页面识别度主要来自字体反差、留白和结构色块，不来自装饰资产。
+- 取舍：SpeakUp 先复刻结构和设计语法，不复刻复杂导航、动画数量和多行业用例规模。
+- 取舍：社会证明区先占位，等待产品验证数据。
+- 取舍：模拟面试是门户主入口；长期职业英语能力保留为后续扩展，不在第一版同时争夺注意力。
+</pre>
+              <article class="rendered-view" id="previewView" hidden><section><h2>1. Visual Theme &amp; Atmosphere</h2><p>Wispr Flow 的营销页不是常见的“蓝紫渐变 SaaS”。它使用编辑感强的超大衬线标题、暖米白底色、接近黑色的整段分区，以及淡紫、橙色作为少量高饱和强调色。大面积留白负责建立高级感，2px 实线边框和夸张圆角负责让页面保持友好、可触摸。</p><ul><li>整体感觉：编辑感、直白、温暖、产品优先。</li><li>视觉密度：首屏极低，产品演示区中等，功能区较高。</li><li>品牌姿态：一个动作讲清价值，再用真实界面证明。</li><li>标志性元素：超大衬线标题、80px 大圆角深色分区、带边框按钮、胶囊选项、产品界面动画。</li></ul><h3>SpeakUp 采用</h3><ul><li>采用“一个明确动作 + 一个真实产品演示”的首屏结构。</li><li>采用米白、近黑、淡紫、深绿、橙色的色彩角色。</li><li>采用大圆角整段分区和粗边框，不使用渐变发光。</li><li>用现有原型截图替换 Wispr 的产品动画；缺失画面明确标注占位。</li></ul></section><section><h2>2. Color Palette &amp; Roles</h2><p>以下数值来自页面 CSS 变量和 computed style。</p><table><thead><tr><th>角色</th><th>名称</th><th>数值</th><th>SpeakUp 用法</th></tr></thead><tbody><tr><td>主背景</td><td>Lumen</td><td><code>#FFFFEB</code></td><td>全页暖米白背景</td></tr><tr><td>主文字/深色面</td><td>Vast</td><td><code>#1A1A1A</code></td><td>标题、边框、深色整段分区</td></tr><tr><td>主强调</td><td>Dawn</td><td><code>#F0D7FF</code></td><td>CTA、选中态、产品演示底色</td></tr><tr><td>深色辅助</td><td>Fathom</td><td><code>#034F46</code></td><td>公告栏、结果正向状态</td></tr><tr><td>暖色辅助</td><td>Glow</td><td><code>#FFA946</code></td><td>小范围高亮和占位图形</td></tr><tr><td>粉色辅助</td><td>Signal</td><td><code>#FFBCF2</code></td><td>语音与短促提醒，不做大面积背景</td></tr><tr><td>次级背景</td><td>Lumen Dark</td><td><code>#E4E4D0</code></td><td>对照演示的弱侧</td></tr><tr><td>纸张表面</td><td>Paper</td><td><code>#FFFDF9</code></td><td>产品界面、卡片内部</td></tr><tr><td>聚焦状态</td><td>System Focus</td><td><code>#2D62FF</code></td><td>键盘 focus ring</td></tr></tbody></table><h3>Theme Modes</h3><p>Wispr Flow 首页没有全局明暗模式切换，而是在同一页面中交替使用亮色和深色分区。SpeakUp 沿用这种“区块主题”而不是增加主题切换。</p><h3>Shadows &amp; Depth</h3><ul><li>主要深度来自边框、背景切换和局部错位，不靠大面积模糊阴影。</li><li>按钮：2px 深色边框，默认无阴影。</li><li>产品设备框可以使用一个实色错位阴影，避免玻璃感。</li><li>focus ring：3px 蓝色外描边，和品牌装饰色分离。</li></ul></section><section><h2>3. Typography Rules</h2><h3>Font Family</h3><ul><li>Wispr 标题：<code>EB Garamond</code>，常规字重。</li><li>Wispr 正文：<code>Figtree</code>。</li><li>SpeakUp 中文标题映射：<code>Songti SC</code>, <code>STSong</code>, <code>Georgia</code>, serif。</li><li>SpeakUp 中文正文映射：<code>PingFang SC</code>, <code>Microsoft YaHei</code>, system-ui。</li><li>英文回答与问题：<code>Georgia</code>, <code>Times New Roman</code>, serif，可强化编辑与口语稿件感。</li></ul><h3>Hierarchy</h3><table><thead><tr><th>角色</th><th>桌面</th><th>移动</th><th>字重</th><th>行高</th><th>字距</th></tr></thead><tbody><tr><td>Hero</td><td>120px（观察值）/ SpeakUp 最高 116px</td><td>56px（观察值）/ SpeakUp 47–68px</td><td>400</td><td>0.85–0.96</td><td><code>-5%</code></td></tr><tr><td>Section H2</td><td>64–84px</td><td>48px</td><td>400</td><td>0.95–1.02</td><td><code>-4%</code></td></tr><tr><td>Card H3</td><td>32–40px</td><td>30–34px</td><td>400</td><td>1.05–1.15</td><td><code>-3%</code></td></tr><tr><td>Lead body</td><td>18–22px</td><td>16px</td><td>400</td><td>1.6–1.7</td><td>normal</td></tr><tr><td>Label</td><td>12–13px</td><td>12px</td><td>700</td><td>1.3</td><td><code>0.08–0.12em</code></td></tr></tbody></table><h3>Principles</h3><ul><li>标题短，尽量使用动词和一个强对比。</li><li>中文标题用宋体产生编辑感，正文保持无衬线保证阅读。</li><li>不用粗黑大标题模拟力量感；力量来自字号、留白和对比。</li><li>一屏只允许一个最高层级标题。</li></ul></section><section><h2>4. Component Stylings</h2><h3>Buttons and Links</h3><p>观察值：主要按钮 <code>#F0D7FF</code> 背景、2px <code>#1A1A1A</code> 边框、12px 圆角、<code>16px 24px</code> 内边距、600 字重；hover 为 <code>scale(.98)</code>。</p><ul><li>主按钮：淡紫填充、2px 黑边、12px 圆角。</li><li>次按钮：透明或米白填充，保留同样边框。</li><li>深色区次按钮：透明底、米白边和文字。</li><li>文本链接：下划线偏移 3–5px，不用灰色小箭头代替可点击性。</li></ul><h3>Cards and Containers</h3><ul><li>普通信息卡：2px 边框，30–44px 圆角，无阴影。</li><li>整段分区：40–80px 圆角；桌面 80px，移动 42px 左右。</li><li>内边距：桌面 34–68px，移动 20–32px。</li><li>禁止卡片套卡片；产品截图设备框属于内容展示，不再包一层装饰卡。</li></ul><h3>Inputs and Interactive Controls</h3><ul><li>输入框保持纸张表面和 2px 边框。</li><li>场景选择使用 999px 胶囊；观察到选中项使用淡紫填充并旋转约 <code>-4deg</code>。</li><li>所有触摸目标最少 42px 高。</li></ul><h3>Navigation</h3><ul><li>桌面为品牌 / 中部链接 / 右侧 CTA 的三列结构。</li><li>移动隐藏中部链接，只保留品牌和 CTA。</li><li>当前门户不使用复杂下拉导航，避免在验证阶段分散注意力。</li></ul><h3>Image Treatment</h3><ul><li>原型截图放入大面积彩色区，使用粗边框设备框。</li><li>截图不加多层渐变、光晕和玻璃模糊。</li><li>图片统一顶部对齐裁切；不把多张手机图硬挤在一屏。</li></ul></section><section><h2>5. Layout Principles</h2><h3>Spacing System</h3><ul><li>基础单位：8px。</li><li>常用：12、20、28、34、44、64、86、128px。</li><li>观察到 Wispr section padding 主要为 96、128、160px 等大尺度。</li></ul><h3>Grid &amp; Container</h3><ul><li>最大内容宽度：1240px。</li><li>Hero 文案最大宽度约 1030px，副文案 700px。</li><li>两栏演示比例不必 1:1，优先让产品画面和结果占更大空间。</li><li>功能区桌面三列，平板与手机单列。</li></ul><h3>Border Radius Scale</h3><ul><li>Micro：8–12px，用于按钮和标签。</li><li>Standard：16–24px，用于输入和小模块。</li><li>Large：34–48px，用于产品框和功能卡。</li><li>Section：72–80px；移动缩至 38–42px。</li><li>Pill：999px。</li></ul></section><section><h2>6. Depth &amp; Elevation</h2><table><thead><tr><th>层级</th><th>处理</th><th>用途</th></tr></thead><tbody><tr><td>Flat</td><td>纯背景，无边框</td><td>页面基础和文字区</td></tr><tr><td>Ring</td><td>2px 实线边框</td><td>按钮、胶囊、产品模块</td></tr><tr><td>Product</td><td>实线边框 + 单层错位阴影</td><td>手机原型截图</td></tr><tr><td>Focus</td><td>3px <code>#2D62FF</code> 外圈</td><td>键盘操作</td></tr></tbody></table><h3>Depth Principles</h3><ul><li>深度首先依靠颜色和边界，不依靠模糊阴影。</li><li>同一模块最多一个阴影层级。</li><li>不使用玻璃拟态、霓虹发光、紫蓝渐变。</li></ul></section><section><h2>7. Do&#39;s and Don&#39;ts</h2><h3>Do</h3><ul><li>首屏只讲“模拟面试”一个动作。</li><li>把真实原型直接放进页面，缺失处标注占位。</li><li>使用大字号、强留白和单个强调色建立节奏。</li><li>用“原回答 / 反馈后”展示产品价值。</li><li>保留模拟面试、报告、复练之间的实际入口。</li></ul><h3>Don&#39;t</h3><ul><li>不复制 Wispr 的 Logo、插画、动画文件或营销文案。</li><li>不在首屏并列面试、雅思、生活、职场四大入口。</li><li>不使用虚构用户评价、虚构数据和虚构合作 Logo。</li><li>不把完整 70 分钟计划作为第一次价值体验。</li><li>不把通用 Agent 当成差异化主卖点。</li></ul></section><section><h2>8. Responsive Behavior</h2><table><thead><tr><th>名称</th><th>宽度</th><th>关键变化</th></tr></thead><tbody><tr><td>Mobile</td><td>≤640px</td><td>单列、标题 47–68px、整段圆角 42px、按钮全宽</td></tr><tr><td>Tablet</td><td>641–980px</td><td>Hero 和产品演示改单列，功能卡改单列</td></tr><tr><td>Desktop</td><td>≥981px</td><td>1240px 容器、两栏产品演示、三列功能卡</td></tr></tbody></table><ul><li>移动端保留大标题，但不把字号压成普通落地页。</li><li>浮动装饰胶囊在手机隐藏，避免遮挡内容。</li><li>面试官列表在手机隐藏时长列，保留角色和关注点。</li><li>导航移动端只保留品牌和主 CTA。</li></ul></section><section><h2>9. Agent Prompt Guide</h2><h3>Quick Color Reference</h3><ul><li>Primary CTA：<code>#F0D7FF</code></li><li>Background：<code>#FFFFEB</code></li><li>Heading：<code>#1A1A1A</code></li><li>Dark section：<code>#1A1A1A</code></li><li>Success / deep accent：<code>#034F46</code></li><li>Warm accent：<code>#FFA946</code></li><li>Border：<code>#1A1A1A</code> 或 18% alpha</li></ul><h3>Quick Summary</h3><p>创建一个受 Wispr Flow 启发、但属于 SpeakUp 的中文产品门户。使用暖米白背景、近黑深色分区、淡紫 CTA、宋体超大标题、2px 实线边框和 40–80px 大圆角。首屏只讲英文模拟面试，并马上展示现有产品原型。下面按模拟面试、即时反馈、报告与复练展开；缺少的社会证明使用明确占位，不制造完成度。</p><h3>Example Component Prompts</h3><ul><li>Hero：用超大中文宋体标题“下一场英文面试，先和 SpeakUp 练一遍”，配一个真实语音回答和即时纠错演示，米白背景、淡紫产品舞台、2px 黑边。</li><li>模拟面试区：黑色 80px 圆角整段背景，左侧米白面试官计划，右侧短文案；面试阶段用胶囊切换，当前项淡紫并轻微旋转。</li><li>原型卡：三张高卡片，分别用橙、深绿、淡紫作为背景，下半部嵌入真实手机截图，状态明确标为“现有原型”或“待继续美化”。</li><li>占位区：使用虚线边框和空白引号，明确写“真实用户反馈待验证后补充”，不伪造 testimonial。</li></ul><h3>Ready-to-Use Prompt</h3><p>&gt; 基于本设计系统修改 SpeakUp 门户。保留 Wispr Flow 的编辑感、大圆角分区、暖米白/近黑/淡紫配色和产品演示节奏，但不得复制其品牌资产。使用仓库现有模拟面试截图，首屏聚焦“下一场英文面试，先和 SpeakUp 练一遍”。缺失内容用可替换占位，保证 390px、768px、1440px 三档布局可用。</p></section><section><h2>Appendix A. Interaction Patterns</h2><ul><li>按钮 hover：200ms，<code>scale(.98)</code>。</li><li>胶囊选中：淡紫填充，轻微旋转。</li><li>页面滚动：普通纵向长页；整段分区通过背景和圆角切换节奏。</li><li>动效基调：短、直接、服务产品演示；尊重 <code>prefers-reduced-motion</code>。</li></ul></section><section><h2>Appendix B. Content &amp; Messaging</h2><ul><li>标题模式：一个直接动作，通常 8–18 个中文字符。</li><li>副文案：一句说明输入，一句说明结果。</li><li>CTA：使用“开始模拟面试”“打开产品原型”等明确动词。</li><li>信任信息：只展示真实原型、真实访谈和真实数据。</li></ul></section><section><h2>Appendix C. Evidence Notes</h2><h3>直接观察</h3><ul><li>桌面 1440px：H1 为 120px、<code>EB Garamond</code>、400 字重、102px 行高、<code>-6px</code> 字距。</li><li>手机 390px：H1 为 56px、47.6px 行高、<code>-2.8px</code> 字距。</li><li>主按钮：淡紫背景、2px 黑边、12px 圆角、<code>16px 24px</code> padding；移动端约 8px 圆角和更紧凑 padding。</li><li>页面主背景 <code>#FFFFEB</code>，主文字 <code>#1A1A1A</code>，深绿 <code>#034F46</code>，橙色 <code>#FFA946</code>。</li><li>大分区 CSS 变量包含 40、48、64、80px 圆角层级。</li><li>用例选项为 2px 米白边的胶囊；当前项淡紫填充并旋转约 <code>-4deg</code>。</li><li>按钮 hover 使用 <code>transform: scale(.98)</code>。</li></ul><h3>推断与 SpeakUp 取舍</h3><ul><li>推断：页面识别度主要来自字体反差、留白和结构色块，不来自装饰资产。</li><li>取舍：SpeakUp 先复刻结构和设计语法，不复刻复杂导航、动画数量和多行业用例规模。</li><li>取舍：社会证明区先占位，等待产品验证数据。</li><li>取舍：模拟面试是门户主入口；长期职业英语能力保留为后续扩展，不在第一版同时争夺注意力。</li></ul></section></article>
+            </div>
+          </article>
+        </section>
+      </div>
+    </main>
+
+    <script>
+      const sourceView = document.getElementById("sourceView");
+      const previewView = document.getElementById("previewView");
+      const copyButton = document.getElementById("copyButton");
+      const copyState = document.getElementById("copyState");
+      const viewButtons = document.querySelectorAll("[data-view]");
+
+      function setActiveView(view) {
+        const showSource = view === "source";
+        sourceView.hidden = !showSource;
+        previewView.hidden = showSource;
+        viewButtons.forEach((button) => {
+          button.classList.toggle("is-active", button.dataset.view === view);
+        });
+      }
+
+      viewButtons.forEach((button) => {
+        button.addEventListener("click", () => setActiveView(button.dataset.view));
+      });
+
+      copyButton.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(sourceView.textContent || "");
+          copyState.textContent = "Copied";
+        } catch (error) {
+          copyState.textContent = "Clipboard unavailable";
+        }
+
+        setTimeout(() => {
+          copyState.textContent = "";
+        }, 1400);
+      });
+    </script>
+  </body>
+</html>
