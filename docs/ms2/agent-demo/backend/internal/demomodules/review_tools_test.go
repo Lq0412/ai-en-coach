@@ -64,6 +64,58 @@ func TestReviewHistoryToolReturnsPracticeRecords(t *testing.T) {
 	}
 }
 
+func TestReviewMistakeToolsSaveListAndRepractice(t *testing.T) {
+	ctx := context.Background()
+	state := assistant.NewDemoState()
+	registry := NewRegistry(state, &answerCoachCaptureGenerator{})
+	executeReviewFlow(t, ctx, registry)
+	if _, err := registry.Execute(ctx, assistant.ToolInvocation{ToolName: "review.generate_feedback", Arguments: map[string]any{}}); err != nil {
+		t.Fatal(err)
+	}
+	sessionID := state.State().Sessions[0].ID
+
+	saved, err := registry.Execute(ctx, assistant.ToolInvocation{
+		ToolName: "review.save_mistake",
+		Arguments: map[string]any{
+			"practice_session_id": sessionID,
+			"question_index":      0,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	card, ok := saved.Output["card"].(map[string]any)
+	if !ok || card["mistake_id"] == "" || card["question_text"] == "" {
+		t.Fatalf("missing saved mistake card: %#v", saved.Output)
+	}
+
+	listed, err := registry.Execute(ctx, assistant.ToolInvocation{
+		ToolName:  "review.list_mistakes",
+		Arguments: map[string]any{"limit": 3},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items, ok := listed.Output["items"].([]map[string]any)
+	if !ok || len(items) != 1 || items[0]["mistake_id"] != card["mistake_id"] {
+		t.Fatalf("unexpected mistake list: %#v", listed.Output)
+	}
+
+	repractice, err := registry.Execute(ctx, assistant.ToolInvocation{
+		ToolName: "review.submit_mistake_repractice",
+		Arguments: map[string]any{
+			"mistake_id":  card["mistake_id"],
+			"answer_text": "In that Go API project, I measured latency, changed the worker design, and improved request time by 20 percent.",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if repractice.Output["summary"] == "" {
+		t.Fatalf("missing repractice summary: %#v", repractice.Output)
+	}
+}
+
 func executeReviewFlow(t *testing.T, ctx context.Context, registry *Registry) {
 	t.Helper()
 	execute := func(tool string, arguments map[string]any) {

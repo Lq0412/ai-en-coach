@@ -21,6 +21,7 @@ type HTTPHandler struct {
 	preparation CandidatePreparationAPI
 	coach       AnswerCoachService
 	language    LanguageAssistanceGenerator
+	repractice  RepracticeFeedbackGenerator
 	transcriber Transcriber
 	synthesizer SpeechSynthesizer
 	models      map[string]string
@@ -34,6 +35,7 @@ func NewHTTPHandler(
 	preparation CandidatePreparationAPI,
 	coach AnswerCoachService,
 	language LanguageAssistanceGenerator,
+	repractice RepracticeFeedbackGenerator,
 	transcriber Transcriber,
 	synthesizer SpeechSynthesizer,
 	models map[string]string,
@@ -46,6 +48,7 @@ func NewHTTPHandler(
 		preparation: preparation,
 		coach:       coach,
 		language:    language,
+		repractice:  repractice,
 		transcriber: transcriber,
 		synthesizer: synthesizer,
 		models:      models,
@@ -69,6 +72,10 @@ func (h *HTTPHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /v1/practice/sessions/{session_id}", h.deleteInterviewSession)
 	mux.HandleFunc("POST /v1/practice/answer-coach", h.generateAnswerCoach)
 	mux.HandleFunc("POST /v1/language-assistance", h.generateLanguageAssistance)
+	mux.HandleFunc("GET /v1/review/mistakes", h.listSavedMistakes)
+	mux.HandleFunc("POST /v1/review/mistakes", h.saveReviewMistake)
+	mux.HandleFunc("GET /v1/review/mistakes/{mistake_id}", h.getSavedMistake)
+	mux.HandleFunc("POST /v1/review/mistakes/{mistake_id}/repractice", h.submitSavedMistakeRepractice)
 	mux.HandleFunc("POST /v1/assistant/attachments", h.uploadAttachment)
 	mux.HandleFunc("GET /v1/assistant/attachments/{attachment_id}/content", h.getAttachmentContent)
 	mux.HandleFunc("DELETE /v1/assistant/attachments/{attachment_id}", h.deleteAttachment)
@@ -165,6 +172,72 @@ func (h *HTTPHandler) deleteInterviewSession(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *HTTPHandler) listSavedMistakes(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"items": h.tools.ListSavedMistakeCards()})
+}
+
+func (h *HTTPHandler) saveReviewMistake(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		SessionID     string `json:"practice_session_id"`
+		QuestionIndex int    `json:"question_index"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&request); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON body"})
+		return
+	}
+	mistake, err := h.tools.SaveReviewMistake(strings.TrimSpace(request.SessionID), request.QuestionIndex)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, mistake)
+}
+
+func (h *HTTPHandler) getSavedMistake(w http.ResponseWriter, r *http.Request) {
+	context, err := h.tools.GetSavedMistakeContext(r.PathValue("mistake_id"))
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, context)
+}
+
+func (h *HTTPHandler) submitSavedMistakeRepractice(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		AnswerText string `json:"answer_text"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&request); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON body"})
+		return
+	}
+	mistakeID := r.PathValue("mistake_id")
+	var note ReviewNote
+	if h.repractice != nil {
+		context, err := h.tools.GetSavedMistakeContext(mistakeID)
+		if err != nil {
+			h.writeError(w, err)
+			return
+		}
+		generated, err := h.repractice.GenerateRepracticeFeedback(r.Context(), RepracticeFeedbackInput{
+			Mistake:       context.Mistake,
+			Session:       context.Session,
+			QuestionIndex: context.QuestionIndex,
+			NewAnswer:     request.AnswerText,
+		})
+		if err != nil {
+			h.logger.Printf("repractice feedback generation failed, using local fallback: %v", err)
+		} else {
+			note = generated
+		}
+	}
+	result, err := h.tools.SubmitSavedMistakeRepracticeWithFeedback(mistakeID, request.AnswerText, note)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (h *HTTPHandler) updateCandidateProfile(w http.ResponseWriter, r *http.Request) {

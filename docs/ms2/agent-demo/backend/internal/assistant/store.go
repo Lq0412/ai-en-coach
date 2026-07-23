@@ -339,6 +339,8 @@ func (s *MemoryConversationStore) Snapshot(state MockDomainState) DemoSnapshot {
 		InterviewStartedAt:     interviewStartedAt,
 		InterviewDeadline:      interviewDeadline,
 		InterviewSessions:      cloneInterviewSessions(state.Sessions),
+		SavedMistakes:          cloneSavedMistakes(state.SavedMistakes),
+		RepracticeResults:      cloneMistakeRepracticeResults(state.RepracticeResults),
 		CandidateProfile:       candidateProfileView(state.CandidateProfile),
 		Attachments:            attachmentReferences,
 		Resumes:                resumeViews(state.Resumes, state.ActiveResumeID),
@@ -356,6 +358,16 @@ func cloneAssistantMessages(messages []AssistantMessage) []AssistantMessage {
 		if message.Report != nil {
 			report := *message.Report
 			result[index].Report = &report
+		}
+		if message.History != nil {
+			history := *message.History
+			history.Items = append([]InterviewHistoryCard(nil), message.History.Items...)
+			result[index].History = &history
+		}
+		if message.Mistakes != nil {
+			mistakes := *message.Mistakes
+			mistakes.Items = append([]MistakeCard(nil), message.Mistakes.Items...)
+			result[index].Mistakes = &mistakes
 		}
 		result[index].Attachments = append([]AttachmentReference(nil), message.Attachments...)
 	}
