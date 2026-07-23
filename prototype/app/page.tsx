@@ -21,7 +21,7 @@ const journeyStages = [
   },
   {
     index: "03",
-    stage: "活下来",
+    stage: "适应好",
     type: "海外日常",
     copy: "把下一件要办的事直接告诉 Agent。它会识别对方、目标和不能遗漏的信息，再接管角色追问。",
     action: "告诉 Agent 一件事",
@@ -214,7 +214,10 @@ export default function Home() {
       <section className="journey-section" id="use-cases">
         <div className="section-intro dark-copy">
           <p className="eyebrow">从任何阶段开始</p>
-          <h2>考出去、面进去、活下来，<br />再到真正发展好。</h2>
+          <h2>
+            <span className="journey-title-line">考出去、面进去，</span>
+            <span className="journey-title-line">适应好，再到真正发展好。</span>
+          </h2>
           <p>四类任务共用同一个 SpeakUp：先理解下一件要发生的事，再准备、排练、复盘，并把结果带到下一次。</p>
         </div>
         <div className="journey-grid" aria-label="SpeakUp 覆盖的四类真实英语任务">

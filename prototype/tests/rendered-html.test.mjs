@@ -38,7 +38,7 @@ test("renders the SpeakUp portal with a path into the current prototype", async 
   assert.match(html, /portal-workplace-client\.jpg/);
   assert.match(html, /SpeakUp 模拟面试现已开放/);
   assert.match(html, /结合目标、经历和过往练习/);
-  assert.match(html, /考出去、面进去、活下来/);
+  assert.match(html, /考出去、面进去，.*适应好/s);
   assert.match(html, /雅思口语/);
   assert.match(html, /海外日常/);
   assert.match(html, /国际职场/);
