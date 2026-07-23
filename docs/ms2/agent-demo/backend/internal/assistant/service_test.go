@@ -85,6 +85,85 @@ func TestFreeConversationDoesNotStartInterview(t *testing.T) {
 	}
 }
 
+func TestOralFreePracticeUsesConversationReplyWithoutSession(t *testing.T) {
+	service, store, tools := newRuntime()
+	run, err := service.StartTask(context.Background(), assistant.StartTaskCommand{
+		ActorUserID:    assistant.DemoUserID,
+		ThreadID:       assistant.DemoThreadID,
+		UserMessage:    "我想随便练练口语",
+		IdempotencyKey: "oral-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Intent != "oral_free_practice" || run.Status != assistant.TaskRunStatusCompleted {
+		t.Fatalf("unexpected oral practice run: %#v", run)
+	}
+	if tools.State().CurrentSessionID != "" || tools.State().ActiveQuestion != "" {
+		t.Fatalf("oral free practice changed interview state: %#v", tools.State())
+	}
+	snapshot := store.Snapshot(tools.State())
+	if len(snapshot.ToolCalls) != 1 || snapshot.ToolCalls[0].ToolName != "conversation.generate_reply" {
+		t.Fatalf("unexpected oral practice calls: %#v", snapshot.ToolCalls)
+	}
+	if !strings.Contains(fmt.Sprint(snapshot.ToolCalls[0].Arguments["context_summary"]), "自由口语陪练") {
+		t.Fatalf("missing oral practice context: %#v", snapshot.ToolCalls[0].Arguments)
+	}
+	if !strings.Contains(snapshot.Messages[len(snapshot.Messages)-1].Content, "practice casually") {
+		t.Fatalf("missing oral practice reply: %#v", snapshot.Messages)
+	}
+}
+
+func TestOralFreePracticeDuringPausedInterviewDoesNotConsumeTurn(t *testing.T) {
+	service, store, tools := newRuntime()
+	ctx := context.Background()
+	started, err := service.StartTask(ctx, assistant.StartTaskCommand{
+		ActorUserID:    assistant.DemoUserID,
+		ThreadID:       assistant.DemoThreadID,
+		UserMessage:    "开始一场 Go 后端英文面试",
+		IdempotencyKey: "paused-oral-start",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ResumeTask(ctx, assistant.ResumeTaskCommand{
+		ActorUserID: assistant.DemoUserID,
+		TaskRunID:   started.ID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	activeQuestion := tools.State().ActiveQuestion
+	run, err := service.StartTask(ctx, assistant.StartTaskCommand{
+		ActorUserID:     assistant.DemoUserID,
+		ThreadID:        assistant.DemoThreadID,
+		UserMessage:     "我们用英语聊一会儿，随便练练口语",
+		IdempotencyKey:  "paused-oral-chat",
+		InteractionMode: "conversation",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Intent != "oral_free_practice" {
+		t.Fatalf("unexpected intent: %#v", run)
+	}
+	state := tools.State()
+	if state.ActiveQuestion != activeQuestion || state.CompletedQuestionCount != 0 {
+		t.Fatalf("paused oral practice consumed interview turn: %#v", state)
+	}
+	snapshot := store.Snapshot(state)
+	var oralCall *assistant.ToolCall
+	for index := range snapshot.ToolCalls {
+		if snapshot.ToolCalls[index].TaskRunID == run.ID {
+			oralCall = &snapshot.ToolCalls[index]
+			break
+		}
+	}
+	if oralCall == nil || oralCall.ToolName != "conversation.generate_reply" ||
+		!strings.Contains(fmt.Sprint(oralCall.Arguments["context_summary"]), "interview_paused=true") {
+		t.Fatalf("unexpected paused oral call: %#v", oralCall)
+	}
+}
+
 type contextCaptureGenerator struct {
 	inputs         []assistant.ConversationReplyInput
 	questionInputs []assistant.InterviewGenerationInput

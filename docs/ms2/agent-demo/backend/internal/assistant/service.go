@@ -154,21 +154,10 @@ func (s *Service) startTask(ctx context.Context, command StartTaskCommand) (Task
 	if s.dependencies.Runtime != nil {
 		state = s.dependencies.Runtime.State()
 	}
-	// The UI route is authoritative. An active interview may be paused while the
-	// user returns to normal chat; those messages must never consume a turn.
-	if interactionMode == "conversation" && plan.Intent == "submit_interview_answer" {
-		plan = freeConversationPlan()
-	}
-	// An explicit stop from the practice UI is control input, never an answer.
-	// Enforce this server-side so provider planning cannot accidentally consume it.
-	if interactionMode == "interview" && state.ActiveQuestion != "" && isInterviewStopRequest(strings.ToLower(visibleMessage)) {
-		plan = endInterviewPlan("user_requested_stop")
-	}
-	// Conversely, a message submitted from the practice composer is always the
-	// answer to the active question, even if the wording resembles small talk.
-	if interactionMode == "interview" && state.ActiveQuestion != "" && plan.Intent != "submit_interview_answer" && plan.Intent != "end_interview" {
-		plan = interviewAnswerPlan(state.ShouldCompleteAfterNextTurn(time.Now()))
-	}
+	plan = s.enforceStateGuards(plan, StartTaskCommand{
+		UserMessage:     visibleMessage,
+		InteractionMode: interactionMode,
+	}, state)
 	if plan.Intent == "submit_interview_answer" {
 		for index := range plan.Steps {
 			if plan.Steps[index].ToolName == "conversation.submit_turn" {
@@ -192,10 +181,13 @@ func (s *Service) startTask(ctx context.Context, command StartTaskCommand) (Task
 			}
 		}
 	}
-	if plan.Intent == "free_conversation" {
+	if plan.Intent == "free_conversation" || plan.Intent == "oral_free_practice" {
 		conversationSummary := thread.ContextSummary
 		if interactionMode == "conversation" && state.ActiveQuestion != "" {
 			conversationSummary = "自由对话中；interview_paused=true；当前消息不是面试回答，不得继续提问、催促回答或计入 Turn"
+		}
+		if plan.Intent == "oral_free_practice" {
+			conversationSummary = oralPracticeContextSummary(conversationSummary, interactionMode == "conversation" && state.ActiveQuestion != "")
 		}
 		for index := range plan.Steps {
 			if plan.Steps[index].ToolName == "conversation.generate_reply" {
@@ -271,9 +263,56 @@ func (s *Service) startTask(ctx context.Context, command StartTaskCommand) (Task
 	return s.completeRun(ctx, command.ActorUserID, run, plan.Steps)
 }
 
+func (s *Service) enforceStateGuards(plan Plan, command StartTaskCommand, state RuntimeSnapshot) Plan {
+	interactionMode := strings.ToLower(strings.TrimSpace(command.InteractionMode))
+	visibleMessage := strings.TrimSpace(command.UserMessage)
+	lowerMessage := strings.ToLower(visibleMessage)
+
+	// The UI route is authoritative. An active interview may be paused while the
+	// user returns to normal chat; those messages must never consume a turn.
+	if interactionMode == "conversation" && plan.Intent == "submit_interview_answer" {
+		if isOralFreePracticeRequest(lowerMessage) {
+			return oralFreePracticePlan()
+		}
+		return freeConversationPlan()
+	}
+	if plan.Intent == "submit_interview_answer" && state.ActiveQuestion == "" {
+		if isOralFreePracticeRequest(lowerMessage) {
+			return oralFreePracticePlan()
+		}
+		return freeConversationPlan()
+	}
+	// An explicit stop from the practice UI is control input, never an answer.
+	if interactionMode == "interview" && state.ActiveQuestion != "" && isInterviewStopRequest(lowerMessage) {
+		return endInterviewPlan("user_requested_stop")
+	}
+	// Conversely, a message submitted from the practice composer is always the
+	// answer to the active question, even if the wording resembles small talk.
+	if interactionMode == "interview" && state.ActiveQuestion != "" && plan.Intent != "submit_interview_answer" && plan.Intent != "end_interview" {
+		return interviewAnswerPlan(state.ShouldCompleteAfterNextTurn(time.Now()))
+	}
+	if plan.Intent == "start_mock_interview" && strings.TrimSpace(targetRoleFromPlan(plan)) == "目标岗位" {
+		return interviewRequirementQuestionPlan()
+	}
+	if isOralFreePracticeRequest(lowerMessage) && plan.Intent == "free_conversation" {
+		return oralFreePracticePlan()
+	}
+	return plan
+}
+
 func freeConversationPlan() Plan {
 	return Plan{
 		Intent: "free_conversation",
+		Steps: []PlanStep{{
+			ToolName:  "conversation.generate_reply",
+			Arguments: map[string]any{},
+		}},
+	}
+}
+
+func oralFreePracticePlan() Plan {
+	return Plan{
+		Intent: "oral_free_practice",
 		Steps: []PlanStep{{
 			ToolName:  "conversation.generate_reply",
 			Arguments: map[string]any{},
@@ -308,6 +347,19 @@ func interviewScopeDescription(maxTurns, durationMinutes int) string {
 		return fmt.Sprintf("限制 %d 分钟、动态追问且最多 %d 个有效回答", durationMinutes, maxTurns)
 	}
 	return fmt.Sprintf("限制 %d 分钟、根据岗位与回答动态追问且不固定题数", durationMinutes)
+}
+
+func oralPracticeContextSummary(previous string, interviewPaused bool) string {
+	parts := []string{
+		"自由口语陪练中；英文为主，中文辅助；回复短一点，适合开口练；多追问，让用户继续说；用户表达明显错误时，先自然回应，再给一个简短 correction；不进入面试流程；不生成正式评分报告",
+	}
+	if strings.TrimSpace(previous) != "" {
+		parts = append(parts, "上一轮上下文："+strings.TrimSpace(previous))
+	}
+	if interviewPaused {
+		parts = append(parts, "interview_paused=true；当前消息不是面试回答，不得继续提问、催促回答或计入 Turn")
+	}
+	return strings.Join(parts, "；")
 }
 
 func (s *Service) ResumeTask(ctx context.Context, command ResumeTaskCommand) (TaskRun, error) {
@@ -588,9 +640,14 @@ func (s *Service) updateThreadSummary(ctx context.Context, run TaskRun) error {
 	}
 	if run.Intent == "clarify_interview_requirements" {
 		thread.ContextSummary = "面试需求收集中；interview_requirement=pending_target_role；session_in_progress=false"
-	} else if run.Intent == "free_conversation" {
+	} else if run.Intent == "free_conversation" || run.Intent == "oral_free_practice" {
+		prefix := "自由对话中"
+		if run.Intent == "oral_free_practice" {
+			prefix = "自由口语陪练中"
+		}
 		thread.ContextSummary = fmt.Sprintf(
-			"自由对话中；最近用户消息：%s；最近助手回复：%s；session_in_progress=false",
+			"%s；最近用户消息：%s；最近助手回复：%s；session_in_progress=false",
+			prefix,
 			compactText(fmt.Sprint(run.Result["user_message"]), 120),
 			compactText(fmt.Sprint(run.Result["summary"]), 180),
 		)
@@ -802,7 +859,7 @@ func attachmentContext(message string, attachments []Attachment) string {
 
 func composeResponse(intent string, result map[string]any) string {
 	switch intent {
-	case "free_conversation", "clarify_interview_requirements":
+	case "free_conversation", "oral_free_practice", "clarify_interview_requirements":
 		return fmt.Sprint(result["summary"])
 	case "start_mock_interview":
 		return fmt.Sprintf("面试开始。%v", result["content"])

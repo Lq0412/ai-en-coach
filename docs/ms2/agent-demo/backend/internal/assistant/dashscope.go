@@ -112,44 +112,26 @@ func (p *DashScopeProvider) Plan(ctx context.Context, request PlanRequest) (Plan
 	}
 	system := `You are the planner for SpeakUp, an English interview practice application.
 Return one JSON object only, without markdown:
-{"Intent":"intent_name","Steps":[{"ToolName":"tool.name","Arguments":{}}]}
+{"Intent":"intent_name","Steps":[{"ToolName":"tool.name","Arguments":{}}],"Confidence":0.0,"MissingSlots":[],"Reason":"brief routing reason"}
 
-	Allowed plans:
-	1. Normal free conversation (default whenever the user is not explicitly asking to start an interview, and no interview session is active):
-	{"Intent":"free_conversation","Steps":[
-	{"ToolName":"conversation.generate_reply","Arguments":{}}
-	]}
-	2. If the user asks for an interview but the complete conversation does not contain a specific target role, ask for it first:
-{"Intent":"clarify_interview_requirements","Steps":[
-{"ToolName":"conversation.generate_reply","Arguments":{}}
-]}
-If operational state contains interview_requirement=pending_target_role, treat the user's next role or job-direction answer as continuation of the interview request, even when that message does not repeat the word interview.
-	3. Start interview only after a specific target role is present in the current message or earlier conversation:
-{"Intent":"start_mock_interview","Steps":[
-{"ToolName":"preparation.get_confirmed_context","Arguments":{"scenario":"PROGRAMMER_INTERVIEW"}},
-{"ToolName":"practice.create_plan","Arguments":{"role":"infer the target role from the user message; max_turns=0 for dynamic question count","max_turns":0,"duration_minutes":15}},
-{"ToolName":"practice.start_session","Arguments":{}},
-{"ToolName":"conversation.generate_next_question","Arguments":{}}
-]}
-Use max_turns=0 and duration_minutes=15 by default. Zero means there is no fixed question count: the session ends when time expires or the user asks to stop. If the user explicitly requests a hard question cap, copy it within 1-100 turns; duration remains within 5-60 minutes. Never use a generic default role when the role is missing; use clarify_interview_requirements instead.
-	4. Submit an answer while session_in_progress=true:
-{"Intent":"submit_interview_answer","Steps":[
-{"ToolName":"conversation.submit_turn","Arguments":{"answer_text":"copy the user message exactly","interaction_mode":"TEXT"}},
-{"ToolName":"practice.apply_turn_outcome","Arguments":{"answer_validity":"VALID"}},
-{"ToolName":"conversation.generate_next_question","Arguments":{}}
-]}
-If the user explicitly asks to end or stop an active interview, do not treat that message as an answer. Return:
-{"Intent":"end_interview","Steps":[{"ToolName":"review.generate_feedback","Arguments":{"reason":"user_requested_stop"}}]}
-The server enforces the time and turn limits and may replace the last step with review.generate_feedback.
-	5. View history: Intent view_practice_history, one review.list_history step.
-	6. View saved mistakes or repractice items: Intent view_saved_mistakes, one review.list_mistakes step. Use this when the user asks about 错题, mistakes, or recent repractice items.
-	7. View one saved mistake context only when the user provides a concrete mistake id: Intent view_mistake_context, one review.get_mistake_context step.
-	8. Submit a saved-mistake repractice answer only when the user provides a concrete mistake id and a new answer: Intent submit_mistake_repractice, one review.submit_mistake_repractice step.
-	9. Review: Intent review_latest_practice, one review.generate_feedback step.
-	The role argument must reflect the user's requested job, for example Product Manager, Frontend Engineer, or Go Backend Engineer. Do not force every interview to Go backend.
-	Interaction mode is an authoritative UI signal. When interaction_mode=conversation, never use submit_interview_answer even if an unfinished interview exists. When interaction_mode=interview and a session is active, use submit_interview_answer.
-	Greetings, questions, English practice, technical discussion, and all other messages use free_conversation.
-	Never invent tools.`
+You are an intent router. You may only choose an Intent from the Intent Catalog below, and every tool sequence must exactly match one AllowedPlanShapes entry for that intent.
+Intent Catalog:
+` + RenderPlannerPromptCatalog() + `
+
+Argument rules:
+- For start_mock_interview, set preparation.get_confirmed_context scenario to "PROGRAMMER_INTERVIEW".
+- For start_mock_interview, set practice.create_plan role to the user's requested target role. Use max_turns=0 and duration_minutes=15 by default.
+- max_turns=0 means no fixed question count; the session ends when time expires or the user asks to stop.
+- If the user explicitly requests a hard question cap, copy it within 1-100 turns; duration remains within 5-60 minutes.
+- Never use a generic default role when the role is missing; use clarify_interview_requirements and MissingSlots ["target_role"].
+- For submit_interview_answer, copy the user message exactly into answer_text and set interaction_mode to "TEXT".
+- If the user explicitly asks to end or stop an active interview, use end_interview with reason "user_requested_stop".
+- For oral_free_practice, use conversation.generate_reply and do not create a PracticeSession.
+- If operational state contains interview_requirement=pending_target_role, treat the user's next role or job-direction answer as continuation of the interview request.
+- Interaction mode is an authoritative UI signal. When interaction_mode=conversation, never use submit_interview_answer even if an unfinished interview exists.
+- When interaction_mode=interview and a session is active, use submit_interview_answer unless the user clearly asks to stop.
+- Greetings, ordinary chat, English questions, and technical discussion use free_conversation unless the user asks for casual speaking practice.
+- Never invent tools or combine tools from different intents.`
 	content, err := p.chat(ctx, system, fmt.Sprintf(
 		"Operational state:\n%s\nInteraction mode: %s\n\nComplete ordered thread messages (JSON):\n%s\n\nThe final user message to plan:\n%s",
 		request.ContextSummary,
@@ -599,6 +581,7 @@ Respond naturally to the final user message. You MUST use the same language as t
 You may discuss general topics, English learning, and software engineering.
 Do not claim that an interview has started unless the orchestration layer has entered an interview session.
 When operational state says interview_paused=true, answer only as a normal conversation partner. Do not continue the interview question, ask the user to answer it, or mention that the user should return to the interview.
+When operational state says 自由口语陪练中, act as a casual speaking practice partner: mostly English with light Chinese support, brief, encouraging, and ask one follow-up so the user keeps speaking. If the user's expression has an obvious mistake, respond naturally first, then give one short correction.
 Keep the response concise: at most 3 short sentences, no more than 120 Chinese characters for Chinese replies or 80 words for English replies. Do not add an unsolicited follow-up section.`
 	authoritative := make([]string, 0, 2)
 	dialogue := make([]any, 0, len(input.Messages)+1)
@@ -1260,79 +1243,7 @@ func (p *DashScopeProvider) postJSON(ctx context.Context, endpoint string, paylo
 }
 
 func validatePlan(plan Plan) error {
-	allowed := map[string]bool{
-		"preparation.get_confirmed_context":   true,
-		"practice.create_plan":                true,
-		"practice.start_session":              true,
-		"conversation.generate_next_question": true,
-		"conversation.submit_turn":            true,
-		"conversation.generate_reply":         true,
-		"practice.apply_turn_outcome":         true,
-		"review.generate_feedback":            true,
-		"review.list_history":                 true,
-		"review.save_mistake":                 true,
-		"review.list_mistakes":                true,
-		"review.get_mistake_context":          true,
-		"review.submit_mistake_repractice":    true,
-	}
-	if plan.Intent == "" || len(plan.Steps) == 0 {
-		return errors.New("planner returned an empty plan")
-	}
-	for _, step := range plan.Steps {
-		if !allowed[step.ToolName] {
-			return fmt.Errorf("planner returned unregistered tool %q", step.ToolName)
-		}
-	}
-	expected := map[string][][]string{
-		"free_conversation":              {{"conversation.generate_reply"}},
-		"clarify_interview_requirements": {{"conversation.generate_reply"}},
-		"start_mock_interview": {{
-			"preparation.get_confirmed_context",
-			"practice.create_plan",
-			"practice.start_session",
-			"conversation.generate_next_question",
-		}},
-		"submit_interview_answer": {
-			{
-				"conversation.submit_turn",
-				"practice.apply_turn_outcome",
-				"conversation.generate_next_question",
-			},
-			{
-				"conversation.submit_turn",
-				"practice.apply_turn_outcome",
-				"review.generate_feedback",
-			},
-		},
-		"view_practice_history": {{"review.list_history"}},
-		"view_saved_mistakes":   {{"review.list_mistakes"}},
-		"view_mistake_context":  {{"review.get_mistake_context"}},
-		"submit_mistake_repractice": {
-			{"review.submit_mistake_repractice"},
-		},
-		"review_latest_practice": {{"review.generate_feedback"}},
-		"end_interview":          {{"review.generate_feedback"}},
-	}
-	shapes, ok := expected[plan.Intent]
-	if !ok {
-		return fmt.Errorf("planner returned unsupported intent %q", plan.Intent)
-	}
-	for _, shape := range shapes {
-		if len(shape) != len(plan.Steps) {
-			continue
-		}
-		matches := true
-		for index := range shape {
-			if shape[index] != plan.Steps[index].ToolName {
-				matches = false
-				break
-			}
-		}
-		if matches {
-			return nil
-		}
-	}
-	return fmt.Errorf("planner returned invalid step sequence for %q", plan.Intent)
+	return ValidatePlanAgainstCatalog(plan)
 }
 
 func stripJSONFence(value string) string {

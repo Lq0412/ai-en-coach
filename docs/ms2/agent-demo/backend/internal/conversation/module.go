@@ -138,6 +138,9 @@ func (s service) GenerateReply(ctx context.Context, command ReplyCommand) (reply
 		if userMessage != "" {
 			reply = "你说的是：“" + userMessage + "”。这是一次普通自由对话，没有启动面试。"
 		}
+		if strings.Contains(contextSummary, "自由口语陪练") {
+			reply = "Sure, let's practice casually. Tell me one thing you did today, and I will help you say it more naturally."
+		}
 		if s.generator != nil {
 			messages := make([]assistant.ContextMessage, 0, len(command.Messages))
 			for _, message := range command.Messages {

@@ -69,8 +69,11 @@ type ConfirmationRequest struct {
 }
 
 type Plan struct {
-	Intent string
-	Steps  []PlanStep
+	Intent       string
+	Steps        []PlanStep
+	Confidence   float64  `json:"Confidence,omitempty"`
+	MissingSlots []string `json:"MissingSlots,omitempty"`
+	Reason       string   `json:"Reason,omitempty"`
 }
 
 type PlanStep struct {

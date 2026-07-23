@@ -75,6 +75,18 @@ func (p *MockPlanner) Plan(_ context.Context, request PlanRequest) (Plan, error)
 			Steps:  []PlanStep{{ToolName: "review.generate_feedback", Arguments: map[string]any{}}},
 		}, nil
 	}
+	if isOralFreePracticeRequest(text) {
+		return Plan{
+			Intent: "oral_free_practice",
+			Steps: []PlanStep{{
+				ToolName: "conversation.generate_reply",
+				Arguments: map[string]any{
+					"user_message":    request.UserMessage,
+					"context_summary": request.ContextSummary,
+				},
+			}},
+		}, nil
+	}
 
 	interviewRequested := strings.Contains(text, "面试") || strings.Contains(text, "interview")
 	requirementPending := strings.Contains(request.ContextSummary, "interview_requirement=pending_target_role")
@@ -1078,6 +1090,21 @@ func isInterviewStopRequest(text string) bool {
 	for _, phrase := range []string{
 		"结束面试", "停止面试", "结束这场面试", "结束练习",
 		"end interview", "stop interview", "finish interview", "finish the interview",
+	} {
+		if strings.Contains(text, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
+func isOralFreePracticeRequest(text string) bool {
+	text = strings.ToLower(strings.TrimSpace(text))
+	for _, phrase := range []string{
+		"随便练练口语", "随便练一下口语", "练练口语", "练一下口语", "练口语",
+		"日常英语", "英语聊一会", "英语聊一会儿", "用英语聊", "陪我练",
+		"practice speaking casually", "practice speaking", "casual speaking",
+		"practice oral english", "speak english with me", "chat in english",
 	} {
 		if strings.Contains(text, phrase) {
 			return true
