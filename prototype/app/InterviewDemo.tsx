@@ -60,7 +60,7 @@ export default function InterviewDemo({ features }: { features: DemoFeature[] })
         <header>
           <span>{active.index} / {String(features.length).padStart(2, '0')}</span>
           <em>{active.status}</em>
-          <a href={active.href} target="_blank" rel="noreferrer">
+          <a href={active.href}>
             {active.action} <span aria-hidden="true">↗</span>
           </a>
         </header>

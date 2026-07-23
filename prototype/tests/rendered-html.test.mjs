@@ -23,11 +23,13 @@ async function readActivePrototype() {
   ]);
 }
 
-test("renders the SpeakUp portal with a path into the current prototype", async () => {
+test("routes unfinished product actions to a coming-soon prompt", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /面向真实任务的英语沟通 Agent/);
+  assert.doesNotMatch(html, /href="\/pages\/prototype\.html/);
+  assert.match(html, /敬请期待/);
   assert.match(html, /下一场重要的英文沟通/);
   assert.match(html, /portal-interview-start\.jpg/);
   assert.match(html, /portal-panel-practice\.jpg/);
@@ -48,9 +50,8 @@ test("renders the SpeakUp portal with a path into the current prototype", async 
   assert.match(html, /单面之外，也能应对多人连续追问/);
   assert.match(html, /英文面试完整演示步骤/);
   assert.doesNotMatch(html, /class="feature-card"/);
-  assert.match(html, /pages\/prototype\.html/);
-  for (const route of ["ielts-part2-practice", "portal-interview-start", "portal-panel-practice", "portal-agent-debrief", "daily-doctor-brief", "workplace-client-brief"])
-    assert.match(html, new RegExp(route));
+  assert.match(html, /id="coming-soon"/);
+  assert.match(html, /href="#coming-soon"/);
   assert.doesNotMatch(html, /验证入口|方向验证|产品行为占位|待验证|产品验证门户|体验现有原型/);
   assert.doesNotMatch(html, /portal-task-intake\.jpg|portal-task-brief\.jpg/);
   assert.doesNotMatch(html, /portal-career-history\.jpg|portal-career-context\.jpg|portal-interview-plan\.jpg/);

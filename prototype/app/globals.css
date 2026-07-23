@@ -1303,6 +1303,64 @@ h2 {
   color: var(--lumen);
 }
 
+.coming-soon-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 160ms ease, visibility 160ms ease;
+}
+
+.coming-soon-modal:target {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.coming-soon-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(20, 20, 18, 0.72);
+}
+
+.coming-soon-panel {
+  position: relative;
+  z-index: 1;
+  width: min(460px, 100%);
+  padding: 42px;
+  border: 2px solid var(--ink);
+  border-radius: 32px;
+  background: var(--lumen);
+  color: var(--ink);
+  text-align: left;
+}
+
+.coming-soon-panel h2 {
+  margin-top: 22px;
+  font-size: clamp(48px, 7vw, 72px);
+  line-height: 1;
+}
+
+.coming-soon-panel > p:not(.eyebrow) {
+  margin: 22px 0 30px;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.65;
+}
+
+.coming-soon-panel .button {
+  width: 100%;
+}
+
+body:has(.coming-soon-modal:target) {
+  overflow: hidden;
+}
+
 footer {
   display: grid;
   grid-template-columns: 1fr auto 1fr;
