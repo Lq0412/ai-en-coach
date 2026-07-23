@@ -34,6 +34,9 @@ func main() {
 	if err != nil {
 		logger.Fatalf("interview state error: %v", err)
 	}
+	if _, err := preparation.NewFileScenarioRepository(filepath.Join(dataDirectory, "scenarios.json")); err != nil {
+		logger.Fatalf("scenario repository error: %v", err)
+	}
 	preparationService := preparation.NewManagementService(state)
 	registry := demomodules.NewRegistry(state, provider)
 	mem0BaseURL := os.Getenv("MEM0_BASE_URL")

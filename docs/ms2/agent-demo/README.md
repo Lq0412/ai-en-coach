@@ -63,6 +63,8 @@ Go 后端复用 XE3-ESL assistant scaffold 的命名：
 `AppendMessage`。默认实现会把对话、任务、计划、工具调用和确认状态原子写入
 `.data/conversation.json`；面试状态写入 `.data/interview-state.json`；Mem0
 向量和历史分别写入 `.data/mem0/vectors.db` 与 `.data/mem0/history.db`。
+跨天真实事项使用独立的 Preparation `ScenarioRepository`，写入
+`.data/scenarios.json`，不与 Thread 摘要、长期记忆或 PracticeSession 混用。
 
 ## 配置
 

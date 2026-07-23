@@ -56,6 +56,7 @@
 四个业务模块与组合根位于：
 
 - `backend/internal/preparation/`：`ScenarioReader` 和 `ManagementService`，负责候选人背景快照以及 HTTP 层的档案、附件和简历管理入口。
+- `backend/internal/preparation/scenario*.go`：Scenario 聚合、事实来源优先级、乐观锁、应用服务和独立文件 Repository；场景按用户隔离，并持久化当前 Thread 的场景关联和创建请求幂等记录。
 - `backend/internal/practice/`：`PlanService`、`SessionService`、`ApplyTurnOutcome`，负责练习计划、Session 和 Turn Outcome。
 - `backend/internal/conversation/`：`QuestionService`、`ReplyService`、`TurnService`，负责提问、自由回复和 Turn 提交。
 - `backend/internal/review/`：`AnalyzeUseCase`、`HistoryQueryUseCase`，负责反馈分析与练习历史投影。
@@ -119,6 +120,7 @@ conversation.submit_turn
 - 当前启用简历对应的 `CandidateProfile` 会注入自由对话、面试提问和反馈。
 - 默认数据目录是项目根 `.data/`，可通过 `AGENT_DATA_DIR` 覆盖。
 - `conversation.json` 保存对话、任务、计划、确认与消息；`interview-state.json` 保存面试、附件、简历与档案状态。
+- `scenarios.json` 独立保存跨天 Scenario、来源 Thread、材料关联、带来源的结构化事实、创建请求幂等记录和当前场景关联。
 - JSON 落盘使用临时文件加重命名，目录权限为 `0700`、文件权限为 `0600`。
 - HTTP 服务是本地 Demo 形态：固定 Actor `demo-user`，没有登录、鉴权或多进程协调。
 
