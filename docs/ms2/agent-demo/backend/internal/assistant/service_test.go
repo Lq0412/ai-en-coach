@@ -504,6 +504,30 @@ func TestSavedMistakeIntentAppendsClickableMistakeCards(t *testing.T) {
 	}
 }
 
+func TestShortSavedMistakeRepracticeProducesFeedback(t *testing.T) {
+	_, _, tools := newRuntime()
+	seedAssistantCompletedSession(t, tools, "session-short-repractice", "AI Application Developer")
+	mistake, err := tools.SaveReviewMistake("session-short-repractice", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := tools.SubmitSavedMistakeRepractice(mistake.ID, "你好，点评一下")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Feedback.Type != "evidence_gap" || result.Summary == "" {
+		t.Fatalf("short repractice should still produce feedback: %#v", result)
+	}
+	context, err := tools.GetSavedMistakeContext(mistake.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(context.Repractices) != 1 || context.Mistake.Status != "practiced" {
+		t.Fatalf("repractice was not saved in context: %#v", context)
+	}
+}
+
 func TestInterviewQuestionGenerationReceivesDialogueHistory(t *testing.T) {
 	store := assistant.NewMemoryConversationStore()
 	generator := &contextCaptureGenerator{}

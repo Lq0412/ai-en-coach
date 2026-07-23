@@ -177,6 +177,29 @@ func TestSavedMistakeLifecycle(t *testing.T) {
 	}
 }
 
+func TestShortSavedMistakeRepracticeStillProducesFeedback(t *testing.T) {
+	state := assistant.NewDemoState()
+	seedCompletedSession(t, state, "session-short", "AI Application Developer", "Feedback", []string{
+		"I briefly mentioned TTL.",
+	})
+	service := NewService(state, nil)
+	mistake, err := service.SaveMistake(context.Background(), SaveMistakeCommand{SessionID: "session-short", QuestionIndex: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := service.SubmitMistakeRepractice(context.Background(), SubmitMistakeRepracticeCommand{
+		MistakeID:  mistake.ID,
+		AnswerText: "你好，点评一下",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Feedback.Type != "evidence_gap" || result.Summary == "" {
+		t.Fatalf("short repractice should still produce evidence feedback: %#v", result)
+	}
+}
+
 func seedActiveSession(t *testing.T, state *assistant.DemoState, questions, answers []string) {
 	t.Helper()
 	_, err := state.Transact(func(snapshot *assistant.RuntimeSnapshot, savedAnswers *[]string) (assistant.ToolResult, error) {

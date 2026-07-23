@@ -986,6 +986,14 @@ func repracticeReviewNote(mistake SavedMistake, answer string) ReviewNote {
 	message := "这次复练回答已经形成了可点评的英文材料。"
 	suggestion := "继续把回答压到清晰的背景、行动、结果三段，并补一个量化结果。"
 	noteType := "improvement"
+	if len(strings.Fields(answer)) < 8 {
+		return ReviewNote{
+			Type:       "evidence_gap",
+			Message:    "这次回答太短，暂时只能判断为复练证据不足。",
+			Evidence:   compactText(answer, 180),
+			Suggestion: "请用 3 到 5 句英文重新回答，至少包含背景、你的行动和一个结果。",
+		}
+	}
 	if len(strings.Fields(answer)) < len(strings.Fields(mistake.OriginalAnswer)) {
 		message = "这次回答比原回答更短，信息密度可能还不够。"
 		suggestion = "先保留原回答中的有效信息，再补充你具体做了什么和结果。"

@@ -1409,10 +1409,16 @@
   async function submitMistakeRepractice(id, answerOverride = "") {
     if (!id || mistakeSubmitting) return;
     const input = document.querySelector("[data-mistake-answer]");
-    mistakeAnswerDraft = answerOverride || input?.value || mistakeAnswerDraft;
+    mistakeAnswerDraft = String(answerOverride || input?.value || mistakeAnswerDraft || "").trim();
+    if (!mistakeAnswerDraft) {
+      bridgeError = "请先完成一次回答，再生成本题点评。";
+      liveTranscript = mistakeAnswerDraft;
+      rerender("mistake-practice");
+      return;
+    }
     mistakeSubmitting = true;
     bridgeError = "";
-    rerender("mistake-detail");
+    rerender("mistake-practice");
     try {
       await request(`/v1/review/mistakes/${encodeURIComponent(id)}/repractice`, {
         method: "POST",
@@ -1425,10 +1431,12 @@
       mistakeTextInputVisible = false;
       toast("复练点评已生成");
     } catch (error) {
-      bridgeError = error.message || "复练点评失败";
+      bridgeError = /required/i.test(error.message || "")
+        ? "请先完成一次回答，再生成本题点评。"
+        : error.message || "复练点评失败";
     } finally {
       mistakeSubmitting = false;
-      rerender("mistake-detail");
+      rerender("mistake-practice");
     }
   }
 
@@ -1710,7 +1718,7 @@
   function submitRecognizedVoiceAnswer(text) {
     const answer = String(text || "").trim();
     if (
-      activeRealRoute !== "practice" ||
+      !voiceAnswerRouteActive() ||
       !pendingVoiceAnswerSubmit ||
       voiceAnswerSubmitting ||
       !answer
@@ -1719,8 +1727,12 @@
     voiceAnswerSubmitting = true;
     inputValue = "";
     liveTranscript = "";
-    void sendMessage(answer).finally(() => {
+    const submission = activeRealRoute === "mistake-practice"
+      ? submitMistakeRepractice(selectedMistakeContext?.mistake?.id, answer)
+      : sendMessage(answer);
+    void submission.finally(() => {
       voiceAnswerSubmitting = false;
+      pendingVoiceAnswerSubmit = false;
     });
   }
 
@@ -2215,7 +2227,7 @@
     rerender();
     try {
       const transcript = await requestTranscription(blob);
-      if (activeRealRoute === "practice" && pendingVoiceAnswerSubmit) {
+      if (voiceAnswerRouteActive() && pendingVoiceAnswerSubmit) {
         submitRecognizedVoiceAnswer(transcript);
       } else {
         inputValue = transcript;
@@ -2249,18 +2261,18 @@
   function handleASREvent(event) {
     if (event.type === "transcript.delta") {
       liveTranscript += event.text || "";
-      if (activeRealRoute !== "practice") inputValue = liveTranscript;
+      if (!voiceAnswerRouteActive()) inputValue = liveTranscript;
       rerender(activeRealRoute);
     } else if (event.type === "transcript.completed" || event.type === "transcription.done") {
       liveTranscript = event.text || liveTranscript;
       voiceTranscriptFinal = true;
-      if (activeRealRoute !== "practice") inputValue = liveTranscript;
-      recordingStatus = activeRealRoute === "practice" ? "识别完成，正在提交" : "识别完成，可编辑后发送";
+      if (!voiceAnswerRouteActive()) inputValue = liveTranscript;
+      recordingStatus = voiceAnswerRouteActive() ? "识别完成，正在提交" : "识别完成，可编辑后发送";
       if (event.type === "transcription.done") {
         asrSocket?.close();
         asrSocket = null;
       }
-      if (activeRealRoute === "practice" && pendingVoiceAnswerSubmit) {
+      if (voiceAnswerRouteActive() && pendingVoiceAnswerSubmit) {
         submitRecognizedVoiceAnswer(liveTranscript);
       } else {
         rerender(activeRealRoute);
@@ -2360,10 +2372,10 @@
   async function stopLiveRecording(cancel = false) {
     if (!recordingStream) return;
     discardRecording = cancel;
-    pendingVoiceAnswerSubmit = !cancel;
-    voiceSubmissionInProgress = !cancel;
-    fallbackTranscriptionStarted = !cancel;
-    recordingStatus = cancel ? "已取消" : "正在识别并发送…";
+    pendingVoiceAnswerSubmit = !cancel && voiceAnswerRouteActive();
+    voiceSubmissionInProgress = !cancel && voiceAnswerRouteActive();
+    fallbackTranscriptionStarted = !cancel && voiceAnswerRouteActive();
+    recordingStatus = cancel ? "已取消" : voiceAnswerRouteActive() ? "正在识别并发送…" : "识别完成，可编辑后发送";
     clearInterval(recordingTimer);
     recordingTimer = null;
     asrProcessor?.disconnect();
@@ -2517,7 +2529,7 @@
     const target = event.target.closest("[data-real-action]");
     if (!target) {
       const routeTarget = event.target.closest("[data-route]");
-      if (routeTarget && ["agent-chat", "home", "practice", "report", "memory", "mistakes", "mistake-detail"].includes(routeTarget.dataset.route)) {
+      if (routeTarget && ["agent-chat", "home", "practice", "report", "memory", "mistakes", "mistake-detail", "mistake-practice"].includes(routeTarget.dataset.route)) {
         activeRealRoute = routeTarget.dataset.route;
         if (activeRealRoute === "memory") void loadMemory();
         if (activeRealRoute === "mistakes") void reloadSavedMistakes();
@@ -2586,6 +2598,13 @@
       rerender("practice");
       if (practiceTextInputVisible) {
         requestAnimationFrame(() => document.querySelector("#real-practice-input")?.focus());
+      }
+    }
+    else if (action === "toggle-mistake-input") {
+      mistakeTextInputVisible = !mistakeTextInputVisible;
+      rerender("mistake-practice");
+      if (mistakeTextInputVisible) {
+        requestAnimationFrame(() => document.querySelector("[data-mistake-answer]")?.focus());
       }
     }
     else if (action === "practice-coach") {
@@ -2680,6 +2699,11 @@
     else if (action === "report") void openInterviewHistory(target.dataset.sessionId);
     else if (action === "save-review-mistake") void saveReviewMistake(target.dataset.sessionId, target.dataset.questionIndex);
     else if (action === "open-mistake") void openSavedMistake(target.dataset.mistakeId);
+    else if (action === "practice-saved-mistake") {
+      mistakeAnswerDraft = "";
+      mistakeTextInputVisible = false;
+      rerender("mistake-practice");
+    }
     else if (action === "open-mistakes") {
       selectedMistakeContext = null;
       void reloadSavedMistakes().then(() => rerender("mistakes"));
