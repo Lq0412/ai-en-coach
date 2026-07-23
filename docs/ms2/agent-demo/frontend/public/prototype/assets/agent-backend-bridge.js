@@ -37,6 +37,7 @@
   let recordingStatus = "实时识别中";
   let activeRealRoute = "agent-chat";
   let streamingText = "";
+  let optimisticUserMessage = null;
   let contextLimitExceeded = false;
   let rejectedContextTokenCount = 0;
   let deadlineTimer = null;
@@ -70,12 +71,20 @@
   let pendingVoiceAnswerSubmit = false;
   let voiceAnswerSubmitting = false;
   let voiceTranscriptFinal = false;
+  let voiceSubmissionInProgress = false;
+  let failedVoiceRecordingBlob = null;
   let lastAutoPlayedQuestion = "";
   let memoryFacts = [];
   let memoryLoading = false;
   let memoryError = "";
   let selectedMemoryFact = null;
   let memoryEditDraft = null;
+  const languageAssistanceCache = new Map();
+  const languageAssistanceLoading = new Set();
+  const languageAssistanceErrors = new Map();
+  let expandedTranslationID = "";
+  let expandedCorrectionID = "";
+  let correctionDetailMessageID = "";
 
   const escapeHTML = (value) =>
     String(value ?? "")
@@ -88,6 +97,13 @@
     escapeHTML(value)
       .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
       .replace(/\n/g, "<br>");
+
+  const soundIconHTML = (badge = "") => `<span class="real-sound-glyph" aria-hidden="true">
+    <svg viewBox="0 0 24 24"><path d="M5 9v6h4l5 4V5L9 9H5Z"></path><path d="M17 9.2c1.4 1.5 1.4 4.1 0 5.6"></path><path d="M19.5 6.8c2.8 2.8 2.8 7.6 0 10.4"></path></svg>
+    ${badge ? `<b>${escapeHTML(badge)}</b>` : ""}
+  </span>`;
+
+  const translationIconHTML = () => `<span class="real-translation-glyph" aria-hidden="true"><b>文</b><i>A</i></span>`;
 
   async function request(path, init) {
     const response = await fetch(API_BASE + path, init);
@@ -239,9 +255,12 @@
   }
 
   function attachmentCardsHTML(attachments, removable = false) {
-    if (!attachments?.length) return "";
+    const visibleAttachments = (attachments || []).filter(
+      (attachment) => !String(attachment.mediaType || "").startsWith("audio/"),
+    );
+    if (!visibleAttachments.length) return "";
     return `<div class="real-attachments ${removable ? "pending" : ""}">
-      ${attachments.map((attachment) => {
+      ${visibleAttachments.map((attachment) => {
         const isRenderableImage = attachment.mediaType?.startsWith("image/") && attachment.contentAvailable;
         if (isRenderableImage) {
           const source = `${API_BASE}/v1/assistant/attachments/${encodeURIComponent(attachment.id)}/content`;
@@ -260,6 +279,173 @@
     </div>`;
   }
 
+  const languageAssistanceKey = (messageID, operation) =>
+    `${operation}:${messageID}`;
+
+  function languageAssistanceState(messageID, operation) {
+    const key = languageAssistanceKey(messageID, operation);
+    return {
+      result: languageAssistanceCache.get(key),
+      loading: languageAssistanceLoading.has(key),
+      error: languageAssistanceErrors.get(key) || "",
+    };
+  }
+
+  function translationPreviewHTML(message) {
+    if (expandedTranslationID !== message.ID) return "";
+    const { result, loading: isLoading, error } = languageAssistanceState(message.ID, "translate");
+    if (isLoading) {
+      return `<div class="real-inline-assistance loading"><i></i><span>正在翻译…</span></div>`;
+    }
+    if (error) {
+      return `<div class="real-inline-assistance error"><span>${escapeHTML(error)}</span><button data-real-action="retry-language-assistance" data-message-id="${escapeHTML(message.ID)}" data-operation="translate">重试</button></div>`;
+    }
+    if (!result?.translation) return "";
+    return `<div class="real-inline-assistance translation"><small>中文翻译</small><p>${escapeHTML(result.translation)}</p></div>`;
+  }
+
+  function correctionPreviewHTML(message) {
+    if (expandedCorrectionID !== message.ID) return "";
+    const { result, loading: isLoading, error } = languageAssistanceState(message.ID, "correct");
+    if (isLoading) {
+      return `<div class="real-inline-assistance loading"><i></i><span>正在检查表达…</span></div>`;
+    }
+    if (error) {
+      return `<div class="real-inline-assistance error"><span>${escapeHTML(error)}</span><button data-real-action="retry-language-assistance" data-message-id="${escapeHTML(message.ID)}" data-operation="correct">重试</button></div>`;
+    }
+    const correction = result?.correction;
+    if (!correction) return "";
+    return `<div class="real-inline-assistance correction ${correction.has_issues ? "has-issues" : "is-correct"}">
+      <small>${correction.has_issues ? "建议修改" : "表达检查"}</small>
+      <p>${escapeHTML(correction.brief)}</p>
+      ${correction.has_issues ? `<strong>${escapeHTML(correction.corrected_text)}</strong>` : ""}
+    </div>`;
+  }
+
+  function messageAssessment(message) {
+    // Scoring integration point:
+    // { overall, fluency, pronunciation, naturalness, native_expression, explanations }
+    const correction = languageAssistanceState(message?.ID, "correct").result?.correction;
+    const original = String(message?.Content || "");
+    const demoNativeExpression = original
+      .replace(/\bvery successfully\b/gi, "very successful")
+      .replace(/^Good morning,\s*good morning\.?$/i, "Good morning!");
+    const demoChanged = demoNativeExpression !== original;
+    return message?.learning_assessment ||
+      languageAssistanceState(message?.ID, "correct").result?.assessment || {
+        overall: 90,
+        fluency: 100,
+        pronunciation: 99,
+        naturalness: 70,
+        native_expression: correction?.corrected_text || demoNativeExpression,
+        explanations: correction?.items?.map((item) => item.explanation) || [
+          demoChanged
+            ? "当前为演示数据：推荐表达用于展示卡片效果，后续由真实评分模块替换。"
+            : "当前为演示评分，后续由真实语音评分模块提供分析说明。",
+        ],
+        is_demo: true,
+      };
+  }
+
+  function scoreBarHTML(message) {
+    const assessment = messageAssessment(message);
+    if (!assessment) return "";
+    const scores = [
+      ["流利", assessment.fluency],
+      ["发音", assessment.pronunciation],
+      ["地道", assessment.naturalness],
+    ].filter(([, score]) => Number.isFinite(Number(score)));
+    if (!scores.length) return "";
+    return `<button class="real-message-score-bar ${assessment.is_demo ? "demo" : ""}" data-real-action="open-language-analysis" data-message-id="${escapeHTML(message.ID)}" aria-label="查看表达评分详情" ${assessment.is_demo ? 'title="演示评分"' : ""}>
+      <span>${scores.map(([label, score]) => `<b>${label} <em>${escapeHTML(Math.round(Number(score)))}</em></b>`).join("")}</span>
+      <i aria-hidden="true">›</i>
+    </button>`;
+  }
+
+  function standardConversationMessageHTML(message, archived = false) {
+    if (message.Role === "user") {
+      const optimisticStatus = message.optimisticStatus || "";
+      const optimisticLabel = {
+        transcribing: "正在识别语音",
+        sending: "已发送，等待 SpeakUp 回复",
+        failed: "发送失败",
+      }[optimisticStatus] || "";
+      return `<div class="real-user-message-group ${optimisticStatus ? "optimistic" : ""}">
+        <article class="real-message user" data-language-message-id="${escapeHTML(message.ID)}">
+          ${attachmentCardsHTML(message.attachments)}
+          <p>${escapeHTML(message.Content)}</p>
+          ${optimisticStatus ? `<small class="real-optimistic-status ${optimisticStatus}">${optimisticLabel}</small>` : ""}
+          <div class="real-message-tools user-tools">
+            <button class="real-bubble-tool" data-real-action="speak-text" data-text="${escapeHTML(message.Content)}" aria-label="AI 发音" title="AI 发音">${soundIconHTML("AI")}</button>
+            <button class="real-bubble-tool" data-real-action="play-user-recording" data-message-id="${escapeHTML(message.ID)}" aria-label="播放我的录音" title="播放我的录音">${soundIconHTML("ME")}</button>
+            ${optimisticStatus ? "" : `<button class="real-correction-tool" data-real-action="toggle-correction" data-message-id="${escapeHTML(message.ID)}" aria-expanded="${expandedCorrectionID === message.ID}"><strong>!!</strong><span>纠错</span></button>`}
+          </div>
+          ${optimisticStatus ? "" : correctionPreviewHTML(message)}
+        </article>
+        ${optimisticStatus ? "" : scoreBarHTML(message)}
+      </div>`;
+    }
+    const speechAction = archived
+      ? `data-real-action="speak-text" data-text="${escapeHTML(message.Content)}"`
+      : `data-real-action="speak" data-message-id="${escapeHTML(message.ID)}"`;
+    return `<article class="real-message assistant" data-language-message-id="${escapeHTML(message.ID)}">
+      <img src="../assets/speakup-agent.png" alt="">
+      <div class="real-message-copy">
+        <header><b>SpeakUp</b></header>
+        <p>${formatAssistantText(message.Content)}</p>
+        <div class="real-message-tools">
+          <button class="real-bubble-tool" ${speechAction} aria-label="重读" title="重读">${soundIconHTML()}</button>
+          <button class="real-bubble-tool" data-real-action="toggle-translation" data-message-id="${escapeHTML(message.ID)}" aria-expanded="${expandedTranslationID === message.ID}" aria-label="翻译" title="翻译">${translationIconHTML()}</button>
+        </div>
+        ${translationPreviewHTML(message)}
+      </div>
+    </article>`;
+  }
+
+  function correctionDetailSheetHTML() {
+    if (!correctionDetailMessageID) return "";
+    const message = findLanguageMessage(correctionDetailMessageID);
+    const result = languageAssistanceState(correctionDetailMessageID, "correct").result;
+    const correction = result?.correction;
+    const assessment = messageAssessment(message);
+    if (!message || !assessment) return "";
+    const scoreRows = [
+      ["fluency", "流利", assessment.fluency],
+      ["pronunciation", "发音", assessment.pronunciation],
+      ["naturalness", "地道", assessment.naturalness],
+    ].filter(([, , score]) => Number.isFinite(Number(score)));
+    const overall = Number.isFinite(Number(assessment.overall))
+      ? Math.max(0, Math.min(100, Math.round(Number(assessment.overall))))
+      : null;
+    const nativeExpression = assessment.native_expression ||
+      correction?.natural_version ||
+      correction?.corrected_text ||
+      message.Content;
+    const explanations = (assessment.explanations || [])
+      .map((item) => typeof item === "string" ? item : item?.explanation)
+      .filter(Boolean);
+    const correctionExplanations = correction?.items?.map((item) => item.explanation).filter(Boolean) || [];
+    const details = explanations.length ? explanations : correctionExplanations;
+    return `<div class="real-correction-sheet" role="dialog" aria-modal="true" aria-labelledby="real-correction-title">
+      <button class="real-correction-backdrop" data-real-action="close-language-analysis" aria-label="关闭分析详情"></button>
+      <section class="real-correction-card">
+        <div class="real-correction-handle" aria-hidden="true"></div>
+        <header><span>${assessment.is_demo ? "<small>演示评分</small>" : ""}<h2 id="real-correction-title">分析</h2></span><button data-real-action="close-language-analysis" aria-label="关闭">×</button></header>
+        <div class="real-analysis-original"><p>${escapeHTML(message.Content)}</p><button data-real-action="speak-text" data-text="${escapeHTML(message.Content)}">↻ 重读</button></div>
+        <div class="real-analysis-scores ${overall === null ? "without-overall" : ""}">
+          ${overall === null ? "" : `<div class="real-analysis-overall" style="--score:${overall}"><strong>${overall}</strong></div>`}
+          <div class="real-analysis-score-rows">${scoreRows.map(([key, label, score]) => {
+            const value = Math.max(0, Math.min(100, Math.round(Number(score))));
+            return `<div class="${key}"><span>${label} <b>${value}</b></span><i><em style="width:${value}%"></em></i></div>`;
+          }).join("")}</div>
+        </div>
+        <h3 class="real-analysis-section-title">地道表达</h3>
+        <div class="real-correction-natural"><p>${escapeHTML(nativeExpression)}</p><button data-real-action="speak-text" data-text="${escapeHTML(nativeExpression)}">↻ 朗读</button></div>
+        ${details.length ? `<div class="real-analysis-explanations"><h3>说明</h3><ul>${details.map((detail) => `<li>${escapeHTML(detail)}</li>`).join("")}</ul></div>` : ""}
+      </section>
+    </div>`;
+  }
+
   function messageHTML(message) {
     if (message.kind === "interview_report" && message.report) {
       const report = message.report;
@@ -273,16 +459,7 @@
         </footer>
       </article>`;
     }
-    if (message.Role === "user") {
-      return `<article class="real-message user">${attachmentCardsHTML(message.attachments)}<p>${escapeHTML(message.Content)}</p></article>`;
-    }
-    return `<article class="real-message assistant">
-      <img src="../assets/speakup-agent.png" alt="">
-      <div class="real-message-copy">
-        <header><b>SpeakUp</b><button data-real-action="speak" data-message-id="${escapeHTML(message.ID)}" aria-label="朗读这条回复">↻ 重听</button></header>
-        <p>${formatAssistantText(message.Content)}</p>
-      </div>
-    </article>`;
+    return standardConversationMessageHTML(message);
   }
 
   function mainConversationMessages(messages) {
@@ -300,6 +477,7 @@
       }
       if (!legacyInterviewOpen) result.push(message);
     }
+    if (optimisticUserMessage) result.push(optimisticUserMessage);
     return result;
   }
 
@@ -346,8 +524,16 @@
         <div><button data-real-action="cancel-record">取消</button><button class="primary" data-real-action="record">结束并使用</button></div>
       </footer>`;
     }
+    if (voiceSubmissionInProgress) {
+      return `<footer class="real-voice-capture processing">
+        <div class="real-voice-capture-head"><span class="real-live-dot"></span><b>正在发送</b><small>${escapeHTML(recordingStatus)}</small></div>
+        <div class="real-live-wave" aria-hidden="true">${Array.from({ length: 12 }, () => "<i></i>").join("")}</div>
+        <p>${escapeHTML(liveTranscript || "正在整理语音和文字…")}</p>
+      </footer>`;
+    }
     return `${attachmentCardsHTML(pendingAttachments, true)}
     ${attachmentUploading ? `<div class="real-attachment-uploading"><i></i><span>正在上传并由真实模型理解附件…</span></div>` : ""}
+    ${failedVoiceRecordingBlob ? `<div class="real-voice-send-retry"><span><b>录音尚未发送</b><small>本次录音已保留，可以直接重试。</small></span><button data-real-action="discard-voice-recording">删除</button><button class="primary" data-real-action="retry-voice-send">重试发送</button></div>` : ""}
     ${voiceStateHTML()}
     <footer class="real-agent-composer">
       <input data-attachment-input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" multiple hidden>
@@ -397,6 +583,7 @@
     return `<div class="agent-page real-agent-page">
       <section class="real-agent-thread">${content}</section>
       ${composerHTML()}
+      ${correctionDetailSheetHTML()}
     </div>`;
   }
 
@@ -724,10 +911,7 @@
   }
 
   function archivedMessageHTML(message) {
-    if (message.Role === "user") {
-      return `<article class="real-message user">${attachmentCardsHTML(message.attachments)}<p>${escapeHTML(message.Content)}</p></article>`;
-    }
-    return `<article class="real-message assistant"><img src="../assets/speakup-agent.png" alt=""><div class="real-message-copy"><header><b>SpeakUp</b><button data-real-action="speak-text" data-text="${escapeHTML(message.Content)}">▶ 播放</button></header><p>${formatAssistantText(message.Content)}</p></div></article>`;
+    return standardConversationMessageHTML(message, true);
   }
 
   function realConversationArchiveView() {
@@ -740,6 +924,7 @@
       <p class="real-archive-note">这是已归档的完整上下文，只读展示，不会注入当前新会话。</p>
       <section class="real-archive-thread">${(archive.messages || []).map(archivedMessageHTML).join("")}</section>
       ${archiveDeleteConfirm ? `<section class="real-archive-delete-confirm"><b>删除这次历史对话？</b><p>删除后无法恢复，当前对话和简历不会受影响。</p><div><button data-real-action="cancel-delete-conversation">取消</button><button class="danger" data-real-action="confirm-delete-conversation" data-conversation-id="${escapeHTML(archive.id)}">确认删除</button></div></section>` : `<div class="real-archive-actions"><button class="secondary" data-real-action="back-chat">返回当前对话</button><button class="danger" data-real-action="request-delete-conversation">删除历史</button></div>`}
+      ${correctionDetailSheetHTML()}
     </div>`;
   }
 
@@ -834,14 +1019,84 @@
     catch (error) { memoryError = error.message; rerender("memory"); }
   }
 
-  function rerender(route = activeRealRoute) {
+  function findLanguageMessage(messageID) {
+    return (snapshot?.messages || []).find((message) => message.ID === messageID) ||
+      (selectedConversationArchive?.messages || []).find((message) => message.ID === messageID) ||
+      (optimisticUserMessage?.ID === messageID ? optimisticUserMessage : null);
+  }
+
+  async function loadLanguageAssistance(messageID, operation, force = false) {
+    const message = findLanguageMessage(messageID);
+    if (!message) return;
+    const key = languageAssistanceKey(messageID, operation);
+    if (languageAssistanceLoading.has(key)) return;
+    if (!force && languageAssistanceCache.has(key)) return;
+    languageAssistanceLoading.add(key);
+    languageAssistanceErrors.delete(key);
+    rerender(activeRealRoute, { preserveThread: true });
+    try {
+      const result = await request("/v1/language-assistance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operation,
+          text: message.Content,
+          ...(operation === "translate" ? { target_language: "zh-CN" } : {}),
+        }),
+      });
+      languageAssistanceCache.set(key, result);
+    } catch (error) {
+      languageAssistanceErrors.set(
+        key,
+        operation === "translate"
+          ? `翻译失败：${error.message || "请稍后重试"}`
+          : `纠错失败：${error.message || "请稍后重试"}`,
+      );
+    } finally {
+      languageAssistanceLoading.delete(key);
+      rerender(activeRealRoute, { preserveThread: true });
+    }
+  }
+
+  function toggleTranslation(messageID) {
+    const opening = expandedTranslationID !== messageID;
+    expandedTranslationID = opening ? messageID : "";
+    expandedCorrectionID = "";
+    correctionDetailMessageID = "";
+    rerender(activeRealRoute, { preserveThread: true });
+    if (opening) void loadLanguageAssistance(messageID, "translate");
+  }
+
+  function toggleCorrection(messageID) {
+    const opening = expandedCorrectionID !== messageID;
+    expandedCorrectionID = opening ? messageID : "";
+    expandedTranslationID = "";
+    correctionDetailMessageID = "";
+    rerender(activeRealRoute, { preserveThread: true });
+    if (opening) void loadLanguageAssistance(messageID, "correct");
+  }
+
+  function retryLanguageAssistance(messageID, operation) {
+    const key = languageAssistanceKey(messageID, operation);
+    languageAssistanceCache.delete(key);
+    languageAssistanceErrors.delete(key);
+    void loadLanguageAssistance(messageID, operation, true);
+  }
+
+  function rerender(route = activeRealRoute, options = {}) {
+    const previousThread = document.querySelector(".real-agent-thread");
+    const previousScrollTop = previousThread?.scrollTop || 0;
     activeRealRoute = route;
     state.route = route;
     state.agentVoiceState = conversationVoiceState().key;
     render();
     requestAnimationFrame(() => {
       const thread = document.querySelector(".real-agent-thread");
-      if (thread) thread.scrollTop = thread.scrollHeight;
+      if (thread) {
+        thread.scrollTop = options.preserveThread
+          ? previousScrollTop
+          : thread.scrollHeight;
+      }
       const input = document.querySelector("[data-real-input]");
       if (input && inputValue) input.focus();
       maybeAutoPlayActiveQuestion();
@@ -1137,9 +1392,12 @@
     }
   }
 
-  async function sendMessage(value) {
+  async function sendMessage(value, additionalAttachmentIDs = [], additionalAttachments = []) {
     const message = String(value || inputValue).trim();
-    const attachmentIDs = pendingAttachments.map((attachment) => attachment.id);
+    const attachmentIDs = [
+      ...pendingAttachments.map((attachment) => attachment.id),
+      ...additionalAttachmentIDs,
+    ];
     if (
       (!message && attachmentIDs.length === 0) ||
       loading ||
@@ -1149,6 +1407,17 @@
       snapshot?.requiresNewThread
     ) return;
     const originRoute = activeRealRoute;
+    if (originRoute === "agent-chat") {
+      optimisticUserMessage = optimisticUserMessage || {
+        ID: `optimistic-message-${Date.now()}`,
+        Role: "user",
+        Content: message,
+        attachments: [],
+      };
+      optimisticUserMessage.Content = message;
+      optimisticUserMessage.attachments = [...pendingAttachments, ...additionalAttachments];
+      optimisticUserMessage.optimisticStatus = "sending";
+    }
     if (originRoute === "practice") {
       practiceCoachVisible = false;
       answerCoachQuestion = "";
@@ -1165,6 +1434,7 @@
     try {
       await streamTask(message, attachmentIDs);
       pendingAttachments = [];
+      optimisticUserMessage = null;
       if (originRoute === "practice" && interviewFinished()) {
         await reloadInterviewHistory();
         const completedSession = [...(snapshot?.interviewSessions || [])]
@@ -1177,6 +1447,7 @@
       }
       activeRealRoute = routeAfterTask(originRoute);
     } catch (error) {
+      if (optimisticUserMessage) optimisticUserMessage.optimisticStatus = "failed";
       bridgeError = contextLimitExceeded
         ? ""
         : error.message || "Agent 请求失败";
@@ -1415,6 +1686,24 @@
     }
   }
 
+  async function uploadVoiceRecording(blob) {
+    const mediaType = String(blob?.type || "audio/webm").split(";")[0];
+    const extension = {
+      "audio/ogg": "ogg",
+      "audio/mp4": "m4a",
+      "audio/mpeg": "mp3",
+      "audio/wav": "wav",
+      "audio/x-wav": "wav",
+    }[mediaType] || "webm";
+    const form = new FormData();
+    form.append("file", blob, `voice-${Date.now()}.${extension}`);
+    const response = await request("/v1/assistant/attachments", {
+      method: "POST",
+      body: form,
+    });
+    return response.attachment;
+  }
+
   async function removePendingAttachment(id) {
     const attachment = pendingAttachments.find((item) => item.id === id);
     if (!attachment) return;
@@ -1441,6 +1730,48 @@
     if (!message) return;
     stopSpeechPlayback(false);
     enqueueSpeechText(message.Content, true);
+  }
+
+  async function playUserRecording(messageID) {
+    const message = findLanguageMessage(messageID);
+    const audioAttachment = message?.Attachments?.find(
+      (attachment) => String(attachment.mediaType || "").startsWith("audio/"),
+    ) || message?.attachments?.find(
+      (attachment) => String(attachment.mediaType || "").startsWith("audio/"),
+    );
+    const recordingURL = message?.recording_url ||
+      message?.audio_url ||
+      (audioAttachment?.id
+        ? `/v1/assistant/attachments/${encodeURIComponent(audioAttachment.id)}/content`
+        : "");
+    if (!recordingURL) {
+      toast("这条消息没有保存用户录音");
+      return;
+    }
+    stopSpeechPlayback(false);
+    const source = recordingURL.startsWith("/")
+      ? API_BASE + recordingURL
+      : recordingURL;
+    const audio = new Audio(source);
+    currentSpeechAudio = audio;
+    speaking = true;
+    rerender(activeRealRoute, { preserveThread: true });
+    try {
+      const ended = new Promise((resolve, reject) => {
+        audio.onended = resolve;
+        audio.onerror = () => reject(new Error("用户录音播放失败"));
+      });
+      await audio.play();
+      await ended;
+    } catch (error) {
+      toast(error.message || "用户录音播放失败");
+    } finally {
+      if (currentSpeechAudio === audio) {
+        currentSpeechAudio = null;
+        speaking = false;
+        rerender(activeRealRoute, { preserveThread: true });
+      }
+    }
   }
 
   async function speakText(text) {
@@ -1564,8 +1895,8 @@
       URL.revokeObjectURL(url);
     } catch (error) {
       if (error.name === "AbortError") return;
-      bridgeError = "语音合成失败：" + (error.message || "未知错误");
       speechQueue = [];
+      toast("语音播放失败，请稍后点击重读");
       rerender(activeRealRoute);
     }
   }
@@ -1617,19 +1948,23 @@
     }
   }
 
+  async function requestTranscription(blob) {
+    const form = new FormData();
+    form.append("audio", await convertToWAV(blob), "message.wav");
+    const response = await fetch(API_BASE + "/v1/audio/transcriptions", {
+      method: "POST",
+      body: form,
+    });
+    if (!response.ok) throw new Error(await response.text());
+    return String((await response.json()).text || "").trim();
+  }
+
   async function transcribe(blob) {
     loading = true;
     bridgeError = "";
     rerender();
     try {
-      const form = new FormData();
-      form.append("audio", await convertToWAV(blob), "message.wav");
-      const response = await fetch(API_BASE + "/v1/audio/transcriptions", {
-        method: "POST",
-        body: form,
-      });
-      if (!response.ok) throw new Error(await response.text());
-      const transcript = (await response.json()).text || "";
+      const transcript = await requestTranscription(blob);
       if (activeRealRoute === "practice" && pendingVoiceAnswerSubmit) {
         submitRecognizedVoiceAnswer(transcript);
       } else {
@@ -1690,6 +2025,7 @@
 
   async function startLiveRecording() {
     stopSpeechPlayback(false);
+    failedVoiceRecordingBlob = null;
     discardRecording = false;
     asrStreamingFailed = false;
     fallbackRecordingBlob = null;
@@ -1774,7 +2110,10 @@
   async function stopLiveRecording(cancel = false) {
     if (!recordingStream) return;
     discardRecording = cancel;
-    pendingVoiceAnswerSubmit = !cancel && activeRealRoute === "practice";
+    pendingVoiceAnswerSubmit = !cancel;
+    voiceSubmissionInProgress = !cancel;
+    fallbackTranscriptionStarted = !cancel;
+    recordingStatus = cancel ? "已取消" : "正在识别并发送…";
     clearInterval(recordingTimer);
     recordingTimer = null;
     asrProcessor?.disconnect();
@@ -1783,27 +2122,84 @@
     asrSource = null;
     if (asrAudioContext) await asrAudioContext.close();
     asrAudioContext = null;
-    if (asrSocket?.readyState === WebSocket.OPEN) {
-      if (cancel) asrSocket.close();
-      else asrSocket.send(JSON.stringify({ type: "stop" }));
+    if (asrSocket?.readyState === WebSocket.OPEN && !cancel) {
+      asrSocket.send(JSON.stringify({ type: "stop" }));
     }
+    asrSocket?.close();
+    asrSocket = null;
     const stream = recordingStream;
     recordingStream = null;
     stream.getTracks().forEach((track) => track.stop());
+    const stoppedRecording = recorder?.state === "recording"
+      ? new Promise((resolve) => recorder.addEventListener("stop", () => resolve(fallbackRecordingBlob), { once: true }))
+      : Promise.resolve(fallbackRecordingBlob);
     if (recorder?.state === "recording") recorder.stop();
+    const recordingBlob = await stoppedRecording;
     if (cancel) {
       inputValue = "";
       liveTranscript = "";
       fallbackRecordingBlob = null;
+      pendingVoiceAnswerSubmit = false;
+      voiceSubmissionInProgress = false;
+      recordingElapsedSeconds = 0;
+      rerender(activeRealRoute);
+      return;
     }
     recordingElapsedSeconds = 0;
+    if (activeRealRoute === "agent-chat") {
+      optimisticUserMessage = {
+        ID: `optimistic-message-${Date.now()}`,
+        Role: "user",
+        Content: liveTranscript.trim() || "语音消息",
+        attachments: [],
+        optimisticStatus: "transcribing",
+      };
+    }
     rerender(activeRealRoute);
-    if (pendingVoiceAnswerSubmit && voiceTranscriptFinal && liveTranscript.trim()) {
-      submitRecognizedVoiceAnswer(liveTranscript);
+    await submitVoiceRecording(recordingBlob);
+  }
+
+  async function submitVoiceRecording(recordingBlob) {
+    voiceSubmissionInProgress = true;
+    if (optimisticUserMessage) optimisticUserMessage.optimisticStatus = "transcribing";
+    recordingStatus = "正在识别并发送…";
+    rerender(activeRealRoute);
+    try {
+      if (!recordingBlob?.size) throw new Error("没有录到有效语音");
+      const transcript = voiceTranscriptFinal && liveTranscript.trim()
+        ? liveTranscript.trim()
+        : await requestTranscription(recordingBlob);
+      if (!transcript) throw new Error("没有识别到可发送的文字");
+      liveTranscript = transcript;
+      if (optimisticUserMessage) optimisticUserMessage.Content = transcript;
+      recordingStatus = "正在上传原始录音…";
+      rerender(activeRealRoute);
+      const recordingAttachment = await uploadVoiceRecording(recordingBlob);
+      if (optimisticUserMessage) optimisticUserMessage.attachments = [recordingAttachment];
+      pendingVoiceAnswerSubmit = false;
+      voiceSubmissionInProgress = false;
+      failedVoiceRecordingBlob = null;
+      inputValue = "";
+      liveTranscript = "";
+      fallbackRecordingBlob = null;
+      await sendMessage(
+        transcript,
+        [recordingAttachment.id],
+        [recordingAttachment],
+      );
+    } catch (error) {
+      failedVoiceRecordingBlob = recordingBlob?.size ? recordingBlob : null;
+      if (optimisticUserMessage) optimisticUserMessage.optimisticStatus = "failed";
+      toast("语音发送失败，本次录音已保留");
+    } finally {
+      pendingVoiceAnswerSubmit = false;
+      voiceSubmissionInProgress = false;
+      rerender(activeRealRoute);
     }
   }
 
   async function toggleRecording() {
+    if (voiceSubmissionInProgress || voiceAnswerSubmitting) return;
     if (isRecording()) {
       await stopLiveRecording(false);
       return;
@@ -1848,6 +2244,11 @@
   });
 
   window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && correctionDetailMessageID) {
+      correctionDetailMessageID = "";
+      rerender(activeRealRoute, { preserveThread: true });
+      return;
+    }
     if (
       event.target.matches("[data-real-input]") &&
       event.key === "Enter" &&
@@ -1872,6 +2273,18 @@
     if (action === "send") void sendMessage();
     else if (action === "submit-answer") void sendMessage();
     else if (action === "quick") void sendMessage(target.dataset.message);
+    else if (action === "toggle-translation") toggleTranslation(target.dataset.messageId);
+    else if (action === "toggle-correction") toggleCorrection(target.dataset.messageId);
+    else if (action === "play-user-recording") void playUserRecording(target.dataset.messageId);
+    else if (action === "retry-language-assistance") retryLanguageAssistance(target.dataset.messageId, target.dataset.operation);
+    else if (action === "open-language-analysis") {
+      correctionDetailMessageID = target.dataset.messageId;
+      rerender(activeRealRoute, { preserveThread: true });
+    }
+    else if (action === "close-language-analysis") {
+      correctionDetailMessageID = "";
+      rerender(activeRealRoute, { preserveThread: true });
+    }
     else if (action === "approve") void resolveConfirmation(target.dataset.taskId, true);
     else if (action === "reject") void resolveConfirmation(target.dataset.taskId, false);
     else if (action === "reset") void resetConversation();
@@ -1879,6 +2292,19 @@
     else if (action === "speak-text") void speakText(target.dataset.text);
     else if (action === "record") void toggleRecording();
     else if (action === "cancel-record") void stopLiveRecording(true);
+    else if (action === "retry-voice-send") {
+      const recording = failedVoiceRecordingBlob;
+      failedVoiceRecordingBlob = null;
+      bridgeError = "";
+      if (recording) void submitVoiceRecording(recording);
+    }
+    else if (action === "discard-voice-recording") {
+      failedVoiceRecordingBlob = null;
+      fallbackRecordingBlob = null;
+      bridgeError = "";
+      if (optimisticUserMessage?.optimisticStatus === "failed") optimisticUserMessage = null;
+      rerender(activeRealRoute);
+    }
     else if (action === "stop-speech") stopSpeechPlayback();
     else if (action === "replay-last-sentence") {
       stopSpeechPlayback(false);

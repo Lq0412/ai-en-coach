@@ -293,13 +293,22 @@ func (r *DemoState) UpdateCandidateProfile(ctx context.Context, input CandidateP
 }
 
 func (r *DemoState) AddAttachment(ctx context.Context, input AttachmentInput) (Attachment, error) {
-	analyzer, ok := r.generator.(AttachmentAnalyzer)
-	if !ok {
-		return Attachment{}, errors.New("attachment analyzer is not configured")
-	}
-	analysis, err := analyzer.AnalyzeAttachment(ctx, input)
-	if err != nil {
-		return Attachment{}, err
+	var analysis AttachmentAnalysis
+	var err error
+	if strings.HasPrefix(input.MediaType, "audio/") {
+		analysis = AttachmentAnalysis{
+			Kind:    "audio_recording",
+			Summary: "用户本轮发送的原始语音录音",
+		}
+	} else {
+		analyzer, ok := r.generator.(AttachmentAnalyzer)
+		if !ok {
+			return Attachment{}, errors.New("attachment analyzer is not configured")
+		}
+		analysis, err = analyzer.AnalyzeAttachment(ctx, input)
+		if err != nil {
+			return Attachment{}, err
+		}
 	}
 	analysis.Kind = strings.TrimSpace(analysis.Kind)
 	analysis.Summary = strings.TrimSpace(analysis.Summary)
@@ -358,7 +367,7 @@ func (r *DemoState) AddAttachment(ctx context.Context, input AttachmentInput) (A
 		ExtractedText: analysis.ExtractedText,
 		CreatedAt:     time.Now().UTC(),
 	}
-	if strings.HasPrefix(input.MediaType, "image/") {
+	if strings.HasPrefix(input.MediaType, "image/") || strings.HasPrefix(input.MediaType, "audio/") {
 		attachment.StoragePath, err = r.saveAttachmentFile(attachment.ID, input.MediaType, input.Data)
 		if err != nil {
 			return Attachment{}, err
@@ -680,9 +689,15 @@ func (r *DemoState) saveAttachmentFile(attachmentID, mediaType string, data []by
 		return "", nil
 	}
 	extension := map[string]string{
-		"image/jpeg": ".jpg",
-		"image/png":  ".png",
-		"image/webp": ".webp",
+		"image/jpeg":  ".jpg",
+		"image/png":   ".png",
+		"image/webp":  ".webp",
+		"audio/webm":  ".webm",
+		"audio/ogg":   ".ogg",
+		"audio/mp4":   ".m4a",
+		"audio/mpeg":  ".mp3",
+		"audio/wav":   ".wav",
+		"audio/x-wav": ".wav",
 	}[mediaType]
 	if extension == "" {
 		return "", fmt.Errorf("unsupported attachment media type: %s", mediaType)

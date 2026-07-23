@@ -20,6 +20,7 @@ type HTTPHandler struct {
 	tools       DemoReadAPI
 	preparation CandidatePreparationAPI
 	coach       AnswerCoachService
+	language    LanguageAssistanceGenerator
 	transcriber Transcriber
 	synthesizer SpeechSynthesizer
 	models      map[string]string
@@ -32,6 +33,7 @@ func NewHTTPHandler(
 	tools DemoReadAPI,
 	preparation CandidatePreparationAPI,
 	coach AnswerCoachService,
+	language LanguageAssistanceGenerator,
 	transcriber Transcriber,
 	synthesizer SpeechSynthesizer,
 	models map[string]string,
@@ -43,6 +45,7 @@ func NewHTTPHandler(
 		tools:       tools,
 		preparation: preparation,
 		coach:       coach,
+		language:    language,
 		transcriber: transcriber,
 		synthesizer: synthesizer,
 		models:      models,
@@ -65,6 +68,7 @@ func (h *HTTPHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/practice/sessions/{session_id}", h.getInterviewSession)
 	mux.HandleFunc("DELETE /v1/practice/sessions/{session_id}", h.deleteInterviewSession)
 	mux.HandleFunc("POST /v1/practice/answer-coach", h.generateAnswerCoach)
+	mux.HandleFunc("POST /v1/language-assistance", h.generateLanguageAssistance)
 	mux.HandleFunc("POST /v1/assistant/attachments", h.uploadAttachment)
 	mux.HandleFunc("GET /v1/assistant/attachments/{attachment_id}/content", h.getAttachmentContent)
 	mux.HandleFunc("DELETE /v1/assistant/attachments/{attachment_id}", h.deleteAttachment)
@@ -81,6 +85,48 @@ func (h *HTTPHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/audio/transcriptions", h.transcribe)
 	mux.HandleFunc("GET /v1/audio/transcriptions/stream", h.streamTranscription)
 	mux.HandleFunc("POST /v1/audio/speech", h.synthesize)
+}
+
+func (h *HTTPHandler) generateLanguageAssistance(w http.ResponseWriter, r *http.Request) {
+	if h.language == nil {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]any{"error": "language assistance is not configured"})
+		return
+	}
+	var input LanguageAssistanceInput
+	if err := json.NewDecoder(io.LimitReader(r.Body, 32<<10)).Decode(&input); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON body"})
+		return
+	}
+	input.Operation = strings.TrimSpace(input.Operation)
+	input.Text = strings.TrimSpace(input.Text)
+	input.TargetLanguage = strings.TrimSpace(input.TargetLanguage)
+	if input.Operation != "translate" && input.Operation != "correct" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "operation must be translate or correct"})
+		return
+	}
+	if input.Text == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "text is required"})
+		return
+	}
+	if len([]rune(input.Text)) > 4000 {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "text must be 4000 characters or fewer"})
+		return
+	}
+	if input.Operation == "translate" {
+		if input.TargetLanguage == "" {
+			input.TargetLanguage = "zh-CN"
+		}
+		if input.TargetLanguage != "zh-CN" {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "only zh-CN translation is currently supported"})
+			return
+		}
+	}
+	result, err := h.language.GenerateLanguageAssistance(r.Context(), input)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (h *HTTPHandler) generateAnswerCoach(w http.ResponseWriter, r *http.Request) {
@@ -359,6 +405,9 @@ func (h *HTTPHandler) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	mediaType := strings.TrimSpace(header.Header.Get("Content-Type"))
+	if parsedType, _, parseErr := mime.ParseMediaType(mediaType); parseErr == nil {
+		mediaType = parsedType
+	}
 	detected := http.DetectContentType(data)
 	if mediaType == "" || mediaType == "application/octet-stream" {
 		mediaType = detected
@@ -368,9 +417,15 @@ func (h *HTTPHandler) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 		"image/jpeg":      true,
 		"image/png":       true,
 		"image/webp":      true,
+		"audio/webm":      true,
+		"audio/ogg":       true,
+		"audio/mp4":       true,
+		"audio/mpeg":      true,
+		"audio/wav":       true,
+		"audio/x-wav":     true,
 	}
 	if !allowed[mediaType] || (mediaType == "application/pdf" && detected != "application/pdf") {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "only PDF, PNG, JPEG, and WebP attachments are supported"})
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "only PDF, image, and supported audio attachments are allowed"})
 		return
 	}
 	attachment, err := h.preparation.AddAttachment(r.Context(), AttachmentInput{
@@ -700,7 +755,11 @@ func (h *HTTPHandler) transcribe(w http.ResponseWriter, r *http.Request) {
 var transcriptionUpgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		origin := r.Header.Get("Origin")
-		return origin == "" || origin == "http://localhost:3000" || origin == "http://127.0.0.1:3000"
+		return origin == "" ||
+			origin == "http://localhost:3000" ||
+			origin == "http://127.0.0.1:3000" ||
+			origin == "http://localhost:3001" ||
+			origin == "http://127.0.0.1:3001"
 	},
 }
 

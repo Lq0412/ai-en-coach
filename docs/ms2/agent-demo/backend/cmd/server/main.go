@@ -90,6 +90,7 @@ func main() {
 		registry,
 		provider,
 		provider,
+		provider,
 		map[string]string{
 			"chat":      config.ChatModel,
 			"embedding": config.EmbeddingModel,
