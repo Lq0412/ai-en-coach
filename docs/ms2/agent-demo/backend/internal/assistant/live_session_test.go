@@ -88,9 +88,10 @@ func TestLiveSessionIssuesScopedShortLivedTokenAndIsIdempotent(t *testing.T) {
 	if err := json.Unmarshal([]byte(grants.Metadata), &metadata); err != nil {
 		t.Fatalf("token metadata is not valid JSON: %v", err)
 	}
-	if metadata["thread_id"] != DemoThreadID ||
+	if metadata["actor_user_id"] != DemoUserID ||
+		metadata["thread_id"] != DemoThreadID ||
 		metadata["live_session_id"] != first.Session.ID ||
-		len(metadata) != 2 {
+		len(metadata) != 3 {
 		t.Fatalf("token metadata is not minimally scoped: %#v", metadata)
 	}
 	for _, sensitive := range []string{

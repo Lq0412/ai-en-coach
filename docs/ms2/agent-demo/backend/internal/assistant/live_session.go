@@ -182,6 +182,7 @@ func (coordinator *liveSessionCoordinator) credentialsLocked(session LiveSession
 	}
 	grant.SetCanPublishSources([]livekit.TrackSource{livekit.TrackSource_MICROPHONE})
 	metadata, err := json.Marshal(map[string]string{
+		"actor_user_id":   strings.SplitN(session.ParticipantIdentity, ":", 2)[0],
 		"thread_id":       session.ThreadID,
 		"live_session_id": session.ID,
 	})
