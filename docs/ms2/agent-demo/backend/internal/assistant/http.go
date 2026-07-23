@@ -9,6 +9,7 @@ import (
 	"mime"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -70,6 +71,7 @@ func (h *HTTPHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/practice/answer-coach", h.generateAnswerCoach)
 	mux.HandleFunc("POST /v1/language-assistance", h.generateLanguageAssistance)
 	mux.HandleFunc("POST /v1/assistant/attachments", h.uploadAttachment)
+	mux.HandleFunc("POST /v1/assistant/messages/{message_id}/attachments", h.linkMessageAttachment)
 	mux.HandleFunc("GET /v1/assistant/attachments/{attachment_id}/content", h.getAttachmentContent)
 	mux.HandleFunc("DELETE /v1/assistant/attachments/{attachment_id}", h.deleteAttachment)
 	mux.HandleFunc("GET /v1/preparation/profile", h.getCandidateProfile)
@@ -370,11 +372,15 @@ type endInterviewRequest struct {
 }
 
 type startTaskRequest struct {
-	ActorUserID     string   `json:"actor_user_id"`
-	UserMessage     string   `json:"user_message"`
-	AttachmentIDs   []string `json:"attachment_ids,omitempty"`
-	IdempotencyKey  string   `json:"idempotency_key"`
-	InteractionMode string   `json:"interaction_mode,omitempty"`
+	ActorUserID     string           `json:"actor_user_id"`
+	UserMessage     string           `json:"user_message"`
+	AttachmentIDs   []string         `json:"attachment_ids,omitempty"`
+	IdempotencyKey  string           `json:"idempotency_key"`
+	InteractionMode string           `json:"interaction_mode,omitempty"`
+	ClientMessageID string           `json:"client_message_id,omitempty"`
+	LiveSessionID   string           `json:"live_session_id,omitempty"`
+	TurnID          string           `json:"turn_id,omitempty"`
+	Mode            ConversationMode `json:"mode,omitempty"`
 }
 
 const maxAttachmentBytes = 20 << 20
@@ -441,6 +447,29 @@ func (h *HTTPHandler) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 		"attachment":        attachment.AttachmentReference,
 		"candidate_profile": candidateProfileView(h.tools.State().CandidateProfile),
 	})
+}
+
+func (h *HTTPHandler) linkMessageAttachment(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		AttachmentID string `json:"attachment_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil || strings.TrimSpace(request.AttachmentID) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "attachment_id is required"})
+		return
+	}
+	attachments, err := h.tools.Attachments([]string{request.AttachmentID})
+	if err != nil || len(attachments) != 1 {
+		h.writeError(w, ErrNotFound)
+		return
+	}
+	message, err := h.store.LinkMessageAttachment(
+		r.Context(), r.PathValue("message_id"), attachments[0].AttachmentReference,
+	)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"message": message})
 }
 
 func (h *HTTPHandler) getAttachmentContent(w http.ResponseWriter, r *http.Request) {
@@ -572,6 +601,10 @@ func (h *HTTPHandler) startTask(w http.ResponseWriter, r *http.Request) {
 		AttachmentIDs:   request.AttachmentIDs,
 		IdempotencyKey:  request.IdempotencyKey,
 		InteractionMode: request.InteractionMode,
+		ClientMessageID: request.ClientMessageID,
+		LiveSessionID:   request.LiveSessionID,
+		TurnID:          request.TurnID,
+		Mode:            request.Mode,
 	})
 	if err != nil {
 		h.writeError(w, err)
@@ -602,7 +635,26 @@ func (h *HTTPHandler) streamTask(w http.ResponseWriter, r *http.Request) {
 	_ = writeSSE(w, "task.started", map[string]any{"thread_id": r.PathValue("thread_id")})
 	flusher.Flush()
 
-	ctx := WithTextDeltaWriter(r.Context(), func(delta string) error {
+	ctx := r.Context()
+	if request.ClientMessageID != "" &&
+		request.LiveSessionID != "" &&
+		request.TurnID != "" &&
+		request.Mode.Valid() {
+		ctx = WithCanonicalUserMessageWriter(ctx, func(message AssistantMessage) error {
+			event := LiveEvent{
+				Type: LiveEventTurnUserCommitted, ThreadID: r.PathValue("thread_id"),
+				LiveSessionID: request.LiveSessionID, TurnID: request.TurnID,
+				ClientMessageID: request.ClientMessageID, Mode: request.Mode,
+				OccurredAt: time.Now().UTC(), Sequence: 1, Message: &message,
+			}
+			if err := writeSSE(w, string(LiveEventTurnUserCommitted), event); err != nil {
+				return err
+			}
+			flusher.Flush()
+			return nil
+		})
+	}
+	ctx = WithTextDeltaWriter(ctx, func(delta string) error {
 		if err := writeSSE(w, "assistant.delta", map[string]any{"delta": delta}); err != nil {
 			return err
 		}
@@ -616,6 +668,10 @@ func (h *HTTPHandler) streamTask(w http.ResponseWriter, r *http.Request) {
 		AttachmentIDs:   request.AttachmentIDs,
 		IdempotencyKey:  request.IdempotencyKey,
 		InteractionMode: request.InteractionMode,
+		ClientMessageID: request.ClientMessageID,
+		LiveSessionID:   request.LiveSessionID,
+		TurnID:          request.TurnID,
+		Mode:            request.Mode,
 	})
 	if err != nil {
 		h.logger.Printf("assistant stream failed: %v", err)

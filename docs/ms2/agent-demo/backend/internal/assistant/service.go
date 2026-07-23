@@ -57,6 +57,10 @@ type StartTaskCommand struct {
 	AttachmentIDs   []string
 	IdempotencyKey  string
 	InteractionMode string
+	ClientMessageID string
+	LiveSessionID   string
+	TurnID          string
+	Mode            ConversationMode
 }
 
 type ResumeTaskCommand struct {
@@ -106,6 +110,17 @@ func (s *Service) startTask(ctx context.Context, command StartTaskCommand) (Task
 		command.IdempotencyKey,
 	)
 	if err == nil {
+		if command.ClientMessageID != "" {
+			if message, messageErr := s.dependencies.ConversationStore.GetMessageByClientMessageID(
+				ctx, thread.ID, command.ClientMessageID,
+			); messageErr == nil {
+				if writer := canonicalUserMessageWriterFromContext(ctx); writer != nil {
+					if writeErr := writer(message); writeErr != nil {
+						return TaskRun{}, writeErr
+					}
+				}
+			}
+		}
 		return existing, nil
 	}
 	if !errors.Is(err, ErrNotFound) {
@@ -201,8 +216,17 @@ func (s *Service) startTask(ctx context.Context, command StartTaskCommand) (Task
 		}
 	}
 	if plan.Intent != "submit_interview_answer" {
-		if err := s.appendMessageWithAttachments(ctx, "user", visibleMessage, attachments); err != nil {
-			return TaskRun{}, err
+		message, appendErr := s.appendMessageWithAttachments(
+			ctx, "user", visibleMessage, attachments,
+			command.ClientMessageID, command.LiveSessionID, command.TurnID, command.Mode,
+		)
+		if appendErr != nil {
+			return TaskRun{}, appendErr
+		}
+		if writer := canonicalUserMessageWriterFromContext(ctx); writer != nil {
+			if err := writer(message); err != nil {
+				return TaskRun{}, err
+			}
 		}
 	}
 
@@ -574,21 +598,31 @@ func (s *Service) updateThreadSummary(ctx context.Context, run TaskRun) error {
 }
 
 func (s *Service) appendMessage(ctx context.Context, role, content string) error {
-	return s.appendMessageWithAttachments(ctx, role, content, nil)
+	_, err := s.appendMessageWithAttachments(ctx, role, content, nil, "", "", "", "")
+	return err
 }
 
-func (s *Service) appendMessageWithAttachments(ctx context.Context, role, content string, attachments []Attachment) error {
+func (s *Service) appendMessageWithAttachments(
+	ctx context.Context,
+	role, content string,
+	attachments []Attachment,
+	clientMessageID, liveSessionID, turnID string,
+	mode ConversationMode,
+) (AssistantMessage, error) {
 	references := make([]AttachmentReference, 0, len(attachments))
 	for _, attachment := range attachments {
 		references = append(references, attachment.AttachmentReference)
 	}
-	return s.dependencies.ConversationStore.AppendMessage(ctx, AssistantMessage{
-		ID:          nextID("message"),
-		Role:        role,
-		Content:     content,
-		Attachments: references,
-		CreatedAt:   time.Now().UTC(),
-	})
+	message := AssistantMessage{
+		ID: nextID("message"), Role: role, Content: content,
+		ClientMessageID: clientMessageID, LiveSessionID: liveSessionID,
+		TurnID: turnID, Mode: mode,
+		Attachments: references, CreatedAt: time.Now().UTC(),
+	}
+	if err := s.dependencies.ConversationStore.AppendMessage(ctx, message); err != nil {
+		return AssistantMessage{}, err
+	}
+	return message, nil
 }
 
 func (s *Service) appendReportCard(ctx context.Context, report InterviewReportCard) error {

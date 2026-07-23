@@ -90,6 +90,7 @@
   let voiceTranscriptFinal = false;
   let voiceSubmissionInProgress = false;
   let failedVoiceRecordingBlob = null;
+  let failedVoiceMessageID = "";
   let lastAutoPlayedQuestion = "";
   let memoryFacts = [];
   let memoryLoading = false;
@@ -670,7 +671,7 @@
     }
     return `${attachmentCardsHTML(pendingAttachments, true)}
     ${attachmentUploading ? `<div class="real-attachment-uploading"><i></i><span>正在上传并由真实模型理解附件…</span></div>` : ""}
-    ${failedVoiceRecordingBlob ? `<div class="real-voice-send-retry"><span><b>录音尚未发送</b><small>本次录音已保留，可以直接重试。</small></span><button data-real-action="discard-voice-recording">删除</button><button class="primary" data-real-action="retry-voice-send">重试发送</button></div>` : ""}
+    ${failedVoiceRecordingBlob ? `<div class="real-voice-send-retry"><span><b>${failedVoiceMessageID ? "文字已发送，录音尚未补充" : "录音尚未发送"}</b><small>本次录音已保留，可以直接重试。</small></span><button data-real-action="discard-voice-recording">删除</button><button class="primary" data-real-action="retry-voice-send">${failedVoiceMessageID ? "重试上传" : "重试发送"}</button></div>` : ""}
     ${voiceStateHTML()}
     <footer class="real-agent-composer">
       <input data-attachment-input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" multiple hidden>
@@ -1581,8 +1582,9 @@
     bridgeError = "";
     recordLiveLatencyPoint(liveIdentity, "turn.submitted");
     rerender();
+    let canonicalUserMessage = null;
     try {
-      await streamTask(message, attachmentIDs, liveIdentity);
+      canonicalUserMessage = await streamTask(message, attachmentIDs, liveIdentity);
       pendingAttachments = [];
       optimisticUserMessage = null;
       if (originRoute === "practice" && interviewFinished()) {
@@ -1606,6 +1608,7 @@
       streamingText = "";
       rerender(activeRealRoute);
     }
+    return canonicalUserMessage;
   }
 
   function submitRecognizedVoiceAnswer(text) {
@@ -1641,6 +1644,9 @@
           attachment_ids: attachmentIDs,
           interaction_mode: activeRealRoute === "practice" ? "interview" : "conversation",
           client_message_id: clientMessageID,
+          live_session_id: liveIdentity?.live_session_id,
+          turn_id: liveIdentity?.turn_id,
+          mode: liveIdentity?.mode || "normal",
           idempotency_key: clientMessageID,
         }),
       },
@@ -1656,6 +1662,7 @@
     const decoder = new TextDecoder();
     let buffer = "";
     let completed = false;
+    let canonicalUserMessage = null;
     while (true) {
       const { value, done } = await reader.read();
       buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
@@ -1676,7 +1683,11 @@
           .join("\n");
         if (dataText) {
           const data = JSON.parse(dataText);
-          if (eventName === "assistant.delta") {
+          if (eventName === "turn.user_committed") {
+            canonicalUserMessage = data.message;
+            reconcileCanonicalMessage(canonicalUserMessage);
+            rerender(activeRealRoute);
+          } else if (eventName === "assistant.delta") {
             const delta = data.delta || "";
             streamingText += delta;
             queueStreamingSpeechDelta(delta);
@@ -1714,6 +1725,7 @@
     if (!completed) {
       throw new Error("Agent 流式响应未返回最终状态");
     }
+    return canonicalUserMessage;
   }
 
   async function endInterview(reason = "user_requested") {
@@ -2292,6 +2304,22 @@
     const stream = recordingStream;
     recordingStream = null;
     stream.getTracks().forEach((track) => track.stop());
+    if (!cancel && activeRealRoute === "agent-chat") {
+      const clientMessageID = crypto.randomUUID();
+      optimisticUserMessage = {
+        ID: `optimistic-message-${clientMessageID}`,
+        Role: "user",
+        Content: liveTranscript.trim() || "语音消息",
+        attachments: [],
+        optimisticStatus: "transcribing",
+        thread_id: THREAD_ID,
+        live_session_id: `normal-${THREAD_ID}`,
+        turn_id: `turn-${clientMessageID}`,
+        client_message_id: clientMessageID,
+        mode: "normal",
+      };
+      rerender(activeRealRoute);
+    }
     const stoppedRecording = recorder?.state === "recording"
       ? new Promise((resolve) => recorder.addEventListener("stop", () => resolve(fallbackRecordingBlob), { once: true }))
       : Promise.resolve(fallbackRecordingBlob);
@@ -2308,16 +2336,6 @@
       return;
     }
     recordingElapsedSeconds = 0;
-    if (activeRealRoute === "agent-chat") {
-      optimisticUserMessage = {
-        ID: `optimistic-message-${Date.now()}`,
-        Role: "user",
-        Content: liveTranscript.trim() || "语音消息",
-        attachments: [],
-        optimisticStatus: "transcribing",
-      };
-    }
-    rerender(activeRealRoute);
     await submitVoiceRecording(recordingBlob);
   }
 
@@ -2334,21 +2352,33 @@
       if (!transcript) throw new Error("没有识别到可发送的文字");
       liveTranscript = transcript;
       if (optimisticUserMessage) optimisticUserMessage.Content = transcript;
-      recordingStatus = "正在上传原始录音…";
+      recordingStatus = "已发送，正在补充原始录音…";
       rerender(activeRealRoute);
-      const recordingAttachment = await uploadVoiceRecording(recordingBlob);
-      if (optimisticUserMessage) optimisticUserMessage.attachments = [recordingAttachment];
+      const messageTask = sendMessage(transcript);
+      const recordingUpload = uploadVoiceRecording(recordingBlob).then(
+        (attachment) => ({ attachment }),
+        (error) => ({ error }),
+      );
       pendingVoiceAnswerSubmit = false;
-      voiceSubmissionInProgress = false;
-      failedVoiceRecordingBlob = null;
       inputValue = "";
       liveTranscript = "";
       fallbackRecordingBlob = null;
-      await sendMessage(
-        transcript,
-        [recordingAttachment.id],
-        [recordingAttachment],
-      );
+      const canonicalUserMessage = await messageTask;
+      if (!canonicalUserMessage?.ID) {
+        throw new Error("文字消息发送失败");
+      }
+      try {
+        const recordingResult = await recordingUpload;
+        if (recordingResult.error) throw recordingResult.error;
+        const recordingAttachment = recordingResult.attachment;
+        await linkVoiceRecording(canonicalUserMessage.ID, recordingAttachment.id);
+        failedVoiceRecordingBlob = null;
+        failedVoiceMessageID = "";
+      } catch (_uploadError) {
+        failedVoiceRecordingBlob = recordingBlob;
+        failedVoiceMessageID = canonicalUserMessage.ID;
+        toast("文字对话已发送，录音上传失败，可稍后重试");
+      }
     } catch (error) {
       failedVoiceRecordingBlob = recordingBlob?.size ? recordingBlob : null;
       if (optimisticUserMessage) optimisticUserMessage.optimisticStatus = "failed";
@@ -2358,6 +2388,36 @@
       voiceSubmissionInProgress = false;
       rerender(activeRealRoute);
     }
+  }
+
+  async function linkVoiceRecording(messageID, attachmentID) {
+    const result = await request(
+      `/v1/assistant/messages/${encodeURIComponent(messageID)}/attachments`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ attachment_id: attachmentID }),
+      },
+    );
+    if (result?.message) reconcileCanonicalMessage(result.message);
+    return result?.message;
+  }
+
+  async function retryVoiceAttachmentUpload() {
+    if (!failedVoiceRecordingBlob || !failedVoiceMessageID || voiceSubmissionInProgress) return;
+    voiceSubmissionInProgress = true;
+    try {
+      const attachment = await uploadVoiceRecording(failedVoiceRecordingBlob);
+      await linkVoiceRecording(failedVoiceMessageID, attachment.id);
+      failedVoiceRecordingBlob = null;
+      failedVoiceMessageID = "";
+      toast("录音已补充完成");
+    } catch (_error) {
+      toast("录音上传仍未完成，请稍后重试");
+    } finally {
+      voiceSubmissionInProgress = false;
+    }
+    rerender(activeRealRoute);
   }
 
   async function toggleRecording() {
@@ -2455,6 +2515,10 @@
     else if (action === "record") void toggleRecording();
     else if (action === "cancel-record") void stopLiveRecording(true);
     else if (action === "retry-voice-send") {
+      if (failedVoiceMessageID) {
+        void retryVoiceAttachmentUpload();
+        return;
+      }
       const recording = failedVoiceRecordingBlob;
       failedVoiceRecordingBlob = null;
       bridgeError = "";
@@ -2462,6 +2526,7 @@
     }
     else if (action === "discard-voice-recording") {
       failedVoiceRecordingBlob = null;
+      failedVoiceMessageID = "";
       fallbackRecordingBlob = null;
       bridgeError = "";
       if (optimisticUserMessage?.optimisticStatus === "failed") optimisticUserMessage = null;

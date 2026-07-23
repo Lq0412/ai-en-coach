@@ -123,7 +123,11 @@ test("prototype bridges the original interaction to the Go assistant", async () 
   assert.match(bridge, /正在识别语音/);
   assert.match(bridge, /已发送，等待 SpeakUp 回复/);
   assert.match(bridge, /语音播放失败，请稍后点击重读/);
-  assert.match(bridge, /sendMessage\(\s*transcript,\s*\[recordingAttachment\.id\]/);
+  assert.doesNotMatch(bridge, /await uploadVoiceRecording\(recordingBlob\)[\s\S]{0,500}await sendMessage/);
+  assert.match(bridge, /const messageTask = sendMessage\(transcript\)/);
+  assert.match(bridge, /const recordingUpload = uploadVoiceRecording\(recordingBlob\)/);
+  assert.match(bridge, /turn\.user_committed/);
+  assert.match(bridge, /linkVoiceRecording/);
   assert.match(bridge, /startsWith\("audio\/"\)/);
   assert.match(bridge, /data-real-action="retry-voice-send"/);
   assert.match(bridge, /本次录音已保留/);
