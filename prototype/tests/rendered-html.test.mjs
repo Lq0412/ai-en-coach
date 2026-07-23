@@ -38,7 +38,8 @@ test("routes unfinished product actions to a coming-soon prompt", async () => {
   assert.match(html, /portal-ielts-part2\.jpg/);
   assert.match(html, /portal-daily-doctor\.jpg/);
   assert.match(html, /portal-workplace-client\.jpg/);
-  assert.match(html, /SpeakUp 模拟面试现已开放/);
+  assert.match(html, /SpeakUp 首批体验即将开放/);
+  assert.doesNotMatch(html, /SpeakUp 模拟面试现已开放/);
   assert.match(html, /结合目标、经历和过往练习/);
   assert.match(html, /考出去、面进去，.*适应好/s);
   assert.match(html, /雅思口语/);
@@ -51,11 +52,20 @@ test("routes unfinished product actions to a coming-soon prompt", async () => {
   assert.match(html, /英文面试完整演示步骤/);
   assert.doesNotMatch(html, /class="feature-card"/);
   assert.match(html, /id="coming-soon"/);
+  assert.match(html, /<dialog/);
+  assert.match(html, /method="dialog"/);
   assert.match(html, /href="#coming-soon"/);
   assert.doesNotMatch(html, /验证入口|方向验证|产品行为占位|待验证|产品验证门户|体验现有原型/);
   assert.doesNotMatch(html, /portal-task-intake\.jpg|portal-task-brief\.jpg/);
   assert.doesNotMatch(html, /portal-career-history\.jpg|portal-career-context\.jpg|portal-interview-plan\.jpg/);
   assert.doesNotMatch(html, /职业上下文|职业英语联系人|群面计划/);
+});
+
+test("uses native dialog behavior for the coming-soon prompt", async () => {
+  const source = await readFile(new URL("app/ComingSoonDialog.tsx", root), "utf8");
+  assert.match(source, /dialog\.showModal\(\)/);
+  assert.match(source, /document\.addEventListener\("click"/);
+  assert.match(source, /<form method="dialog">/);
 });
 
 test("loads only the current prototype extension assets", async () => {

@@ -1304,34 +1304,29 @@ h2 {
 }
 
 .coming-soon-modal {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: grid;
-  place-items: center;
-  padding: 20px;
-  visibility: hidden;
+  width: min(460px, calc(100% - 40px));
+  max-width: none;
+  max-height: calc(100% - 40px);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
   opacity: 0;
-  pointer-events: none;
-  transition: opacity 160ms ease, visibility 160ms ease;
+  transform: translateY(8px);
+  transition: opacity 160ms ease, transform 160ms ease;
 }
 
-.coming-soon-modal:target {
-  visibility: visible;
+.coming-soon-modal[open] {
   opacity: 1;
-  pointer-events: auto;
+  transform: translateY(0);
 }
 
-.coming-soon-backdrop {
-  position: absolute;
-  inset: 0;
+.coming-soon-modal::backdrop {
   background: rgba(20, 20, 18, 0.72);
 }
 
 .coming-soon-panel {
-  position: relative;
-  z-index: 1;
-  width: min(460px, 100%);
+  width: 100%;
   padding: 42px;
   border: 2px solid var(--ink);
   border-radius: 32px;
@@ -1355,9 +1350,11 @@ h2 {
 
 .coming-soon-panel .button {
   width: 100%;
+  font: inherit;
+  cursor: pointer;
 }
 
-body:has(.coming-soon-modal:target) {
+body:has(.coming-soon-modal[open]) {
   overflow: hidden;
 }
 

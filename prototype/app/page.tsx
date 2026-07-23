@@ -1,3 +1,4 @@
+import ComingSoonDialog from "./ComingSoonDialog";
 import InterviewDemo from "./InterviewDemo";
 
 const comingSoonHref = "#coming-soon";
@@ -132,10 +133,10 @@ export default function Home() {
   return (
     <main>
       <div className="announcement">
-        <span>SpeakUp 模拟面试现已开放</span>
+        <span>SpeakUp 首批体验即将开放</span>
         <span className="announcement-separator" aria-hidden="true">·</span>
         <a href={comingSoonHref}>
-          立即体验 <span aria-hidden="true">↗</span>
+          查看开放进度 <span aria-hidden="true">↗</span>
         </a>
       </div>
 
@@ -295,15 +296,7 @@ export default function Home() {
         </div>
       </section>
 
-      <section className="coming-soon-modal" id="coming-soon" role="dialog" aria-modal="true" aria-labelledby="coming-soon-title">
-        <a className="coming-soon-backdrop" href="#close" aria-label="关闭敬请期待提示" />
-        <div className="coming-soon-panel">
-          <p className="eyebrow">SpeakUp 首批体验</p>
-          <h2 id="coming-soon-title">敬请期待</h2>
-          <p>产品体验正在打磨中，正式开放后即可进入对应功能。</p>
-          <a className="button" href="#close">继续浏览</a>
-        </div>
-      </section>
+      <ComingSoonDialog />
 
       <footer>
         <a className="brand" href="#top"><span className="brand-mark" aria-hidden="true">S</span><span>SpeakUp</span></a>
