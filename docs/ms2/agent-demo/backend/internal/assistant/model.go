@@ -1,6 +1,11 @@
 package assistant
 
-import "time"
+import (
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+)
 
 type ThreadStatus string
 
@@ -27,6 +32,296 @@ const (
 	ConfirmationStatusRejected ConfirmationStatus = "rejected"
 	ConfirmationStatusExpired  ConfirmationStatus = "expired"
 )
+
+// ConversationMode distinguishes the existing request/response path from a
+// continuous realtime call. It is independent from the existing
+// conversation/interview interaction_mode used to select orchestration.
+type ConversationMode string
+
+const (
+	ConversationModeNormal ConversationMode = "normal"
+	ConversationModeLive   ConversationMode = "live"
+)
+
+func (mode ConversationMode) Valid() bool {
+	return mode == ConversationModeNormal || mode == ConversationModeLive
+}
+
+type LiveSessionStatus string
+
+const (
+	LiveSessionStatusConnecting   LiveSessionStatus = "connecting"
+	LiveSessionStatusListening    LiveSessionStatus = "listening"
+	LiveSessionStatusThinking     LiveSessionStatus = "thinking"
+	LiveSessionStatusSpeaking     LiveSessionStatus = "speaking"
+	LiveSessionStatusReconnecting LiveSessionStatus = "reconnecting"
+	LiveSessionStatusFailed       LiveSessionStatus = "failed"
+	LiveSessionStatusEnded        LiveSessionStatus = "ended"
+)
+
+type LiveSession struct {
+	ID        string            `json:"live_session_id"`
+	ThreadID  string            `json:"thread_id"`
+	Mode      ConversationMode  `json:"mode"`
+	Status    LiveSessionStatus `json:"status"`
+	CreatedAt time.Time         `json:"created_at"`
+	UpdatedAt time.Time         `json:"updated_at"`
+}
+
+// LiveClientMessage is allocated by the browser before network submission.
+// Its ID remains stable across retries and is the reconciliation key for the
+// authoritative AssistantMessage returned by Go.
+type LiveClientMessage struct {
+	ID            string           `json:"client_message_id"`
+	ThreadID      string           `json:"thread_id"`
+	LiveSessionID string           `json:"live_session_id"`
+	TurnID        string           `json:"turn_id"`
+	Mode          ConversationMode `json:"mode"`
+	CreatedAt     time.Time        `json:"created_at"`
+}
+
+type LiveTurn struct {
+	ThreadID           string           `json:"thread_id"`
+	LiveSessionID      string           `json:"live_session_id"`
+	TurnID             string           `json:"turn_id"`
+	ClientMessageID    string           `json:"client_message_id"`
+	Mode               ConversationMode `json:"mode"`
+	UserMessageID      string           `json:"user_message_id,omitempty"`
+	AssistantMessageID string           `json:"assistant_message_id,omitempty"`
+}
+
+func (turn LiveTurn) Validate() error {
+	for field, value := range map[string]string{
+		"thread_id":         turn.ThreadID,
+		"live_session_id":   turn.LiveSessionID,
+		"turn_id":           turn.TurnID,
+		"client_message_id": turn.ClientMessageID,
+	} {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("assistant: live turn %s is required", field)
+		}
+	}
+	if !turn.Mode.Valid() {
+		return errors.New("assistant: live turn mode must be normal or live")
+	}
+	return nil
+}
+
+// IdempotencyKey deliberately excludes live_session_id and turn_id: both may
+// be regenerated during reconnect, while the browser's client_message_id is
+// stable for the user's submission.
+func (turn LiveTurn) IdempotencyKey() string {
+	return strings.TrimSpace(turn.ThreadID) + ":" + strings.TrimSpace(turn.ClientMessageID)
+}
+
+// ReconcileCanonicalTurn captures the KTD2 ownership rule without performing
+// persistence. Callers load by IdempotencyKey, then keep the existing Go-owned
+// turn when a browser or Worker retry presents the same client message.
+func ReconcileCanonicalTurn(existing *LiveTurn, incoming LiveTurn) (LiveTurn, bool, error) {
+	if err := incoming.Validate(); err != nil {
+		return LiveTurn{}, false, err
+	}
+	if existing == nil {
+		return incoming, true, nil
+	}
+	if err := existing.Validate(); err != nil {
+		return LiveTurn{}, false, err
+	}
+	if existing.IdempotencyKey() != incoming.IdempotencyKey() {
+		return LiveTurn{}, false, errors.New("assistant: canonical turn reconciliation key mismatch")
+	}
+	return *existing, false, nil
+}
+
+type LiveEventType string
+
+const (
+	LiveEventTranscriptPartial      LiveEventType = "transcript.partial"
+	LiveEventTurnUserCommitted      LiveEventType = "turn.user_committed"
+	LiveEventTurnAssistantCommitted LiveEventType = "turn.assistant_committed"
+	LiveEventAttachmentLinked       LiveEventType = "attachment.linked"
+	LiveEventLatencyPoint           LiveEventType = "latency.point"
+)
+
+func (eventType LiveEventType) valid() bool {
+	switch eventType {
+	case LiveEventTranscriptPartial,
+		LiveEventTurnUserCommitted,
+		LiveEventTurnAssistantCommitted,
+		LiveEventAttachmentLinked,
+		LiveEventLatencyPoint:
+		return true
+	default:
+		return false
+	}
+}
+
+func (eventType LiveEventType) canonical() bool {
+	switch eventType {
+	case LiveEventTurnUserCommitted, LiveEventTurnAssistantCommitted, LiveEventAttachmentLinked:
+		return true
+	default:
+		return false
+	}
+}
+
+type LiveEvent struct {
+	Type            LiveEventType     `json:"type"`
+	ThreadID        string            `json:"thread_id"`
+	LiveSessionID   string            `json:"live_session_id"`
+	TurnID          string            `json:"turn_id"`
+	ClientMessageID string            `json:"client_message_id"`
+	Mode            ConversationMode  `json:"mode"`
+	OccurredAt      time.Time         `json:"occurred_at"`
+	Sequence        uint64            `json:"sequence"`
+	Transcript      string            `json:"transcript,omitempty"`
+	Message         *AssistantMessage `json:"message,omitempty"`
+	Latency         *LiveLatencyPoint `json:"latency,omitempty"`
+}
+
+func (event LiveEvent) Canonical() bool {
+	return event.Type.canonical()
+}
+
+func (event LiveEvent) Validate() error {
+	if !event.Type.valid() {
+		return errors.New("assistant: live event type is invalid")
+	}
+	for field, value := range map[string]string{
+		"thread_id":         event.ThreadID,
+		"live_session_id":   event.LiveSessionID,
+		"turn_id":           event.TurnID,
+		"client_message_id": event.ClientMessageID,
+	} {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("assistant: live event %s is required", field)
+		}
+	}
+	if !event.Mode.Valid() {
+		return errors.New("assistant: live event mode must be normal or live")
+	}
+	if event.OccurredAt.IsZero() {
+		return errors.New("assistant: live event occurred_at is required")
+	}
+	if event.Sequence == 0 {
+		return errors.New("assistant: live event sequence must be positive")
+	}
+	if event.Canonical() {
+		if event.Message == nil || strings.TrimSpace(event.Message.ID) == "" {
+			return errors.New("assistant: canonical live event message is required")
+		}
+		if event.Message.ClientMessageID != event.ClientMessageID {
+			return errors.New("assistant: canonical message client_message_id must match event")
+		}
+	} else if event.Message != nil {
+		return errors.New("assistant: ephemeral live event cannot contain canonical message")
+	}
+	if event.Type == LiveEventLatencyPoint && event.Latency == nil {
+		return errors.New("assistant: latency.point event latency is required")
+	}
+	return nil
+}
+
+type LiveLatencyStage string
+
+const (
+	LiveLatencyCaptureStarted        LiveLatencyStage = "capture.started"
+	LiveLatencyCaptureEnded          LiveLatencyStage = "capture.ended"
+	LiveLatencyTurnSubmitted         LiveLatencyStage = "turn.submitted"
+	LiveLatencyTranscriptCommitted   LiveLatencyStage = "transcript.committed"
+	LiveLatencyAssistantTextFirst    LiveLatencyStage = "assistant.text_first"
+	LiveLatencyAssistantAudioFirst   LiveLatencyStage = "assistant.audio_first"
+	LiveLatencyAssistantAudioStopped LiveLatencyStage = "assistant.audio_stopped"
+	LiveLatencyTurnPersisted         LiveLatencyStage = "turn.persisted"
+)
+
+type LiveLatencySource string
+
+const (
+	LiveLatencySourceBrowser LiveLatencySource = "browser"
+	LiveLatencySourceWorker  LiveLatencySource = "worker"
+	LiveLatencySourceGo      LiveLatencySource = "go"
+)
+
+type LiveLatencyPoint struct {
+	ThreadID        string            `json:"thread_id"`
+	LiveSessionID   string            `json:"live_session_id"`
+	TurnID          string            `json:"turn_id"`
+	ClientMessageID string            `json:"client_message_id"`
+	Mode            ConversationMode  `json:"mode"`
+	Stage           LiveLatencyStage  `json:"stage"`
+	Source          LiveLatencySource `json:"source"`
+	OccurredAt      time.Time         `json:"occurred_at"`
+	Sequence        uint64            `json:"sequence"`
+}
+
+type LiveLatencyTrace struct {
+	point LiveLatencyPoint
+}
+
+func NewLiveLatencyTrace(
+	threadID string,
+	liveSessionID string,
+	turnID string,
+	clientMessageID string,
+	mode ConversationMode,
+) *LiveLatencyTrace {
+	return &LiveLatencyTrace{point: LiveLatencyPoint{
+		ThreadID:        threadID,
+		LiveSessionID:   liveSessionID,
+		TurnID:          turnID,
+		ClientMessageID: clientMessageID,
+		Mode:            mode,
+	}}
+}
+
+func (trace *LiveLatencyTrace) Record(
+	stage LiveLatencyStage,
+	source LiveLatencySource,
+	occurredAt time.Time,
+) (LiveLatencyPoint, error) {
+	if trace == nil {
+		return LiveLatencyPoint{}, errors.New("assistant: live latency trace is required")
+	}
+	if trace.point.Sequence > 0 && occurredAt.Before(trace.point.OccurredAt) {
+		return LiveLatencyPoint{}, errors.New("assistant: live latency occurred_at must be monotonic")
+	}
+	point := trace.point
+	point.Stage = stage
+	point.Source = source
+	point.OccurredAt = occurredAt
+	point.Sequence++
+	if err := point.Validate(); err != nil {
+		return LiveLatencyPoint{}, err
+	}
+	trace.point = point
+	return point, nil
+}
+
+func (point LiveLatencyPoint) Validate() error {
+	for field, value := range map[string]string{
+		"thread_id":         point.ThreadID,
+		"live_session_id":   point.LiveSessionID,
+		"turn_id":           point.TurnID,
+		"client_message_id": point.ClientMessageID,
+		"stage":             string(point.Stage),
+		"source":            string(point.Source),
+	} {
+		if strings.TrimSpace(value) == "" {
+			return fmt.Errorf("assistant: live latency %s is required", field)
+		}
+	}
+	if !point.Mode.Valid() {
+		return errors.New("assistant: live latency mode must be normal or live")
+	}
+	if point.OccurredAt.IsZero() {
+		return errors.New("assistant: live latency occurred_at is required")
+	}
+	if point.Sequence == 0 {
+		return errors.New("assistant: live latency sequence must be positive")
+	}
+	return nil
+}
 
 type AssistantThread struct {
 	ID             string
@@ -84,13 +379,17 @@ type ToolResult struct {
 
 // AssistantMessage 仅服务于 Demo UI；它不改变 XE3-ESL assistant 核心契约。
 type AssistantMessage struct {
-	ID          string
-	Role        string
-	Content     string
-	Kind        string                `json:"kind,omitempty"`
-	Report      *InterviewReportCard  `json:"report,omitempty"`
-	Attachments []AttachmentReference `json:"attachments,omitempty"`
-	CreatedAt   time.Time
+	ID              string
+	Role            string
+	Content         string
+	ClientMessageID string                `json:"client_message_id,omitempty"`
+	LiveSessionID   string                `json:"live_session_id,omitempty"`
+	TurnID          string                `json:"turn_id,omitempty"`
+	Mode            ConversationMode      `json:"mode,omitempty"`
+	Kind            string                `json:"kind,omitempty"`
+	Report          *InterviewReportCard  `json:"report,omitempty"`
+	Attachments     []AttachmentReference `json:"attachments,omitempty"`
+	CreatedAt       time.Time
 }
 
 type InterviewReportCard struct {

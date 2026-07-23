@@ -212,6 +212,33 @@ test("keeps Go assistant contracts aligned with the XE3-ESL scaffold", async () 
   assert.match(client, /convertRecordingToWAV/);
 });
 
+test("defines realtime event, reconciliation, and latency bridge contracts", async () => {
+  const bridge = await readFile(
+    new URL(
+      "../public/prototype/assets/agent-backend-bridge.js",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+
+  assert.match(bridge, /transcript\.partial/);
+  assert.match(bridge, /turn\.user_committed/);
+  assert.match(bridge, /turn\.assistant_committed/);
+  assert.match(bridge, /attachment\.linked/);
+  assert.match(bridge, /latency\.point/);
+  assert.match(bridge, /thread_id/);
+  assert.match(bridge, /live_session_id/);
+  assert.match(bridge, /turn_id/);
+  assert.match(bridge, /client_message_id/);
+  assert.match(bridge, /occurred_at/);
+  assert.match(bridge, /sequence/);
+  assert.match(bridge, /postMessage\(/);
+  assert.match(bridge, /reconcileCanonicalMessage/);
+  assert.match(bridge, /recordLiveLatencyPoint/);
+  assert.match(bridge, /client_message_id:\s*clientMessageID/);
+  assert.match(bridge, /idempotency_key:\s*clientMessageID/);
+});
+
 test("removes disposable starter artifacts", async () => {
   const packageJson = await readFile(
     new URL("../package.json", import.meta.url),

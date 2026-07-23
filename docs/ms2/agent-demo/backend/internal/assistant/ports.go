@@ -257,6 +257,26 @@ type GeneratedAudio struct {
 	DurationMS  int64
 }
 
+// LiveEventPublisher is the transport-neutral boundary shared by Go, the
+// LiveKit Worker, and the browser. Ephemeral events are published for UI only;
+// canonical events carry the Go-owned AssistantMessage.
+type LiveEventPublisher interface {
+	PublishLiveEvent(context.Context, LiveEvent) error
+}
+
+// LiveLatencyRecorder persists structured time points without coupling the
+// assistant domain to a metrics or tracing vendor.
+type LiveLatencyRecorder interface {
+	RecordLiveLatency(context.Context, LiveLatencyPoint) error
+}
+
+// LiveTurnStore defines the idempotent lookup boundary used by later live turn
+// persistence work. client_message_id, scoped by thread, is the stable key.
+type LiveTurnStore interface {
+	GetLiveTurnByClientMessageID(context.Context, string, string) (LiveTurn, error)
+	SaveLiveTurn(context.Context, LiveTurn) error
+}
+
 type ToolInvocation struct {
 	ActorUserID    string
 	TaskRunID      string

@@ -6,6 +6,23 @@
     : "http://localhost:8080";
   const ACTOR_ID = "demo-user";
   const THREAD_ID = "thread-demo-001";
+  const LIVE_BRIDGE_SOURCE = "speakup-agent-bridge";
+  const LIVE_HOST_SOURCE = "speakup-livekit-host";
+  const LIVE_BRIDGE_VERSION = 1;
+  const LIVE_EVENT_TYPES = new Set([
+    "transcript.partial",
+    "turn.user_committed",
+    "turn.assistant_committed",
+    "attachment.linked",
+    "latency.point",
+  ]);
+  const LIVE_CANONICAL_EVENT_TYPES = new Set([
+    "turn.user_committed",
+    "turn.assistant_committed",
+    "attachment.linked",
+  ]);
+  const CONVERSATION_MODES = new Set(["normal", "live"]);
+  const liveEventSequences = new Map();
 
   let snapshot = null;
   let loading = true;
@@ -85,6 +102,126 @@
   let expandedTranslationID = "";
   let expandedCorrectionID = "";
   let correctionDetailMessageID = "";
+
+  function liveIdentityKey(identity) {
+    return [
+      identity.thread_id,
+      identity.live_session_id,
+      identity.turn_id,
+      identity.client_message_id,
+    ].join(":");
+  }
+
+  function nextLiveEventSequence(identity) {
+    const key = liveIdentityKey(identity);
+    const sequence = (liveEventSequences.get(key) || 0) + 1;
+    liveEventSequences.set(key, sequence);
+    return sequence;
+  }
+
+  function validateLiveEvent(event) {
+    if (!event || !LIVE_EVENT_TYPES.has(event.type)) return false;
+    if (!CONVERSATION_MODES.has(event.mode)) return false;
+    if (
+      !event.thread_id ||
+      !event.live_session_id ||
+      !event.turn_id ||
+      !event.client_message_id ||
+      !event.occurred_at ||
+      !Number.isInteger(event.sequence) ||
+      event.sequence < 1
+    ) return false;
+    if (event.type === "transcript.partial" && event.message) return false;
+    if (LIVE_CANONICAL_EVENT_TYPES.has(event.type)) {
+      return Boolean(
+        event.message?.ID &&
+        event.message?.client_message_id === event.client_message_id,
+      );
+    }
+    return true;
+  }
+
+  function postLiveBridgeMessage(event) {
+    if (!validateLiveEvent(event) || window.parent === window) return false;
+    window.parent.postMessage(
+      {
+        source: LIVE_BRIDGE_SOURCE,
+        version: LIVE_BRIDGE_VERSION,
+        event,
+      },
+      window.location.origin,
+    );
+    return true;
+  }
+
+  function recordLiveLatencyPoint(
+    identity,
+    stage,
+    source = "browser",
+    occurredAt = new Date(),
+  ) {
+    const occurred_at = occurredAt.toISOString();
+    const sequence = nextLiveEventSequence(identity);
+    const point = {
+      ...identity,
+      stage,
+      source,
+      occurred_at,
+      sequence,
+    };
+    const event = {
+      type: "latency.point",
+      ...identity,
+      occurred_at,
+      sequence,
+      latency: point,
+    };
+    postLiveBridgeMessage(event);
+    return point;
+  }
+
+  function reconcileCanonicalMessage(message) {
+    const clientMessageID = message?.client_message_id;
+    if (!clientMessageID) return false;
+    if (optimisticUserMessage?.client_message_id === clientMessageID) {
+      optimisticUserMessage = null;
+    }
+    if (!snapshot) snapshot = { messages: [] };
+    if (!Array.isArray(snapshot.messages)) snapshot.messages = [];
+    const canonicalIndex = snapshot.messages.findIndex(
+      (item) =>
+        item.ID === message.ID ||
+        item.client_message_id === clientMessageID,
+    );
+    if (canonicalIndex >= 0) snapshot.messages[canonicalIndex] = message;
+    else snapshot.messages.push(message);
+    return true;
+  }
+
+  function applyLiveEvent(event) {
+    if (!validateLiveEvent(event)) return false;
+    if (event.type === "transcript.partial") {
+      liveTranscript = event.transcript || "";
+      if (activeRealRoute !== "practice") inputValue = liveTranscript;
+      rerender(activeRealRoute);
+      return true;
+    }
+    if (LIVE_CANONICAL_EVENT_TYPES.has(event.type)) {
+      reconcileCanonicalMessage(event.message);
+      rerender(activeRealRoute);
+    }
+    return true;
+  }
+
+  window.addEventListener("message", (messageEvent) => {
+    if (
+      messageEvent.origin !== window.location.origin ||
+      messageEvent.source !== window.parent ||
+      messageEvent.data?.source !== LIVE_HOST_SOURCE ||
+      messageEvent.data?.version !== LIVE_BRIDGE_VERSION
+    ) return;
+    applyLiveEvent(messageEvent.data.event);
+  });
 
   const escapeHTML = (value) =>
     String(value ?? "")
@@ -1407,9 +1544,20 @@
       snapshot?.requiresNewThread
     ) return;
     const originRoute = activeRealRoute;
+    const clientMessageID =
+      optimisticUserMessage?.client_message_id || crypto.randomUUID();
+    const liveIdentity = {
+      thread_id: THREAD_ID,
+      live_session_id:
+        optimisticUserMessage?.live_session_id || `normal-${THREAD_ID}`,
+      turn_id:
+        optimisticUserMessage?.turn_id || `turn-${clientMessageID}`,
+      client_message_id: clientMessageID,
+      mode: "normal",
+    };
     if (originRoute === "agent-chat") {
       optimisticUserMessage = optimisticUserMessage || {
-        ID: `optimistic-message-${Date.now()}`,
+        ID: `optimistic-message-${clientMessageID}`,
         Role: "user",
         Content: message,
         attachments: [],
@@ -1417,6 +1565,7 @@
       optimisticUserMessage.Content = message;
       optimisticUserMessage.attachments = [...pendingAttachments, ...additionalAttachments];
       optimisticUserMessage.optimisticStatus = "sending";
+      Object.assign(optimisticUserMessage, liveIdentity);
     }
     if (originRoute === "practice") {
       practiceCoachVisible = false;
@@ -1430,9 +1579,10 @@
     streamingText = "";
     loading = true;
     bridgeError = "";
+    recordLiveLatencyPoint(liveIdentity, "turn.submitted");
     rerender();
     try {
-      await streamTask(message, attachmentIDs);
+      await streamTask(message, attachmentIDs, liveIdentity);
       pendingAttachments = [];
       optimisticUserMessage = null;
       if (originRoute === "practice" && interviewFinished()) {
@@ -1475,7 +1625,8 @@
     });
   }
 
-  async function streamTask(message, attachmentIDs = []) {
+  async function streamTask(message, attachmentIDs = [], liveIdentity) {
+    const clientMessageID = liveIdentity?.client_message_id || crypto.randomUUID();
     const response = await fetch(
       `${API_BASE}/v1/assistant/threads/${THREAD_ID}/tasks/stream`,
       {
@@ -1489,14 +1640,15 @@
           user_message: message,
           attachment_ids: attachmentIDs,
           interaction_mode: activeRealRoute === "practice" ? "interview" : "conversation",
-          idempotency_key: crypto.randomUUID(),
+          client_message_id: clientMessageID,
+          idempotency_key: clientMessageID,
         }),
       },
     );
-    await consumeTaskStream(response);
+    await consumeTaskStream(response, liveIdentity);
   }
 
-  async function consumeTaskStream(response) {
+  async function consumeTaskStream(response, liveIdentity) {
     if (!response.ok || !response.body) {
       throw new Error(await response.text());
     }
@@ -1532,6 +1684,16 @@
           } else if (eventName === "task.completed") {
             snapshot = data.snapshot;
             contextLimitExceeded = Boolean(snapshot?.requiresNewThread);
+            if (liveIdentity) {
+              const canonicalMessage = [...(snapshot?.messages || [])]
+                .reverse()
+                .find(
+                  (message) =>
+                    message.client_message_id === liveIdentity.client_message_id,
+                );
+              if (canonicalMessage) reconcileCanonicalMessage(canonicalMessage);
+              recordLiveLatencyPoint(liveIdentity, "turn.persisted");
+            }
             flushStreamingSpeech();
             if (activeRealRoute === "practice" && streamingText.trim() && snapshot?.activeQuestion) {
               lastAutoPlayedQuestion = String(snapshot.activeQuestion).trim();
