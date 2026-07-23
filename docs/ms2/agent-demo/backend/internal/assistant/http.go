@@ -939,8 +939,10 @@ func (h *HTTPHandler) streamTranscription(w http.ResponseWriter, r *http.Request
 
 func (h *HTTPHandler) synthesize(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		Text  string  `json:"text"`
-		Voice *string `json:"voice,omitempty"`
+		Text       string  `json:"text"`
+		Voice      *string `json:"voice,omitempty"`
+		Format     string  `json:"format,omitempty"`
+		SampleRate *int    `json:"sample_rate,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON body"})
@@ -948,6 +950,65 @@ func (h *HTTPHandler) synthesize(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.TrimSpace(request.Text) == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "text is required"})
+		return
+	}
+	format := strings.ToLower(strings.TrimSpace(request.Format))
+	if format == "" {
+		format = "mp3"
+	}
+	sampleRate := 22050
+	if request.SampleRate != nil {
+		sampleRate = *request.SampleRate
+	}
+	if (format != "mp3" || sampleRate != 22050) &&
+		(format != "pcm" || sampleRate != 24000) {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "speech format must be mp3 at 22050 Hz or pcm at 24000 Hz",
+		})
+		return
+	}
+	contentType := "audio/mpeg"
+	if format == "pcm" {
+		contentType = "audio/pcm"
+	}
+	if streamer, ok := h.synthesizer.(ConfigurableStreamingSpeechSynthesizer); ok {
+		flusher, canFlush := w.(http.Flusher)
+		started := false
+		err := streamer.StreamSynthesizeWithOptions(
+			r.Context(),
+			request.Text,
+			request.Voice,
+			SpeechSynthesisOptions{Format: format, SampleRate: sampleRate},
+			func(chunk []byte) error {
+				if !started {
+					w.Header().Set("Content-Type", contentType)
+					w.Header().Set("Cache-Control", "no-store, no-transform")
+					w.Header().Set("X-Accel-Buffering", "no")
+					w.WriteHeader(http.StatusOK)
+					started = true
+				}
+				if _, err := w.Write(chunk); err != nil {
+					return err
+				}
+				if canFlush {
+					flusher.Flush()
+				}
+				return nil
+			},
+		)
+		if err != nil {
+			if !started {
+				h.writeError(w, err)
+			} else {
+				h.logger.Printf("stream TTS audio: %v", err)
+			}
+		}
+		return
+	}
+	if format == "pcm" {
+		writeJSON(w, http.StatusNotImplemented, map[string]any{
+			"error": "PCM speech synthesis is not configured",
+		})
 		return
 	}
 	if streamer, ok := h.synthesizer.(StreamingSpeechSynthesizer); ok {

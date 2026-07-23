@@ -4,7 +4,8 @@
   "private": true,
   "workspaces": [
     "frontend",
-    "backend"
+    "backend",
+    "live-agent"
   ],
   "engines": {
     "node": ">=22.13.0"
@@ -18,6 +19,8 @@
     "test:frontend": "PATH=/usr/local/opt/node@24/bin:$PATH npm run test --workspace frontend",
     "test:server": "PATH=/usr/local/opt/node@24/bin:$PATH npm run test:go --workspace backend",
     "test:mem0": "PATH=/usr/local/opt/node@24/bin:$PATH npm run test:mem0 --workspace backend",
+    "test:live-agent": "PATH=/usr/local/opt/node@24/bin:$PATH npm run test --workspace @speakup/live-agent",
+    "typecheck:live-agent": "PATH=/usr/local/opt/node@24/bin:$PATH npm run typecheck --workspace @speakup/live-agent",
     "test:all": "PATH=/usr/local/opt/node@24/bin:$PATH npm run test --workspace backend && PATH=/usr/local/opt/node@24/bin:$PATH npm run test --workspace frontend",
     "test:soak": "PATH=/usr/local/opt/node@24/bin:$PATH npm run test:soak --workspace backend --",
     "lint": "PATH=/usr/local/opt/node@24/bin:$PATH npm run lint --workspace frontend",

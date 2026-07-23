@@ -762,8 +762,25 @@ func (p *DashScopeProvider) StreamSynthesize(
 	voice *string,
 	writeChunk func([]byte) error,
 ) error {
+	return p.StreamSynthesizeWithOptions(ctx, text, voice, SpeechSynthesisOptions{
+		Format: "mp3", SampleRate: 22050,
+	}, writeChunk)
+}
+
+func (p *DashScopeProvider) StreamSynthesizeWithOptions(
+	ctx context.Context,
+	text string,
+	voice *string,
+	options SpeechSynthesisOptions,
+	writeChunk func([]byte) error,
+) error {
 	if strings.TrimSpace(text) == "" {
 		return errors.New("speech text is empty")
+	}
+	format := strings.ToLower(strings.TrimSpace(options.Format))
+	if (format != "mp3" || options.SampleRate != 22050) &&
+		(format != "pcm" || options.SampleRate != 24000) {
+		return fmt.Errorf("unsupported speech format %q at %d Hz", format, options.SampleRate)
 	}
 	selectedVoice := p.config.TTSVoice
 	if voice != nil && strings.TrimSpace(*voice) != "" {
@@ -779,6 +796,21 @@ func (p *DashScopeProvider) StreamSynthesize(
 	_ = connection.SetWriteDeadline(time.Now().Add(30 * time.Second))
 
 	taskID := uuid()
+	parameters := map[string]any{
+		"text_type":   "PlainText",
+		"voice":       selectedVoice,
+		"sample_rate": options.SampleRate,
+		"volume":      50,
+		"rate":        1.0,
+		"pitch":       1.0,
+		"enable_ssml": false,
+	}
+	if format == "pcm" {
+		parameters["response_format"] = "pcm"
+	} else {
+		// Preserve the established MP3 request used by the ordinary page.
+		parameters["format"] = "mp3"
+	}
 	if err := connection.WriteJSON(map[string]any{
 		"header": map[string]any{"action": "run-task", "task_id": taskID, "streaming": "duplex"},
 		"payload": map[string]any{
@@ -786,17 +818,8 @@ func (p *DashScopeProvider) StreamSynthesize(
 			"task":       "tts",
 			"function":   "SpeechSynthesizer",
 			"model":      p.config.TTSModel,
-			"parameters": map[string]any{
-				"text_type":   "PlainText",
-				"voice":       selectedVoice,
-				"format":      "mp3",
-				"sample_rate": 22050,
-				"volume":      50,
-				"rate":        1.0,
-				"pitch":       1.0,
-				"enable_ssml": false,
-			},
-			"input": map[string]any{},
+			"parameters": parameters,
+			"input":      map[string]any{},
 		},
 	}); err != nil {
 		return fmt.Errorf("start DashScope TTS: %w", err)

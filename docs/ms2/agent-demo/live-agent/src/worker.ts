@@ -1,0 +1,362 @@
+import {
+  ServerOptions,
+  cli,
+  defineAgent,
+  normalizeLanguage,
+  stt,
+  voice,
+  type JobContext,
+} from "@livekit/agents";
+import { AudioFrame, AudioResampler } from "@livekit/rtc-node";
+import { fileURLToPath } from "node:url";
+import { z } from "zod";
+
+import { GoLLM } from "./providers/go-llm.js";
+import { GoSTT } from "./providers/go-stt.js";
+import { GoTTS, pcm16AudioFrames } from "./providers/go-tts.js";
+import { SessionContext } from "./session-context.js";
+import { TurnAudioBuffer } from "./turn-audio-buffer.js";
+import { TurnCommitter } from "./turn-committer.js";
+
+const JobMetadata = z.object({
+  actor_user_id: z.string().min(1),
+  thread_id: z.string().min(1),
+  live_session_id: z.string().min(1),
+});
+
+export type WorkerJobMetadata = z.infer<typeof JobMetadata>;
+
+export const TTS_AUDIO_FRAME_BRIDGE_READY = true;
+
+export const parseJobMetadata = (
+  metadata: string,
+  participantMetadata = "",
+): WorkerJobMetadata => {
+  const selected = metadata.trim() || participantMetadata.trim();
+  if (!selected) {
+    throw new Error(
+      "LiveKit job metadata is missing actor_user_id, thread_id, and live_session_id",
+    );
+  }
+  return JobMetadata.parse(JSON.parse(selected));
+};
+
+const speechEvent = (type: stt.SpeechEventType, text: string): stt.SpeechEvent => ({
+  type,
+  alternatives: [
+    {
+      language: normalizeLanguage("en"),
+      text,
+      startTime: 0,
+      endTime: 0,
+      confidence: 1,
+    },
+  ],
+});
+
+const pcmBytes = (frame: AudioFrame): Uint8Array =>
+  new Uint8Array(frame.data.buffer, frame.data.byteOffset, frame.data.byteLength).slice();
+
+const wavPCM16Mono16K = (pcm: Uint8Array): Uint8Array<ArrayBuffer> => {
+  const wav = new Uint8Array(44 + pcm.byteLength);
+  const view = new DataView(wav.buffer);
+  const text = (offset: number, value: string) => {
+    for (let index = 0; index < value.length; index += 1) {
+      view.setUint8(offset + index, value.charCodeAt(index));
+    }
+  };
+  text(0, "RIFF");
+  view.setUint32(4, 36 + pcm.byteLength, true);
+  text(8, "WAVE");
+  text(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, 16_000, true);
+  view.setUint32(28, 32_000, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  text(36, "data");
+  view.setUint32(40, pcm.byteLength, true);
+  wav.set(pcm, 44);
+  return wav;
+};
+
+const responseJSON = async (response: Response): Promise<Record<string, unknown>> => {
+  if (!response.ok) throw new Error(`Go attachment endpoint failed with HTTP ${response.status}`);
+  return (await response.json()) as Record<string, unknown>;
+};
+
+const attachmentCallbacks = (baseURL: string) => {
+  const root = baseURL.replace(/\/$/, "");
+  return {
+    maxBytes: 8 << 20,
+    upload: async (pcm: Uint8Array): Promise<string> => {
+      const wav = wavPCM16Mono16K(pcm);
+      const form = new FormData();
+      form.append("file", new Blob([wav.buffer], { type: "audio/wav" }), "voice-turn.wav");
+      const payload = await responseJSON(
+        await fetch(`${root}/v1/assistant/attachments`, { method: "POST", body: form }),
+      );
+      const attachment = payload.attachment as Record<string, unknown> | undefined;
+      const id = String(attachment?.ID ?? attachment?.id ?? "");
+      if (!id) throw new Error("Go attachment endpoint omitted attachment ID");
+      return id;
+    },
+    link: async (messageID: string, attachmentID: string): Promise<void> => {
+      await responseJSON(
+        await fetch(
+          `${root}/v1/assistant/messages/${encodeURIComponent(messageID)}/attachments`,
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ attachment_id: attachmentID }),
+          },
+        ),
+      );
+    },
+  };
+};
+
+export class ConversationOrchestrator {
+  readonly context: SessionContext;
+  readonly audio: TurnAudioBuffer;
+  readonly committer: TurnCommitter;
+  readonly stt: GoSTT;
+  readonly tts: GoTTS;
+
+  #job: JobContext;
+
+  constructor(job: JobContext, metadata: WorkerJobMetadata, goBaseURL: string) {
+    this.#job = job;
+    this.context = new SessionContext({
+      actorUserID: metadata.actor_user_id,
+      threadID: metadata.thread_id,
+      liveSessionID: metadata.live_session_id,
+    });
+    this.stt = new GoSTT({ baseURL: goBaseURL });
+    this.tts = new GoTTS({ baseURL: goBaseURL });
+    this.committer = new TurnCommitter(new GoLLM({ baseURL: goBaseURL }));
+    this.audio = new TurnAudioBuffer(attachmentCallbacks(goBaseURL));
+  }
+
+  createAgent(): voice.Agent {
+    return voice.Agent.create({
+      instructions: "",
+      turnHandling: {
+        turnDetection: "stt",
+        endpointing: {},
+        interruption: {
+          enabled: true,
+          mode: "adaptive",
+          falseInterruptionTimeout: 2_000,
+          resumeFalseInterruption: true,
+        },
+        preemptiveGeneration: {
+          enabled: true,
+          preemptiveTts: false,
+        },
+      },
+      sttNode: (_hook, audio) => this.#transcribe(audio),
+      llmNode: () => this.#generateReply(),
+      ttsNode: (_hook, text) => this.#synthesize(text),
+    });
+  }
+
+  async start(): Promise<void> {
+    const session = new voice.AgentSession({
+      turnHandling: {
+        turnDetection: "stt",
+        endpointing: {},
+        interruption: {
+          enabled: true,
+          mode: "adaptive",
+          falseInterruptionTimeout: 2_000,
+          resumeFalseInterruption: true,
+        },
+        preemptiveGeneration: {
+          enabled: true,
+          preemptiveTts: false,
+        },
+      },
+    });
+    await session.start({ agent: this.createAgent(), room: this.#job.room, record: false });
+  }
+
+  async *#transcribe(audio: AsyncIterable<AudioFrame>): AsyncGenerator<stt.SpeechEvent> {
+    const context = this.context;
+    const buffer = this.audio;
+    let resampler: AudioResampler | undefined;
+    let started = false;
+
+    const pcm = async function* (): AsyncGenerator<Uint8Array> {
+      try {
+        for await (const input of audio) {
+          if (input.channels !== 1) {
+            throw new Error(`Go STT requires mono audio; received ${input.channels} channels`);
+          }
+          const frames =
+            input.sampleRate === 16_000
+              ? [input]
+              : (resampler ??= new AudioResampler(input.sampleRate, 16_000, 1)).push(input);
+          for (const frame of frames) {
+            const turn = context.requireTurn();
+            const bytes = pcmBytes(frame);
+            buffer.append(turn.turnID, bytes);
+            yield bytes;
+          }
+        }
+        for (const frame of resampler?.flush() ?? []) {
+          const turn = context.requireTurn();
+          const bytes = pcmBytes(frame);
+          buffer.append(turn.turnID, bytes);
+          yield bytes;
+        }
+      } finally {
+        resampler?.close();
+      }
+    };
+
+    try {
+      for await (const event of this.stt.stream(pcm())) {
+        const turn = context.requireTurn();
+        if (!started) {
+          started = true;
+          yield speechEvent(stt.SpeechEventType.START_OF_SPEECH, "");
+        }
+        if (event.type === "partial") {
+          void this.#publish(
+            context.event(turn, "transcript.partial", { transcript: event.transcript }),
+          );
+          yield speechEvent(stt.SpeechEventType.INTERIM_TRANSCRIPT, event.transcript);
+        } else {
+          context.finalizeTranscript(event.transcript);
+          yield speechEvent(stt.SpeechEventType.FINAL_TRANSCRIPT, event.transcript);
+          yield speechEvent(stt.SpeechEventType.END_OF_SPEECH, event.transcript);
+        }
+      }
+    } catch (error) {
+      const turn = context.currentTurn;
+      if (turn) {
+        buffer.cancel(turn.turnID);
+        context.completeTurn(turn.turnID);
+        void this.#publish(
+          context.event(turn, "turn.failed", {
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }
+      throw error;
+    }
+  }
+
+  async *#generateReply(): AsyncGenerator<string> {
+    const turn = this.context.takeFinalizedTurn();
+    if (!turn?.transcript) throw new Error("LLM node invoked without a finalized transcript");
+
+    const deltas: string[] = [];
+    let wake: (() => void) | undefined;
+    let completed = false;
+    let failure: unknown;
+    const committed = this.committer
+      .commit(turn, (delta) => {
+        deltas.push(delta);
+        wake?.();
+        wake = undefined;
+      })
+      .then(async (result) => {
+        await this.audio.commit(turn.turnID, result.userMessage.ID);
+        completed = true;
+        wake?.();
+        return result;
+      })
+      .catch((error: unknown) => {
+        failure = error;
+        completed = true;
+        this.audio.cancel(turn.turnID);
+        wake?.();
+        throw error;
+      });
+
+    try {
+      while (!completed || deltas.length > 0) {
+        const delta = deltas.shift();
+        if (delta !== undefined) {
+          yield delta;
+        } else if (!completed) {
+          await new Promise<void>((resolve) => {
+            wake = resolve;
+          });
+        }
+      }
+      await committed;
+      if (failure) throw failure;
+    } finally {
+      this.context.completeTurn(turn.turnID);
+    }
+  }
+
+  async *#synthesize(text: AsyncIterable<string>): AsyncGenerator<AudioFrame> {
+    const speech = this.context.startSpeech();
+    try {
+      for await (const segment of boundedTextSegments(text)) {
+        yield* pcm16AudioFrames(this.tts.synthesize(segment, speech.signal));
+      }
+    } finally {
+      if (!speech.signal.aborted) {
+        speech.abort(new Error("speech synthesis completed"));
+      }
+    }
+  }
+
+  async #publish(event: Record<string, unknown>): Promise<void> {
+    const payload = new TextEncoder().encode(JSON.stringify(event));
+    const participant = this.#job.room.localParticipant;
+    if (!participant) throw new Error("LiveKit room has no local participant");
+    await participant.publishData(payload, { reliable: true });
+  }
+}
+
+export async function* boundedTextSegments(
+  text: AsyncIterable<string>,
+  maxCharacters = 240,
+): AsyncGenerator<string> {
+  if (maxCharacters <= 0) throw new Error("maxCharacters must be positive");
+  let buffered = "";
+  for await (const delta of text) {
+    buffered += delta;
+    while (buffered.length > 0) {
+      const punctuation = buffered.search(/[.!?。！？；;\n]/u);
+      const boundary =
+        punctuation >= 0 && punctuation + 1 <= maxCharacters
+          ? punctuation + 1
+          : buffered.length >= maxCharacters
+            ? maxCharacters
+            : 0;
+      if (boundary === 0) break;
+      const segment = buffered.slice(0, boundary).trim();
+      buffered = buffered.slice(boundary).trimStart();
+      if (segment) yield segment;
+    }
+  }
+  const tail = buffered.trim();
+  if (tail) yield tail;
+}
+
+const worker = defineAgent({
+  entry: async (job) => {
+    const goBaseURL = process.env.GO_BACKEND_URL ?? "http://127.0.0.1:8080";
+    await job.connect();
+    const participantMetadata = job.job.metadata.trim()
+      ? ""
+      : (await job.waitForParticipant()).metadata;
+    const metadata = parseJobMetadata(job.job.metadata, participantMetadata);
+    await new ConversationOrchestrator(job, metadata, goBaseURL).start();
+  },
+});
+
+export default worker;
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  cli.runApp(new ServerOptions({ agent: fileURLToPath(import.meta.url) }));
+}

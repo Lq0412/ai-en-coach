@@ -485,6 +485,58 @@ func TestDashScopeSynthesizerStreamsBinaryAudio(t *testing.T) {
 	}
 }
 
+func TestDashScopeSynthesizerRequestsPCM24K(t *testing.T) {
+	upgrader := websocket.Upgrader{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		connection, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer connection.Close()
+		var runTask map[string]any
+		if err := connection.ReadJSON(&runTask); err != nil {
+			t.Fatal(err)
+		}
+		parameters := runTask["payload"].(map[string]any)["parameters"].(map[string]any)
+		if parameters["response_format"] != "pcm" ||
+			parameters["sample_rate"] != float64(24000) ||
+			parameters["format"] != nil {
+			t.Fatalf("unexpected PCM TTS parameters: %#v", parameters)
+		}
+		_ = connection.WriteJSON(map[string]any{"header": map[string]any{"event": "task-started"}})
+		var message map[string]any
+		if err := connection.ReadJSON(&message); err != nil {
+			t.Fatal(err)
+		}
+		if err := connection.ReadJSON(&message); err != nil {
+			t.Fatal(err)
+		}
+		_ = connection.WriteMessage(websocket.BinaryMessage, []byte{1, 0, 2, 0})
+		_ = connection.WriteJSON(map[string]any{"header": map[string]any{"event": "task-finished"}})
+	}))
+	defer server.Close()
+
+	provider := testDashScopeProvider(server.URL)
+	provider.config.TTSWebSocketURL = "ws" + strings.TrimPrefix(server.URL, "http")
+	var audio bytes.Buffer
+	err := provider.StreamSynthesizeWithOptions(
+		context.Background(),
+		"Hello.",
+		nil,
+		SpeechSynthesisOptions{Format: "pcm", SampleRate: 24000},
+		func(chunk []byte) error {
+			_, err := audio.Write(chunk)
+			return err
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(audio.Bytes(), []byte{1, 0, 2, 0}) {
+		t.Fatalf("unexpected PCM audio: %v", audio.Bytes())
+	}
+}
+
 func TestLoadDashScopeConfigUsesChinaPublicURLs(t *testing.T) {
 	t.Setenv("DASHSCOPE_API_KEY", "test-key")
 	t.Setenv("DASHSCOPE_WORKSPACE_ID", "")

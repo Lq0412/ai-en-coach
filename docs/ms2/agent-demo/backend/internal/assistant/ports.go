@@ -247,6 +247,21 @@ type StreamingSpeechSynthesizer interface {
 	StreamSynthesize(context.Context, string, *string, func([]byte) error) error
 }
 
+type SpeechSynthesisOptions struct {
+	Format     string
+	SampleRate int
+}
+
+type ConfigurableStreamingSpeechSynthesizer interface {
+	StreamSynthesizeWithOptions(
+		context.Context,
+		string,
+		*string,
+		SpeechSynthesisOptions,
+		func([]byte) error,
+	) error
+}
+
 type TranscriptSnapshot struct {
 	Text string
 }
