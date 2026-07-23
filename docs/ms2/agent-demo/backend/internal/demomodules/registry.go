@@ -84,12 +84,21 @@ func (r *Registry) Execute(ctx context.Context, invocation assistant.ToolInvocat
 			"feedback_id": value.ID, "practice_session_id": value.SessionID,
 			"target_role": value.TargetRole, "completed_turns": value.CompletedTurns,
 			"max_turns": value.MaxTurns, "summary": value.Summary,
+			"review_result":      reviewResultOutput(value.Result),
+			"mistakes":           mistakesOutput(value.Result.Mistakes),
+			"repractice_targets": repracticeTargetsOutput(value.Result.RepracticeTargets),
 		}, err)
 	case "review.list_history":
 		items, err := r.review.ListHistory(ctx, review.HistoryQuery{Limit: intArgument(invocation.Arguments["limit"])})
 		mapped := make([]map[string]any, 0, len(items))
 		for _, item := range items {
-			mapped = append(mapped, map[string]any{"practice_session_id": item.PracticeSessionID, "scenario": item.Scenario, "completed_turns": item.CompletedTurns, "status": item.Status, "started_at": item.StartedAt, "feedback": item.Feedback})
+			mapped = append(mapped, map[string]any{
+				"practice_session_id": item.PracticeSessionID, "scenario": item.Scenario,
+				"completed_turns": item.CompletedTurns, "status": item.Status,
+				"started_at": item.StartedAt, "ended_at": item.EndedAt,
+				"feedback": item.Feedback, "has_feedback": item.HasFeedback,
+				"review_id": item.ReviewID, "repractice_focus": item.RepracticeFocus,
+			})
 		}
 		return output(map[string]any{"items": mapped}, err)
 	default:
@@ -102,6 +111,60 @@ func output(value map[string]any, err error) (assistant.ToolResult, error) {
 		return assistant.ToolResult{}, err
 	}
 	return assistant.ToolResult{Output: value}, nil
+}
+
+func reviewResultOutput(result review.ReviewResult) map[string]any {
+	return map[string]any{
+		"id": result.ID, "practice_session_id": result.SessionID,
+		"target_role": result.TargetRole, "scenario_type": result.ScenarioType,
+		"completed_turns": result.CompletedTurns, "max_turns": result.MaxTurns,
+		"evidence_status": result.EvidenceStatus, "rubric_id": result.RubricID,
+		"scores": map[string]any{
+			"structure": result.Scores.Structure, "content": result.Scores.Content,
+			"english": result.Scores.English, "scenario_match": result.Scores.ScenarioMatch,
+			"overall": result.Scores.Overall,
+		},
+		"feedback_items":     feedbackItemsOutput(result.FeedbackItems),
+		"mistakes":           mistakesOutput(result.Mistakes),
+		"repractice_targets": repracticeTargetsOutput(result.RepracticeTargets),
+		"summary":            result.Summary,
+		"created_at":         result.CreatedAt,
+	}
+}
+
+func feedbackItemsOutput(items []review.FeedbackItem) []map[string]any {
+	mapped := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		mapped = append(mapped, map[string]any{
+			"type": item.Type, "message": item.Message,
+			"evidence": item.Evidence, "suggestion": item.Suggestion,
+		})
+	}
+	return mapped
+}
+
+func mistakesOutput(items []review.MistakeItem) []map[string]any {
+	mapped := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		mapped = append(mapped, map[string]any{
+			"id": item.ID, "type": item.Type, "original_text": item.OriginalText,
+			"issue": item.Issue, "suggestion": item.Suggestion,
+			"repractice_status": item.RepracticeStatus,
+		})
+	}
+	return mapped
+}
+
+func repracticeTargetsOutput(items []review.RepracticeTarget) []map[string]any {
+	mapped := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		mapped = append(mapped, map[string]any{
+			"id": item.ID, "focus": item.Focus, "reason": item.Reason,
+			"prompt": item.Prompt, "source_mistake_ids": item.SourceMistakeIDs,
+			"status": item.Status,
+		})
+	}
+	return mapped
 }
 
 func conversationMessages(value any) ([]conversation.ContextMessage, error) {
