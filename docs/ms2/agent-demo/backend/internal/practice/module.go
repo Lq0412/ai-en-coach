@@ -75,7 +75,9 @@ func (s service) CreatePlan(_ context.Context, command CreatePlanCommand) (plan 
 		}
 		state.TargetRole = role
 		state.Interviewer = "Senior Hiring Manager"
-		state.MaxTurns = boundedInt(command.MaxTurns, assistant.DefaultInterviewMaxTurns, 3, 20)
+		// Zero is intentional: question count is dynamic and the session is
+		// normally bounded by its deadline instead of a fixed number of turns.
+		state.MaxTurns = boundedInt(command.MaxTurns, assistant.DefaultInterviewMaxTurns, 0, 100)
 		state.DurationMinutes = boundedInt(command.DurationMinutes, assistant.DefaultInterviewDurationMinutes, 5, 60)
 		plan = PlanSnapshot{ID: "plan-demo-001", TargetRole: role, Interviewer: state.Interviewer, MaxTurns: state.MaxTurns, DurationMinutes: state.DurationMinutes}
 		return assistant.ToolResult{}, nil

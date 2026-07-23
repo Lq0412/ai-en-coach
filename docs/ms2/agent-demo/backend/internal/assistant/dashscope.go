@@ -127,17 +127,19 @@ If operational state contains interview_requirement=pending_target_role, treat t
 	3. Start interview only after a specific target role is present in the current message or earlier conversation:
 {"Intent":"start_mock_interview","Steps":[
 {"ToolName":"preparation.get_confirmed_context","Arguments":{"scenario":"PROGRAMMER_INTERVIEW"}},
-{"ToolName":"practice.create_plan","Arguments":{"role":"infer the target role from the user message; default to Software Engineer","max_turns":10,"duration_minutes":15}},
+{"ToolName":"practice.create_plan","Arguments":{"role":"infer the target role from the user message; max_turns=0 for dynamic question count","max_turns":0,"duration_minutes":15}},
 {"ToolName":"practice.start_session","Arguments":{}},
 {"ToolName":"conversation.generate_next_question","Arguments":{}}
 ]}
-Use max_turns=10 and duration_minutes=15 by default. If the user explicitly requests limits, copy them within 3-20 turns and 5-60 minutes. Never use a generic default role when the role is missing; use clarify_interview_requirements instead.
+Use max_turns=0 and duration_minutes=15 by default. Zero means there is no fixed question count: the session ends when time expires or the user asks to stop. If the user explicitly requests a hard question cap, copy it within 1-100 turns; duration remains within 5-60 minutes. Never use a generic default role when the role is missing; use clarify_interview_requirements instead.
 	4. Submit an answer while session_in_progress=true:
 {"Intent":"submit_interview_answer","Steps":[
 {"ToolName":"conversation.submit_turn","Arguments":{"answer_text":"copy the user message exactly","interaction_mode":"TEXT"}},
 {"ToolName":"practice.apply_turn_outcome","Arguments":{"answer_validity":"VALID"}},
 {"ToolName":"conversation.generate_next_question","Arguments":{}}
 ]}
+If the user explicitly asks to end or stop an active interview, do not treat that message as an answer. Return:
+{"Intent":"end_interview","Steps":[{"ToolName":"review.generate_feedback","Arguments":{"reason":"user_requested_stop"}}]}
 The server enforces the time and turn limits and may replace the last step with review.generate_feedback.
 	5. View history: Intent view_practice_history, one review.list_history step.
 	6. View saved mistakes or repractice items: Intent view_saved_mistakes, one review.list_mistakes step. Use this when the user asks about 错题, mistakes, or recent repractice items.
@@ -177,13 +179,16 @@ func (p *DashScopeProvider) GenerateQuestion(ctx context.Context, input Intervie
 	questions, _ := json.Marshal(input.PreviousQuestions)
 	profile, _ := json.Marshal(candidateProfilePrompt(input.CandidateProfile))
 	return p.chat(ctx,
-		fmt.Sprintf("You are a senior hiring manager conducting a realistic continuous English interview for a %s. Ask exactly one concise question in English. Follow up naturally on the candidate's latest answer when useful, otherwise advance to another relevant competency. Never use a fixed question bank, repeat a previous question, add commentary, or add numbering.", role),
-		fmt.Sprintf("Target role: %s\nUpcoming answer turn: %d of at most %d\nSession duration: %d minutes\nConfirmed candidate and JD background: %s\nPrevious questions: %s\nCandidate answers in matching order: %s\nAsk the single best next interview question based on this dialogue and the confirmed background. Never invent resume facts.",
+		fmt.Sprintf("You are a senior hiring manager conducting a realistic continuous English interview for a %s. Ask exactly one concise question in English. There is no fixed question count: adapt the interview until the time limit or the user's explicit stop. Use the candidate's latest answer to choose the next move. If it is vague, clarify; if it contains a concrete decision, probe trade-offs or impact; if it is complete, move to an uncovered competency for the target role. Never use a fixed question bank, repeat a previous question, add commentary, or add numbering.", role),
+		fmt.Sprintf("Target role: %s\nCompleted answers: %d\nSession duration: %d minutes\nElapsed minutes: %d\nRemaining minutes: %d\nConfirmed candidate and JD background: %s\nPrevious question: %s\nLatest candidate answer: %s\nPrevious questions: %s\nCandidate answers in matching order: %s\nAsk the single best next interview question based on the target role, latest answer, uncovered competencies, and confirmed background. Do not mention turn counts or invent resume facts.",
 			role,
-			input.CompletedQuestionCount+1,
-			input.MaxTurns,
+			input.CompletedQuestionCount,
 			input.DurationMinutes,
+			input.ElapsedMinutes,
+			input.RemainingMinutes,
 			profile,
+			input.PreviousQuestion,
+			input.LatestAnswer,
 			questions,
 			answers,
 		),
@@ -197,8 +202,8 @@ func (p *DashScopeProvider) GenerateFeedback(ctx context.Context, input Intervie
 	answers, _ := json.Marshal(input.Answers)
 	profile, _ := json.Marshal(candidateProfilePrompt(input.CandidateProfile))
 	return p.chat(ctx,
-		"You are an English interview coach. Give concise Chinese feedback grounded in the supplied English answers. Mention one strength, two improvements, and one example improved sentence. Do not invent evidence.",
-		fmt.Sprintf("Target role: %s\nCompleted turns: %d of at most %d\nSession duration: %d minutes\nConfirmed candidate and JD background: %s\nAnswers: %s", input.TargetRole, input.CompletedQuestionCount, input.MaxTurns, input.DurationMinutes, profile, answers),
+		"You are an English interview coach. Give concise Chinese feedback grounded in the supplied English answers. Mention one strength, two improvements, and one example improved sentence. Do not invent evidence. Do not judge the candidate by a fixed number of questions.",
+		fmt.Sprintf("Target role: %s\nCompleted turns: %d\nSession duration: %d minutes\nConfirmed candidate and JD background: %s\nAnswers: %s", input.TargetRole, input.CompletedQuestionCount, input.DurationMinutes, profile, answers),
 		true,
 		true,
 		feedbackMaxTokens,
@@ -1306,6 +1311,7 @@ func validatePlan(plan Plan) error {
 			{"review.submit_mistake_repractice"},
 		},
 		"review_latest_practice": {{"review.generate_feedback"}},
+		"end_interview":          {{"review.generate_feedback"}},
 	}
 	shapes, ok := expected[plan.Intent]
 	if !ok {

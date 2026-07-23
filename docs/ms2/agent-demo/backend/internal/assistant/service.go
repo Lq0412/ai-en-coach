@@ -159,9 +159,14 @@ func (s *Service) startTask(ctx context.Context, command StartTaskCommand) (Task
 	if interactionMode == "conversation" && plan.Intent == "submit_interview_answer" {
 		plan = freeConversationPlan()
 	}
+	// An explicit stop from the practice UI is control input, never an answer.
+	// Enforce this server-side so provider planning cannot accidentally consume it.
+	if interactionMode == "interview" && state.ActiveQuestion != "" && isInterviewStopRequest(strings.ToLower(visibleMessage)) {
+		plan = endInterviewPlan("user_requested_stop")
+	}
 	// Conversely, a message submitted from the practice composer is always the
 	// answer to the active question, even if the wording resembles small talk.
-	if interactionMode == "interview" && state.ActiveQuestion != "" && plan.Intent != "submit_interview_answer" {
+	if interactionMode == "interview" && state.ActiveQuestion != "" && plan.Intent != "submit_interview_answer" && plan.Intent != "end_interview" {
 		plan = interviewAnswerPlan(state.ShouldCompleteAfterNextTurn(time.Now()))
 	}
 	if plan.Intent == "submit_interview_answer" {
@@ -238,12 +243,13 @@ func (s *Service) startTask(ctx context.Context, command StartTaskCommand) (Task
 		if _, err := s.executeSteps(ctx, command.ActorUserID, run, plan.Steps[:1]); err != nil {
 			return TaskRun{}, err
 		}
+		scope := interviewScopeDescription(maxTurns, durationMinutes)
 		confirmation := ConfirmationRequest{
 			ID:        nextID("confirmation"),
 			TaskRunID: run.ID,
 			Action:    "practice.create_plan",
 			RiskLevel: "user_visible_change",
-			Summary:   fmt.Sprintf("使用已确认背景创建 %s 真实模拟面试，限制 %d 分钟、最多 %d 轮回答，并启动新的 PracticeSession。", targetRole, durationMinutes, maxTurns),
+			Summary:   fmt.Sprintf("使用已确认背景创建 %s 真实模拟面试，%s，并启动新的 PracticeSession。", targetRole, scope),
 			Status:    ConfirmationStatusPending,
 			ExpiresAt: time.Now().UTC().Add(15 * time.Minute),
 		}
@@ -256,7 +262,7 @@ func (s *Service) startTask(ctx context.Context, command StartTaskCommand) (Task
 		if err := s.dependencies.ConversationStore.SaveTaskRun(ctx, run); err != nil {
 			return TaskRun{}, err
 		}
-		if err := s.appendMessage(ctx, "assistant", fmt.Sprintf("背景快照已读取。创建 %s 真实模拟面试（%d 分钟、最多 %d 轮回答）会产生新的练习记录，请确认后继续。", targetRole, durationMinutes, maxTurns)); err != nil {
+		if err := s.appendMessage(ctx, "assistant", fmt.Sprintf("背景快照已读取。创建 %s 真实模拟面试（%s）会产生新的练习记录，请确认后继续。", targetRole, scope)); err != nil {
 			return TaskRun{}, err
 		}
 		return run, nil
@@ -288,6 +294,20 @@ func interviewAnswerPlan(last bool) Plan {
 			{ToolName: lastTool, Arguments: map[string]any{}},
 		},
 	}
+}
+
+func endInterviewPlan(reason string) Plan {
+	return Plan{
+		Intent: "end_interview",
+		Steps:  []PlanStep{{ToolName: "review.generate_feedback", Arguments: map[string]any{"reason": reason}}},
+	}
+}
+
+func interviewScopeDescription(maxTurns, durationMinutes int) string {
+	if maxTurns > 0 {
+		return fmt.Sprintf("限制 %d 分钟、动态追问且最多 %d 个有效回答", durationMinutes, maxTurns)
+	}
+	return fmt.Sprintf("限制 %d 分钟、根据岗位与回答动态追问且不固定题数", durationMinutes)
 }
 
 func (s *Service) ResumeTask(ctx context.Context, command ResumeTaskCommand) (TaskRun, error) {
@@ -575,7 +595,11 @@ func (s *Service) updateThreadSummary(ctx context.Context, run TaskRun) error {
 			compactText(fmt.Sprint(run.Result["summary"]), 180),
 		)
 	} else {
-		thread.ContextSummary = fmt.Sprintf("%s 已完成；session_in_progress=%t；有效回答 %d/%d；时长限制 %d 分钟", run.Intent, active, completed, maxTurns, durationMinutes)
+		turnSummary := fmt.Sprintf("有效回答 %d 个；题目动态生成", completed)
+		if maxTurns > 0 {
+			turnSummary = fmt.Sprintf("有效回答 %d/%d", completed, maxTurns)
+		}
+		thread.ContextSummary = fmt.Sprintf("%s 已完成；session_in_progress=%t；%s；时长限制 %d 分钟", run.Intent, active, turnSummary, durationMinutes)
 	}
 	thread.UpdatedAt = time.Now().UTC()
 	return s.dependencies.ConversationStore.SaveThread(ctx, thread)
@@ -637,7 +661,7 @@ func reportCardFromResult(intent string, result map[string]any) *InterviewReport
 	return &InterviewReportCard{
 		SessionID: sessionID, TargetRole: strings.TrimSpace(fmt.Sprint(result["target_role"])),
 		CompletedTurns: boundedIntArgument(result["completed_turns"], 0, 0, 100),
-		MaxTurns:       boundedIntArgument(result["max_turns"], DefaultInterviewMaxTurns, 1, 100),
+		MaxTurns:       boundedIntArgument(result["max_turns"], DefaultInterviewMaxTurns, 0, 100),
 		Summary:        compactReportSummary(summary),
 	}
 }
@@ -839,7 +863,7 @@ func normalizeInterviewPlan(plan *Plan) {
 		if plan.Steps[index].Arguments == nil {
 			plan.Steps[index].Arguments = map[string]any{}
 		}
-		maxTurns := boundedIntArgument(plan.Steps[index].Arguments["max_turns"], DefaultInterviewMaxTurns, 3, 20)
+		maxTurns := boundedIntArgument(plan.Steps[index].Arguments["max_turns"], DefaultInterviewMaxTurns, 0, 100)
 		durationMinutes := boundedIntArgument(plan.Steps[index].Arguments["duration_minutes"], DefaultInterviewDurationMinutes, 5, 60)
 		plan.Steps[index].Arguments["max_turns"] = maxTurns
 		plan.Steps[index].Arguments["duration_minutes"] = durationMinutes
@@ -850,7 +874,7 @@ func normalizeInterviewPlan(plan *Plan) {
 func interviewLimitsFromPlan(plan Plan) (int, int) {
 	for _, step := range plan.Steps {
 		if step.ToolName == "practice.create_plan" {
-			return boundedIntArgument(step.Arguments["max_turns"], DefaultInterviewMaxTurns, 3, 20),
+			return boundedIntArgument(step.Arguments["max_turns"], DefaultInterviewMaxTurns, 0, 100),
 				boundedIntArgument(step.Arguments["duration_minutes"], DefaultInterviewDurationMinutes, 5, 60)
 		}
 	}

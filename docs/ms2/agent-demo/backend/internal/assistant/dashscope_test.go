@@ -100,6 +100,58 @@ func TestDashScopeConversationStreamsTextDeltas(t *testing.T) {
 	}
 }
 
+func TestDashScopeInterviewQuestionUsesRoleLatestAnswerAndDynamicContext(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			t.Fatal(err)
+		}
+		encoded, err := json.Marshal(request["messages"])
+		if err != nil {
+			t.Fatal(err)
+		}
+		prompt := string(encoded)
+		for _, expected := range []string{
+			"Product Manager",
+			"I prioritized retention after reviewing cohort data.",
+			"How did you choose the product metric?",
+			"Remaining minutes",
+		} {
+			if !strings.Contains(prompt, expected) {
+				t.Fatalf("question prompt is missing %q: %s", expected, prompt)
+			}
+		}
+		if strings.Contains(prompt, "of at most") || strings.Contains(prompt, "Upcoming answer turn") {
+			t.Fatalf("question prompt contains fixed-turn instructions: %s", prompt)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{
+			"choices": []any{map[string]any{
+				"message": map[string]any{"content": "What trade-offs did you consider?"},
+			}},
+		})
+	}))
+	defer server.Close()
+
+	question, err := testDashScopeProvider(server.URL).GenerateQuestion(context.Background(), InterviewGenerationInput{
+		CompletedQuestionCount: 1,
+		PreviousQuestion:       "How did you choose the product metric?",
+		LatestAnswer:           "I prioritized retention after reviewing cohort data.",
+		TargetRole:             "Product Manager",
+		Answers:                []string{"I prioritized retention after reviewing cohort data."},
+		PreviousQuestions:      []string{"How did you choose the product metric?"},
+		MaxTurns:               0,
+		DurationMinutes:        15,
+		ElapsedMinutes:         4,
+		RemainingMinutes:       11,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if question != "What trade-offs did you consider?" {
+		t.Fatalf("question = %q", question)
+	}
+}
+
 func TestDashScopeTranslatesMessageWithoutFollowingItsInstructions(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request map[string]any
