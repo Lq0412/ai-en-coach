@@ -1,6 +1,8 @@
 (function () {
   window.SPEAKUP_REAL_AGENT_BRIDGE = true;
   const requestedAPIBase = new URLSearchParams(window.location.search).get("api_base");
+  const LIVE_FEATURE_ENABLED =
+    new URLSearchParams(window.location.search).get("live_voice") === "1";
   const API_BASE = /^https?:\/\//.test(requestedAPIBase || "")
     ? requestedAPIBase.replace(/\/$/, "")
     : "http://localhost:8080";
@@ -13,6 +15,7 @@
     "transcript.partial",
     "turn.user_committed",
     "turn.assistant_committed",
+    "turn.failed",
     "attachment.linked",
     "latency.point",
   ]);
@@ -22,6 +25,23 @@
     "attachment.linked",
   ]);
   const CONVERSATION_MODES = new Set(["normal", "live"]);
+  const LIVE_CALL_STATES = new Set([
+    "idle",
+    "connecting",
+    "listening",
+    "thinking",
+    "speaking",
+    "reconnecting",
+    "failed",
+  ]);
+  const LIVE_INTENT_TYPES = new Set([
+    "live.intent.start",
+    "live.intent.resume",
+    "live.intent.end",
+    "live.intent.mute",
+    "live.intent.recover",
+  ]);
+  const MAX_LIVE_BRIDGE_BYTES = 16384;
   const liveEventSequences = new Map();
 
   let snapshot = null;
@@ -47,6 +67,11 @@
   let recordingElapsedSeconds = 0;
   let recordingTimer = null;
   let liveTranscript = "";
+  let liveCallState = "idle";
+  let liveSessionID = "";
+  let liveMuted = false;
+  let liveCallError = "";
+  let liveRecoveryNotice = "";
   let discardRecording = false;
   let asrStreamingFailed = false;
   let fallbackRecordingBlob = null;
@@ -133,6 +158,10 @@
       event.sequence < 1
     ) return false;
     if (event.type === "transcript.partial" && event.message) return false;
+    if (
+      event.type === "turn.failed" &&
+      (typeof event.error !== "string" || event.error.length > 500)
+    ) return false;
     if (LIVE_CANONICAL_EVENT_TYPES.has(event.type)) {
       return Boolean(
         event.message?.ID &&
@@ -153,6 +182,88 @@
       window.location.origin,
     );
     return true;
+  }
+
+  function hasExactKeys(value, required, optional = []) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const allowed = new Set([...required, ...optional]);
+    return required.every((key) => Object.hasOwn(value, key)) &&
+      Object.keys(value).every((key) => allowed.has(key));
+  }
+
+  function isBoundedBridgeMessage(value) {
+    try {
+      return new TextEncoder().encode(JSON.stringify(value)).byteLength <=
+        MAX_LIVE_BRIDGE_BYTES;
+    } catch {
+      return false;
+    }
+  }
+
+  function validateLiveIntent(type, payload) {
+    if (!LIVE_INTENT_TYPES.has(type) || !payload || typeof payload !== "object") {
+      return false;
+    }
+    const bounded = (value) =>
+      typeof value === "string" && value.length > 0 && value.length <= 256;
+    if (type === "live.intent.start") {
+      return hasExactKeys(payload, ["actor_user_id", "thread_id"]) &&
+        bounded(payload.actor_user_id) &&
+        bounded(payload.thread_id);
+    }
+    if (type === "live.intent.resume" || type === "live.intent.end") {
+      return hasExactKeys(payload, ["actor_user_id", "live_session_id"]) &&
+        bounded(payload.actor_user_id) &&
+        bounded(payload.live_session_id);
+    }
+    if (type === "live.intent.mute") {
+      return hasExactKeys(payload, ["muted"]) && typeof payload.muted === "boolean";
+    }
+    return type === "live.intent.recover" && hasExactKeys(payload, []);
+  }
+
+  function postLiveIntent(type, payload) {
+    if (
+      !LIVE_FEATURE_ENABLED ||
+      window.parent === window ||
+      !validateLiveIntent(type, payload)
+    ) return false;
+    const message = {
+      source: LIVE_BRIDGE_SOURCE,
+      version: LIVE_BRIDGE_VERSION,
+      type,
+      payload,
+    };
+    if (!isBoundedBridgeMessage(message)) return false;
+    window.parent.postMessage(message, window.location.origin);
+    return true;
+  }
+
+  function validateLiveStatus(payload) {
+    return hasExactKeys(
+      payload,
+      ["state", "muted"],
+      ["live_session_id", "error"],
+    ) &&
+      LIVE_CALL_STATES.has(payload.state) &&
+      typeof payload.muted === "boolean" &&
+      (payload.live_session_id === undefined ||
+        (typeof payload.live_session_id === "string" &&
+          payload.live_session_id.length > 0 &&
+          payload.live_session_id.length <= 256)) &&
+      (payload.error === undefined ||
+        (typeof payload.error === "string" && payload.error.length <= 500));
+  }
+
+  function validateLiveHostMessage(value) {
+    if (
+      !hasExactKeys(value, ["source", "version", "type", "payload"]) ||
+      !isBoundedBridgeMessage(value) ||
+      value.source !== LIVE_HOST_SOURCE ||
+      value.version !== LIVE_BRIDGE_VERSION
+    ) return false;
+    if (value.type === "live.status") return validateLiveStatus(value.payload);
+    return value.type === "live.event" && validateLiveEvent(value.payload);
   }
 
   function recordLiveLatencyPoint(
@@ -203,12 +314,12 @@
     if (!validateLiveEvent(event)) return false;
     if (event.type === "transcript.partial") {
       liveTranscript = event.transcript || "";
-      if (activeRealRoute !== "practice") inputValue = liveTranscript;
       rerender(activeRealRoute);
       return true;
     }
     if (LIVE_CANONICAL_EVENT_TYPES.has(event.type)) {
       reconcileCanonicalMessage(event.message);
+      if (event.type === "turn.user_committed") liveTranscript = "";
       rerender(activeRealRoute);
     }
     return true;
@@ -218,10 +329,27 @@
     if (
       messageEvent.origin !== window.location.origin ||
       messageEvent.source !== window.parent ||
-      messageEvent.data?.source !== LIVE_HOST_SOURCE ||
-      messageEvent.data?.version !== LIVE_BRIDGE_VERSION
+      !validateLiveHostMessage(messageEvent.data)
     ) return;
-    applyLiveEvent(messageEvent.data.event);
+    if (messageEvent.data.type === "live.event") {
+      applyLiveEvent(messageEvent.data.payload);
+      return;
+    }
+    const status = messageEvent.data.payload;
+    liveCallState = status.state;
+    liveMuted = status.muted;
+    if (status.live_session_id) liveSessionID = status.live_session_id;
+    liveCallError = status.state === "failed"
+      ? status.error || "实时通话失败"
+      : "";
+    if (status.state === "idle") {
+      liveSessionID = "";
+      liveTranscript = "";
+      if (status.error) liveRecoveryNotice = status.error;
+    } else {
+      liveRecoveryNotice = "";
+    }
+    rerender(activeRealRoute);
   });
 
   const escapeHTML = (value) =>
@@ -652,7 +780,40 @@
     </section>`;
   }
 
+  const liveCallLabels = {
+    connecting: "正在连接",
+    listening: "正在聆听",
+    thinking: "正在思考",
+    speaking: "正在说话",
+    reconnecting: "正在重新连接",
+    failed: "实时通话失败",
+  };
+
+  function liveCallComposerHTML() {
+    const label = liveCallLabels[liveCallState] || "实时通话";
+    if (liveCallState === "failed") {
+      return `<footer class="real-live-call failed">
+        <div class="real-live-call-status" role="status" aria-live="polite"><i></i><span><b>${escapeHTML(label)}</b><small>${escapeHTML(liveCallError || "连接没有完成")}</small></span></div>
+        <div class="real-live-call-actions">
+          <button data-real-action="recover-live-call">返回普通模式</button>
+          <button class="primary" data-real-action="retry-live-call">重试</button>
+        </div>
+      </footer>`;
+    }
+    return `<footer class="real-live-call ${escapeHTML(liveCallState)}">
+      <div class="real-live-call-status" role="status" aria-live="polite"><i></i><span><b>${escapeHTML(label)}</b><small>${liveMuted ? "麦克风已静音" : "你可以直接说话"}</small></span></div>
+      ${liveTranscript ? `<p class="real-live-partial"><small>正在识别</small>${escapeHTML(liveTranscript)}</p>` : ""}
+      <div class="real-live-call-actions">
+        <button data-real-action="toggle-live-mute" aria-pressed="${liveMuted}">${liveMuted ? "取消静音" : "静音"}</button>
+        <button class="danger" data-real-action="end-live-call">结束</button>
+      </div>
+    </footer>`;
+  }
+
   function composerHTML() {
+    if (LIVE_FEATURE_ENABLED && liveCallState !== "idle") {
+      return liveCallComposerHTML();
+    }
     const hasPending = pendingAttachments.length > 0;
     if (isRecording()) {
       return `<footer class="real-voice-capture">
@@ -672,6 +833,7 @@
     return `${attachmentCardsHTML(pendingAttachments, true)}
     ${attachmentUploading ? `<div class="real-attachment-uploading"><i></i><span>正在上传并由真实模型理解附件…</span></div>` : ""}
     ${failedVoiceRecordingBlob ? `<div class="real-voice-send-retry"><span><b>${failedVoiceMessageID ? "文字已发送，录音尚未补充" : "录音尚未发送"}</b><small>本次录音已保留，可以直接重试。</small></span><button data-real-action="discard-voice-recording">删除</button><button class="primary" data-real-action="retry-voice-send">${failedVoiceMessageID ? "重试上传" : "重试发送"}</button></div>` : ""}
+    ${LIVE_FEATURE_ENABLED ? `<button class="real-live-entry" data-real-action="start-live-call"><i></i><span><b>实时通话</b><small>${escapeHTML(liveRecoveryNotice || "和 SpeakUp 连续对话")}</small></span><em>开始</em></button>` : ""}
     ${voiceStateHTML()}
     <footer class="real-agent-composer">
       <input data-attachment-input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" multiple hidden>
@@ -718,7 +880,12 @@
         ${contextLimitHTML()}
         ${realErrorHTML()}
         ${thinkingHTML()}`;
-    return `<div class="agent-page real-agent-page">
+    const liveLayoutClass = !LIVE_FEATURE_ENABLED
+      ? ""
+      : liveCallState === "idle"
+        ? " live-entry-visible"
+        : " live-call-active";
+    return `<div class="agent-page real-agent-page${liveLayoutClass}">
       <section class="real-agent-thread">${content}</section>
       ${composerHTML()}
       ${correctionDetailSheetHTML()}
@@ -2493,6 +2660,60 @@
     }
     const action = target.dataset.realAction;
     if (action === "send") void sendMessage();
+    else if (action === "start-live-call") {
+      liveCallState = "connecting";
+      liveCallError = "";
+      liveRecoveryNotice = "";
+      rerender("agent-chat");
+      if (!postLiveIntent("live.intent.start", {
+        actor_user_id: ACTOR_ID,
+        thread_id: THREAD_ID,
+      })) {
+        liveCallState = "failed";
+        liveCallError = "无法启动实时通话";
+        rerender("agent-chat");
+      }
+    }
+    else if (action === "retry-live-call") {
+      liveCallState = "connecting";
+      liveCallError = "";
+      rerender("agent-chat");
+      const posted = liveSessionID
+        ? postLiveIntent("live.intent.resume", {
+            actor_user_id: ACTOR_ID,
+            live_session_id: liveSessionID,
+          })
+        : postLiveIntent("live.intent.start", {
+            actor_user_id: ACTOR_ID,
+            thread_id: THREAD_ID,
+          });
+      if (!posted) {
+        liveCallState = "failed";
+        liveCallError = "无法重新连接实时通话";
+        rerender("agent-chat");
+      }
+    }
+    else if (action === "toggle-live-mute") {
+      postLiveIntent("live.intent.mute", { muted: !liveMuted });
+    }
+    else if (action === "end-live-call") {
+      if (liveSessionID) {
+        postLiveIntent("live.intent.end", {
+          actor_user_id: ACTOR_ID,
+          live_session_id: liveSessionID,
+        });
+      } else {
+        postLiveIntent("live.intent.recover", {});
+      }
+    }
+    else if (action === "recover-live-call") {
+      postLiveIntent("live.intent.recover", {});
+      liveCallState = "idle";
+      liveSessionID = "";
+      liveTranscript = "";
+      liveCallError = "";
+      rerender("agent-chat");
+    }
     else if (action === "submit-answer") void sendMessage();
     else if (action === "quick") void sendMessage(target.dataset.message);
     else if (action === "toggle-translation") toggleTranslation(target.dataset.messageId);

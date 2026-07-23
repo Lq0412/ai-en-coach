@@ -32,6 +32,7 @@ test("server-renders the SpeakUp product prototype host", async () => {
   assert.match(html, /<title>SpeakUp 产品原型<\/title>/i);
   assert.match(html, /SpeakUp 产品原型/);
   assert.match(html, /\/prototype\/pages\/prototype\.html\?api_base=/);
+  assert.match(html, /live_voice=0/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 
@@ -217,13 +218,31 @@ test("keeps Go assistant contracts aligned with the XE3-ESL scaffold", async () 
 });
 
 test("defines realtime event, reconciliation, and latency bridge contracts", async () => {
-  const bridge = await readFile(
-    new URL(
-      "../public/prototype/assets/agent-backend-bridge.js",
-      import.meta.url,
+  const [bridge, host, session, styles, backendModel] = await Promise.all([
+    readFile(
+      new URL(
+        "../public/prototype/assets/agent-backend-bridge.js",
+        import.meta.url,
+      ),
+      "utf8",
     ),
-    "utf8",
-  );
+    readFile(
+      new URL("../app/components/live-conversation-host.tsx", import.meta.url),
+      "utf8",
+    ),
+    readFile(new URL("../app/lib/livekit-session.ts", import.meta.url), "utf8"),
+    readFile(
+      new URL(
+        "../public/prototype/assets/agent-backend-bridge.css",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+    readFile(
+      new URL("../../backend/internal/assistant/model.go", import.meta.url),
+      "utf8",
+    ),
+  ]);
 
   assert.match(bridge, /transcript\.partial/);
   assert.match(bridge, /turn\.user_committed/);
@@ -241,6 +260,39 @@ test("defines realtime event, reconciliation, and latency bridge contracts", asy
   assert.match(bridge, /recordLiveLatencyPoint/);
   assert.match(bridge, /client_message_id:\s*clientMessageID/);
   assert.match(bridge, /idempotency_key:\s*clientMessageID/);
+  assert.match(bridge, /live\.intent\.start/);
+  assert.match(bridge, /live\.intent\.resume/);
+  assert.match(bridge, /live\.intent\.end/);
+  assert.match(bridge, /live\.intent\.mute/);
+  assert.match(bridge, /validateLiveHostMessage/);
+  assert.match(bridge, /messageEvent\.source\s*!==\s*window\.parent/);
+  assert.match(bridge, /messageEvent\.origin\s*!==\s*window\.location\.origin/);
+  assert.match(bridge, /role="status"\s+aria-live="polite"/);
+  assert.match(bridge, /正在连接|正在聆听|正在思考|正在说话|正在重新连接/);
+  assert.match(bridge, /data-real-action="start-live-call"/);
+  assert.match(bridge, /data-real-action="toggle-live-mute"/);
+  assert.match(bridge, /data-real-action="end-live-call"/);
+  assert.match(bridge, /LIVE_FEATURE_ENABLED/);
+  assert.match(styles, /\.real-live-call/);
+  assert.match(bridge, /live-entry-visible/);
+  assert.match(bridge, /live-call-active/);
+  assert.match(
+    styles,
+    /\.real-agent-page\.live-entry-visible\s+\.real-agent-thread[\s\S]*?bottom:\s*228px/,
+  );
+  assert.match(
+    styles,
+    /\.real-agent-page\.live-call-active\s+\.real-agent-thread[\s\S]*?bottom:\s*228px/,
+  );
+  assert.match(host, /from "livekit-client"/);
+  assert.match(host, /RoomEvent\.TrackSubscribed/);
+  assert.match(host, /RoomEvent\.DataReceived/);
+  assert.match(host, /setMicrophoneEnabled/);
+  assert.match(host, /isTrustedMessageEvent/);
+  assert.match(host, /iframe\.contentWindow/);
+  assert.match(session, /live_session_id/);
+  assert.doesNotMatch(session, /live_session:\s*\{\s*ID:/);
+  assert.match(backendModel, /ID\s+string\s+`json:"live_session_id"`/);
 });
 
 test("removes disposable starter artifacts", async () => {
