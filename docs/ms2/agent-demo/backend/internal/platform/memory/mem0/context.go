@@ -5,15 +5,23 @@ import (
 
 	"github.com/1024XEngineer/XE3-ESL-agent-demo/backend/internal/assistant"
 	assistantcontext "github.com/1024XEngineer/XE3-ESL-agent-demo/backend/internal/assistant/context"
+	"github.com/1024XEngineer/XE3-ESL-agent-demo/backend/internal/usercontext"
 )
 
 // AssistantContextBuilder adapts the assistant context contract without
 // introducing a second memory model alongside Mem0.
 type AssistantContextBuilder struct {
-	Builder *assistantcontext.Builder
+	Builder     *assistantcontext.Builder
+	UserContext usercontext.Reader
 }
 
 func (a AssistantContextBuilder) Build(ctx context.Context, request assistant.ContextBuildRequest) (assistant.ContextBuildResult, error) {
+	snapshot := usercontext.Snapshot{}
+	if a.UserContext != nil {
+		if built, err := a.UserContext.Build(ctx, usercontext.Request{UserID: request.ActorUserID, ThreadID: request.ThreadID, Query: request.Query}); err == nil {
+			snapshot = built
+		}
+	}
 	messages := make([]assistantcontext.Message, 0, len(request.Messages))
 	for _, item := range request.Messages {
 		messages = append(messages, assistantcontext.Message{Role: item.Role, Content: item.Content})
@@ -25,6 +33,7 @@ func (a AssistantContextBuilder) Build(ctx context.Context, request assistant.Co
 		Query:         request.Query,
 		ThreadSummary: request.ThreadSummary,
 		Messages:      messages,
+		UserContext:   snapshot,
 	})
 	if err != nil {
 		return assistant.ContextBuildResult{}, err

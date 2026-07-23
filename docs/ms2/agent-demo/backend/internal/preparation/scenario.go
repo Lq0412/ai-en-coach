@@ -95,11 +95,11 @@ type ScenarioFact struct {
 }
 
 type FactCandidate struct {
-	Key        string
-	Value      string
-	Source     FactSource
-	SourceRef  string
-	ObservedAt time.Time
+	Key        string     `json:"key"`
+	Value      string     `json:"value"`
+	Source     FactSource `json:"source"`
+	SourceRef  string     `json:"source_ref"`
+	ObservedAt time.Time  `json:"observed_at,omitempty"`
 }
 
 type FactConflict struct {

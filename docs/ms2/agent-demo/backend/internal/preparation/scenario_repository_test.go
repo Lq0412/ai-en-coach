@@ -92,6 +92,24 @@ func TestScenarioRepositoryEnforcesOwnershipVersionsAndFilters(t *testing.T) {
 	if _, err := repository.Save(ctx, first, 1); !errors.Is(err, ErrScenarioVersionConflict) {
 		t.Fatalf("stale write error = %v", err)
 	}
+	if err := repository.Delete(ctx, "user-2", first.ID, updated.Version); !errors.Is(err, ErrScenarioNotFound) {
+		t.Fatalf("cross-user delete error = %v", err)
+	}
+	if err := repository.Delete(ctx, "user-1", first.ID, 1); !errors.Is(err, ErrScenarioVersionConflict) {
+		t.Fatalf("stale delete error = %v", err)
+	}
+	if err := repository.Delete(ctx, "user-1", first.ID, updated.Version); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.Get(ctx, "user-1", first.ID); !errors.Is(err, ErrScenarioNotFound) {
+		t.Fatalf("deleted scenario read error = %v", err)
+	}
+	if _, err := repository.GetByCreateRequest(ctx, "user-1", "request-1"); !errors.Is(err, ErrScenarioNotFound) {
+		t.Fatalf("deleted scenario idempotency mapping error = %v", err)
+	}
+	if _, err := repository.Current(ctx, "user-1", "thread-1"); !errors.Is(err, ErrScenarioNotFound) {
+		t.Fatalf("deleted scenario current link error = %v", err)
+	}
 }
 
 func TestArchivingScenarioAtomicallyClearsCurrentThreadLinks(t *testing.T) {

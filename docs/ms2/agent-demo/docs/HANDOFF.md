@@ -27,6 +27,7 @@
 - 简历：PDF 上传、真实性识别、结构化档案解析、重命名、启用、删除及档案编辑；最多保留 3 份。
 - 语音：浏览器录音转换为 16 kHz 单声道 WAV，后端调用实时 ASR；回复使用 TTS WebSocket 生成 MP3 并播放。
 - 会话和面试记录：当前会话、归档会话、任务、计划、确认、工具调用、面试状态和附件元数据均可恢复。
+- 用户上下文：统一装配已确认档案、当前 Scenario、近期学习记录和 Mem0 召回；单个来源失败不会阻塞对话。
 - UI：保留产品原型交互，并由桥接层替换为真实 API 数据；桌面显示常驻侧边栏，手机画布保留左上菜单抽屉和右上新建会话按钮。
 
 ## 技术组成
@@ -39,6 +40,7 @@
 | 后端 | Go 1.23、标准 `net/http`、Gorilla WebSocket | `backend/` |
 | 模型 | DashScope / Qwen | `backend/internal/assistant/dashscope.go` |
 | 长期记忆 | Mem0 OSS Node sidecar | `backend/memory/` |
+| 用户上下文装配 | Go 中立 Reader/Aggregator | `backend/internal/usercontext/` |
 | 本地持久化 | 原子 JSON 文件写入 | `backend/internal/assistant/persistence.go` |
 
 ## 后端结构与职责
@@ -57,6 +59,10 @@
 
 - `backend/internal/preparation/`：`ScenarioReader` 和 `ManagementService`，负责候选人背景快照以及 HTTP 层的档案、附件和简历管理入口。
 - `backend/internal/preparation/scenario*.go`：Scenario 聚合、事实来源优先级、乐观锁、应用服务和独立文件 Repository；场景按用户隔离，并持久化当前 Thread 的场景关联和创建请求幂等记录。
+- `backend/internal/preparation/context_sources.go`：把已确认档案、当前 Scenario 和面试历史适配到统一用户上下文 Port。
+- `backend/internal/usercontext/`：只读聚合边界，不依赖 Assistant、Preparation 或 Mem0 的具体模型；统一返回 `Profile`、`Scenario`、`Memories` 和 `LearningSignals`。
+- `backend/internal/platform/memory/mem0/context_source.go`：把 Mem0 检索结果适配到统一用户上下文 Port。
+- `backend/internal/assistant/context/`：把统一快照转换为模型 `system` 消息，并负责去重、字段限长、历史压缩和 token 兜底。
 - `backend/internal/practice/`：`PlanService`、`SessionService`、`ApplyTurnOutcome`，负责练习计划、Session 和 Turn Outcome。
 - `backend/internal/conversation/`：`QuestionService`、`ReplyService`、`TurnService`，负责提问、自由回复和 Turn 提交。
 - `backend/internal/review/`：`AnalyzeUseCase`、`HistoryQueryUseCase`，负责反馈分析与练习历史投影。
@@ -117,7 +123,10 @@ conversation.submit_turn
 
 - 上下文上限是 10,000 token，使用中英文混合的确定性保守估算；超过上限会拒绝本次任务，不调用模型。
 - 附件会作为 `attachment_ids` 进入当前任务上下文；历史会话不注入当前会话。
-- 当前启用简历对应的 `CandidateProfile` 会注入自由对话、面试提问和反馈。
+- 每次构建上下文时按“已确认 `CandidateProfile` -> 当前 Thread 的 `Scenario` -> 最近学习记录 -> Mem0 召回”装配只读参考信息；Mem0 和学习记录各最多 3 条。
+- Profile、Scenario、Mem0 或历史读取失败都会降级为空，不阻塞当前对话；未确认档案不会注入。
+- 冲突处理以当前用户消息为最高依据；Scenario 内部结构化事实按 `user_correction > user_statement > official_document > uploaded_material > long_term_memory > model_inference` 合并。
+- 达到预算阈值后先压缩或删除旧对话，尽量保留档案、当前 Scenario、学习记录、Mem0 和最新消息；最终兜底始终优先保住当前用户消息。
 - 默认数据目录是项目根 `.data/`，可通过 `AGENT_DATA_DIR` 覆盖。
 - `conversation.json` 保存对话、任务、计划、确认与消息；`interview-state.json` 保存面试、附件、简历与档案状态。
 - `scenarios.json` 独立保存跨天 Scenario、来源 Thread、材料关联、带来源的结构化事实、创建请求幂等记录和当前场景关联。
@@ -152,9 +161,14 @@ conversation.submit_turn
 | 会话归档 | `GET /v1/assistant/conversations`、`GET/DELETE /v1/assistant/conversations/{conversation_id}` |
 | 附件 | `POST /v1/assistant/attachments`、`GET /content`、`DELETE` |
 | 简历 | `GET/POST /v1/preparation/resumes`、详情、原 PDF、重命名、档案更新、启用、删除 |
+| Scenario | `POST/GET /v1/scenarios`、`GET/PATCH/DELETE /v1/scenarios/{scenario_id}`、`GET /v1/scenarios/current`、`PUT /v1/assistant/threads/{thread_id}/scenario` |
 | 语音 | `POST /v1/audio/transcriptions`、`GET /v1/audio/transcriptions/stream`、`POST /v1/audio/speech` |
 
-完整路由注册位置：`backend/internal/assistant/http.go`。
+Assistant 路由位于 `backend/internal/assistant/http.go`；Scenario 路由位于
+`backend/internal/preparation/scenario_http.go`，均由 `backend/cmd/server/main.go`
+注册。创建 Scenario 要求 `Idempotency-Key`；更新要求 `action` 和
+`expected_version`，删除请求体同样要求 `expected_version`。删除会原子清理幂等映射
+和所有 Thread 当前关联；乐观锁或同权威事实冲突返回 `409`。
 
 ## 前端实现要点
 

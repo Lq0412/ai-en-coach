@@ -68,6 +68,12 @@ type SetCurrentScenarioCommand struct {
 	ScenarioID  string
 }
 
+type DeleteScenarioCommand struct {
+	ActorUserID     string
+	ScenarioID      string
+	ExpectedVersion uint64
+}
+
 type ScenarioService interface {
 	Create(context.Context, CreateScenarioCommand) (CreateScenarioOutcome, error)
 	Get(context.Context, string, string) (Scenario, error)
@@ -78,6 +84,7 @@ type ScenarioService interface {
 	ChangeStatus(context.Context, ChangeScenarioStatusCommand) (Scenario, error)
 	AttachMaterial(context.Context, ScenarioMaterialCommand) (Scenario, error)
 	DetachMaterial(context.Context, ScenarioMaterialCommand) (Scenario, error)
+	Delete(context.Context, DeleteScenarioCommand) error
 	SetCurrent(context.Context, SetCurrentScenarioCommand) (Scenario, error)
 }
 
@@ -197,6 +204,10 @@ func (s *scenarioService) DetachMaterial(ctx context.Context, command ScenarioMa
 	}
 	scenario.DetachMaterial(command.MaterialID, s.now())
 	return s.repository.Save(ctx, scenario, command.ExpectedVersion)
+}
+
+func (s *scenarioService) Delete(ctx context.Context, command DeleteScenarioCommand) error {
+	return s.repository.Delete(ctx, command.ActorUserID, command.ScenarioID, command.ExpectedVersion)
 }
 
 func (s *scenarioService) SetCurrent(ctx context.Context, command SetCurrentScenarioCommand) (Scenario, error) {
