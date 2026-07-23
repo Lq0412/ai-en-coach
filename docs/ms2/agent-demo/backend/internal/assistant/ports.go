@@ -225,11 +225,14 @@ type ContextMessage struct {
 type InterviewGenerationInput struct {
 	CompletedQuestionCount int
 	PreviousQuestion       string
+	LatestAnswer           string
 	TargetRole             string
 	Answers                []string
 	PreviousQuestions      []string
 	MaxTurns               int
 	DurationMinutes        int
+	ElapsedMinutes         int
+	RemainingMinutes       int
 	CandidateProfile       CandidateProfile
 }
 

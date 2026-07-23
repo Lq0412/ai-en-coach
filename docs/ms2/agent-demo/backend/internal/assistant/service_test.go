@@ -408,7 +408,7 @@ func TestMissingInterviewRoleOnlyAsksForClarification(t *testing.T) {
 	}
 }
 
-func TestTurnLimitCompletesSessionWithReview(t *testing.T) {
+func TestDefaultInterviewUsesDynamicQuestionCount(t *testing.T) {
 	service, store, tools := newRuntime()
 	ctx := context.Background()
 	started, err := service.StartTask(ctx, assistant.StartTaskCommand{
@@ -427,11 +427,10 @@ func TestTurnLimitCompletesSessionWithReview(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	maxTurns := tools.State().MaxTurns
-	if maxTurns != assistant.DefaultInterviewMaxTurns {
-		t.Fatalf("max turns = %d, want default %d", maxTurns, assistant.DefaultInterviewMaxTurns)
+	if tools.State().MaxTurns != 0 || assistant.DefaultInterviewMaxTurns != 0 {
+		t.Fatalf("default interview unexpectedly has a turn cap: %#v", tools.State())
 	}
-	for index := 0; index < maxTurns; index++ {
+	for index := 0; index < 3; index++ {
 		if _, err := service.StartTask(ctx, assistant.StartTaskCommand{
 			ActorUserID:    assistant.DemoUserID,
 			ThreadID:       assistant.DemoThreadID,
@@ -442,13 +441,14 @@ func TestTurnLimitCompletesSessionWithReview(t *testing.T) {
 		}
 	}
 	state := tools.State()
-	if state.CompletedQuestionCount != maxTurns || state.ActiveQuestion != "" {
-		t.Fatalf("unexpected final domain state: %#v", state)
+	if state.CompletedQuestionCount != 3 || state.ActiveQuestion == "" {
+		t.Fatalf("dynamic interview stopped at an implicit turn limit: %#v", state)
 	}
 	snapshot := store.Snapshot(state)
-	last := snapshot.Messages[len(snapshot.Messages)-1]
-	if last.Kind != "interview_report" || last.Report == nil || last.Report.SessionID == "" {
-		t.Fatalf("missing final report card: %#v", snapshot.Messages)
+	for _, message := range snapshot.Messages {
+		if message.Kind == "interview_report" {
+			t.Fatalf("dynamic interview generated an early report: %#v", snapshot.Messages)
+		}
 	}
 	for _, message := range snapshot.Messages {
 		if strings.Contains(message.Content, "My answer includes") || strings.Contains(message.Content, "面试开始。") {
@@ -570,7 +570,13 @@ func TestInterviewQuestionGenerationReceivesDialogueHistory(t *testing.T) {
 	second := generator.questionInputs[1]
 	if len(second.Answers) != 1 ||
 		second.Answers[0] != "I prioritized retention after reviewing cohort data." ||
-		len(second.PreviousQuestions) != 1 {
+		second.LatestAnswer != "I prioritized retention after reviewing cohort data." ||
+		second.TargetRole != "Product Manager" ||
+		second.MaxTurns != 0 ||
+		len(second.PreviousQuestions) != 1 ||
+		second.PreviousQuestion != second.PreviousQuestions[0] ||
+		second.DurationMinutes != assistant.DefaultInterviewDurationMinutes ||
+		second.ElapsedMinutes < 0 || second.RemainingMinutes <= 0 {
 		t.Fatalf("next question did not receive interview history: %#v", second)
 	}
 }
@@ -630,6 +636,48 @@ func TestEndInterviewGeneratesFeedbackWithoutCountingUnansweredTurn(t *testing.T
 	last := store.Snapshot(state).Messages
 	if last[len(last)-1].Kind != "interview_report" || last[len(last)-1].Report == nil {
 		t.Fatalf("missing end report card: %#v", last)
+	}
+}
+
+func TestStopMessageEndsInterviewWithoutCountingAsAnswer(t *testing.T) {
+	service, store, tools := newRuntime()
+	ctx := context.Background()
+	started, err := service.StartTask(ctx, assistant.StartTaskCommand{
+		ActorUserID:    assistant.DemoUserID,
+		ThreadID:       assistant.DemoThreadID,
+		UserMessage:    "开始产品经理面试",
+		IdempotencyKey: "stop-message-start",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.ResumeTask(ctx, assistant.ResumeTaskCommand{
+		ActorUserID: assistant.DemoUserID,
+		TaskRunID:   started.ID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	run, err := service.StartTask(ctx, assistant.StartTaskCommand{
+		ActorUserID:     assistant.DemoUserID,
+		ThreadID:        assistant.DemoThreadID,
+		UserMessage:     "结束面试",
+		InteractionMode: "interview",
+		IdempotencyKey:  "stop-message",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Intent != "end_interview" || run.Status != assistant.TaskRunStatusCompleted {
+		t.Fatalf("stop message did not use end-interview flow: %#v", run)
+	}
+	state := tools.State()
+	if state.CompletedQuestionCount != 0 || state.ActiveQuestion != "" {
+		t.Fatalf("stop message was counted as an answer: %#v", state)
+	}
+	messages := store.Snapshot(state).Messages
+	last := messages[len(messages)-1]
+	if last.Kind != "interview_report" || last.Report == nil || last.Report.CompletedTurns != 0 {
+		t.Fatalf("stop message did not generate a zero-answer report: %#v", messages)
 	}
 }
 

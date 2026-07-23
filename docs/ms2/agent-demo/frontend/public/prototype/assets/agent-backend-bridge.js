@@ -45,7 +45,11 @@
   let selectedHistorySessionID = "";
   let preparationProfile = null;
   let pendingAttachments = [];
+  let uploadingAttachments = [];
   let attachmentUploading = false;
+  let attachmentDragActive = false;
+  let attachmentDragDepth = 0;
+  let attachmentLightbox = null;
   let managedResumes = [];
   let managedResumeLimit = 3;
   let resumeLoading = false;
@@ -164,12 +168,12 @@
         "Software Engineer",
       interviewer: snapshot?.interviewer || "Senior Hiring Manager",
       maxTurns:
-        snapshot?.maxInterviewTurns ||
-        createStep?.Arguments?.max_turns ||
-        10,
+        snapshot?.maxInterviewTurns ??
+        createStep?.Arguments?.max_turns ??
+        0,
       durationMinutes:
-        snapshot?.interviewDurationMinutes ||
-        createStep?.Arguments?.duration_minutes ||
+        snapshot?.interviewDurationMinutes ??
+        createStep?.Arguments?.duration_minutes ??
         15,
     };
   }
@@ -199,7 +203,7 @@
     return hasInterview() &&
       !snapshot?.activeQuestion &&
       (hasFeedback ||
-        (snapshot?.completedQuestionCount || 0) >= maxTurns ||
+        (maxTurns > 0 && (snapshot?.completedQuestionCount || 0) >= maxTurns) ||
         interviewTiming().expired);
   }
 
@@ -263,29 +267,43 @@
     </section>`;
   }
 
+  function attachmentSource(attachment) {
+    if (attachment.previewURL) return attachment.previewURL;
+    return `${API_BASE}/v1/assistant/attachments/${encodeURIComponent(attachment.id)}/content`;
+  }
+
   function attachmentCardsHTML(attachments, removable = false) {
     const visibleAttachments = (attachments || []).filter(
       (attachment) => !String(attachment.mediaType || "").startsWith("audio/"),
     );
     if (!visibleAttachments.length) return "";
-    return `<div class="real-attachments ${removable ? "pending" : ""}">
-      ${visibleAttachments.map((attachment) => {
-        const isRenderableImage = attachment.mediaType?.startsWith("image/") && attachment.contentAvailable;
-        if (isRenderableImage) {
-          const source = `${API_BASE}/v1/assistant/attachments/${encodeURIComponent(attachment.id)}/content`;
-          return `<figure class="real-image-attachment">
-            <button class="real-image-open" type="button" data-real-action="view-attachment" data-attachment-id="${escapeHTML(attachment.id)}" aria-label="查看图片 ${escapeHTML(attachment.name)}"><img src="${escapeHTML(source)}" alt="${escapeHTML(attachment.name)}" ${removable ? "" : "loading=\"lazy\""}></button>
-            <figcaption><b>${escapeHTML(attachment.name)}</b><small>${escapeHTML(attachment.summary || "图片已解析")}</small></figcaption>
-            ${removable ? `<button class="real-image-remove" type="button" data-real-action="remove-attachment" data-attachment-id="${escapeHTML(attachment.id)}" aria-label="移除图片">×</button>` : ""}
-          </figure>`;
-        }
-        return `<span class="real-attachment-card">
-          <i>${attachment.mediaType === "application/pdf" ? "PDF" : "IMG"}</i>
-          <span><b>${escapeHTML(attachment.name)}</b><small>${escapeHTML(attachment.summary || (attachmentUploading ? "正在由模型理解…" : "附件已解析"))}</small></span>
-          ${removable ? `<button type="button" data-real-action="remove-attachment" data-attachment-id="${escapeHTML(attachment.id)}" aria-label="移除附件">×</button>` : ""}
-        </span>`;
-      }).join("")}
+    const images = visibleAttachments.filter((attachment) => attachment.mediaType?.startsWith("image/") && (attachment.contentAvailable || attachment.previewURL));
+    const files = visibleAttachments.filter((attachment) => !images.includes(attachment));
+    return `<div class="real-attachments ${removable ? "pending" : "committed"}">
+      ${images.length ? `<div class="real-image-grid count-${Math.min(images.length, 4)}">${images.map((attachment) => {
+        const source = attachmentSource(attachment);
+        const action = attachment.uploading ? "" : `data-real-action="view-attachment" data-attachment-id="${escapeHTML(attachment.id)}" data-attachment-name="${escapeHTML(attachment.name)}"`;
+        return `<figure class="real-image-attachment ${attachment.uploading ? "uploading" : ""}">
+          <button class="real-image-open" type="button" ${action} aria-label="${attachment.uploading ? "图片正在上传" : `查看图片 ${escapeHTML(attachment.name)}`}" ${attachment.uploading ? "disabled" : ""}><img src="${escapeHTML(source)}" alt="${escapeHTML(attachment.name)}" ${removable ? "" : "loading=\"lazy\""}></button>
+          ${attachment.uploading ? `<span class="real-image-upload-state"><i></i>正在理解</span>` : ""}
+          ${removable && !attachment.uploading ? `<button class="real-image-remove" type="button" data-real-action="remove-attachment" data-attachment-id="${escapeHTML(attachment.id)}" aria-label="移除图片 ${escapeHTML(attachment.name)}">×</button>` : ""}
+        </figure>`;
+      }).join("")}</div>` : ""}
+      ${files.map((attachment) => `<span class="real-attachment-card ${attachment.uploading ? "uploading" : ""}">
+        <i>${attachment.mediaType === "application/pdf" ? "PDF" : "IMG"}</i>
+        <span><b>${escapeHTML(attachment.name)}</b><small>${escapeHTML(attachment.uploading ? "正在上传并理解…" : attachment.summary || "附件已解析")}</small></span>
+        ${removable && !attachment.uploading ? `<button type="button" data-real-action="remove-attachment" data-attachment-id="${escapeHTML(attachment.id)}" aria-label="移除附件 ${escapeHTML(attachment.name)}">×</button>` : ""}
+      </span>`).join("")}
     </div>`;
+  }
+
+  function attachmentLightboxHTML() {
+    if (!attachmentLightbox) return "";
+    return `<section class="real-image-lightbox" role="dialog" aria-modal="true" aria-label="图片预览">
+      <button class="real-image-lightbox-backdrop" data-real-action="close-attachment-preview" aria-label="关闭图片预览"></button>
+      <figure><img src="${escapeHTML(attachmentLightbox.source)}" alt="${escapeHTML(attachmentLightbox.name)}"><figcaption>${escapeHTML(attachmentLightbox.name)}</figcaption></figure>
+      <button class="real-image-lightbox-close" data-real-action="close-attachment-preview" aria-label="关闭图片预览">×</button>
+    </section>`;
   }
 
   const languageAssistanceKey = (messageID, operation) =>
@@ -483,7 +501,7 @@
         <h2>${escapeHTML(report.targetRole || "模拟面试")}</h2>
         <p>${escapeHTML(report.summary || "本次面试报告已生成。")}</p>
         <footer>
-          <span>${escapeHTML(report.completedTurns || 0)} / ${escapeHTML(report.maxTurns || 0)} 个有效回答</span>
+          <span>${escapeHTML(report.completedTurns || 0)} 个有效回答</span>
           <button data-real-action="open-report-card" data-session-id="${escapeHTML(report.sessionId)}">查看详细报告</button>
         </footer>
       </article>`;
@@ -554,7 +572,7 @@
       <h2>${escapeHTML(targetRole)} 模拟面试</h2>
       <div class="real-interview-card-grid">
         <span><small>面试官</small><b>${escapeHTML(interviewer)}</b></span>
-        <span><small>练习规模</small><b>${escapeHTML(maxTurns)} 轮 · ${escapeHTML(durationMinutes)} 分钟</b></span>
+        <span><small>练习规模</small><b>${maxTurns > 0 ? `动态追问 · 最多 ${escapeHTML(maxTurns)} 个回答` : `动态追问 · ${escapeHTML(durationMinutes)} 分钟`}</b></span>
         <span><small>候选人信息</small><b>${escapeHTML(background)}</b></span>
         <span><small>开始方式</small><b>确认后立即开始</b></span>
       </div>
@@ -567,6 +585,7 @@
   }
 
   function composerHTML() {
+    const composerAttachments = [...pendingAttachments, ...uploadingAttachments];
     const hasPending = pendingAttachments.length > 0;
     if (isRecording()) {
       return `<footer class="real-voice-capture">
@@ -583,17 +602,20 @@
         <p>${escapeHTML(liveTranscript || "正在整理语音和文字…")}</p>
       </footer>`;
     }
-    return `${attachmentCardsHTML(pendingAttachments, true)}
+    return `<section class="real-composer-shell ${attachmentDragActive ? "drag-active" : ""}">
+    ${attachmentCardsHTML(composerAttachments, true)}
+    ${attachmentDragActive ? `<div class="real-attachment-drop-hint"><b>松开即可添加图片</b><small>支持 PNG、JPEG 和 WebP</small></div>` : ""}
     ${attachmentUploading ? `<div class="real-attachment-uploading"><i></i><span>正在上传并由真实模型理解附件…</span></div>` : ""}
     ${failedVoiceRecordingBlob ? `<div class="real-voice-send-retry"><span><b>录音尚未发送</b><small>本次录音已保留，可以直接重试。</small></span><button data-real-action="discard-voice-recording">删除</button><button class="primary" data-real-action="retry-voice-send">重试发送</button></div>` : ""}
     ${voiceStateHTML()}
     <footer class="real-agent-composer">
       <input data-attachment-input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" multiple hidden>
-      <button class="real-add" data-real-action="more" aria-label="上传图片或 PDF" ${attachmentUploading ? "disabled" : ""}>＋</button>
-      <textarea data-real-input rows="1" placeholder="点击麦克风说话，或输入文字">${escapeHTML(inputValue)}</textarea>
+      <button class="real-add" data-real-action="more" aria-label="添加照片和文件" ${attachmentUploading || pendingAttachments.length >= 4 ? "disabled" : ""}>＋</button>
+      <textarea data-real-input rows="1" placeholder="发消息或粘贴图片">${escapeHTML(inputValue)}</textarea>
       <button class="real-mic" data-real-action="record" aria-label="开始实时语音输入"><i></i></button>
       <button class="real-send" data-real-action="send" aria-label="发送" ${loading || attachmentUploading || (!inputValue.trim() && !hasPending) || currentConfirmation() || contextLimitExceeded || snapshot?.requiresNewThread ? "disabled" : ""}>↑</button>
-    </footer>`;
+    </footer>
+    </section>`;
   }
 
   function voiceStateHTML() {
@@ -607,6 +629,7 @@
 
   function realAgentView() {
     const messages = mainConversationMessages(snapshot?.messages || []);
+    const hasComposerAttachments = pendingAttachments.length > 0 || uploadingAttachments.length > 0;
     const hasConversation =
       messages.length > 1 ||
       currentConfirmation() ||
@@ -632,10 +655,11 @@
         ${contextLimitHTML()}
         ${realErrorHTML()}
         ${thinkingHTML()}`;
-    return `<div class="agent-page real-agent-page">
+    return `<div class="agent-page real-agent-page ${hasComposerAttachments ? "has-composer-attachments" : ""}">
       <section class="real-agent-thread">${content}</section>
       ${composerHTML()}
       ${correctionDetailSheetHTML()}
+      ${attachmentLightboxHTML()}
     </div>`;
   }
 
@@ -704,14 +728,14 @@
   function realPracticeView() {
     const completed = snapshot?.completedQuestionCount || 0;
     const question = streamingText || snapshot?.activeQuestion || "正在准备下一题…";
-    const { targetRole, interviewer, maxTurns, durationMinutes } = interviewContext();
+    const { targetRole, interviewer, durationMinutes } = interviewContext();
     const timing = interviewTiming();
-    const currentTurn = Math.min(completed + 1, maxTurns);
+    const currentQuestion = completed + 1;
     return `<div class="practice real-practice-page voice-first">
       <header class="real-practice-header">
         <button class="real-practice-icon-button back" data-real-action="back-chat" aria-label="返回对话" title="返回对话">←</button>
         <h1>${escapeHTML(targetRole)}</h1>
-        <span class="real-practice-progress" aria-label="面试进度 ${currentTurn} / ${maxTurns}">${currentTurn} / ${maxTurns}</span>
+        <span class="real-practice-progress" aria-label="动态追问，已完成 ${completed} 个有效回答">动态追问 · 已完成 ${completed}</span>
       </header>
       <section class="real-interviewer-stage">
         <img src="../assets/speakup-agent.png" alt="${escapeHTML(interviewer)}">
@@ -723,7 +747,7 @@
         <button class="real-audio-wave" data-real-action="speak-text" data-text="${escapeHTML(question)}" aria-label="播放当前问题" title="播放当前问题"><i></i><i></i><i></i><i></i><i></i><i></i></button>
         <span>${speaking ? "播放中" : "播放问题"}</span>
       </section>
-      ${practiceTranscriptVisible ? `<section class="real-question-transcript"><small>第 ${currentTurn} 轮问题</small><p>${escapeHTML(question)}</p></section>` : ""}
+      ${practiceTranscriptVisible ? `<section class="real-question-transcript"><small>动态问题 ${currentQuestion}</small><p>${escapeHTML(question)}</p></section>` : ""}
       ${practiceCoachVisible ? answerCoachHTML(question) : ""}
       ${realErrorHTML()}
       ${contextLimitHTML()}
@@ -744,7 +768,6 @@
     const completed = session?.completedTurns ?? snapshot?.completedQuestionCount ?? 0;
     const current = interviewContext();
     const targetRole = session?.targetRole || current.targetRole;
-    const maxTurns = session?.maxTurns || current.maxTurns;
     const durationMinutes = session?.durationMinutes || current.durationMinutes;
     const questions = session?.questions || [];
     const answers = session?.answers || [];
@@ -759,12 +782,12 @@
         <img src="../assets/speakup-agent.png" alt="">
         <small>PROJECT DEEP DIVE</small>
         <h1>${escapeHTML(targetRole)}</h1>
-        <p>本次完成 ${completed} 轮真实对话 · 限时 ${durationMinutes} 分钟</p>
+        <p>本次完成 ${completed} 个有效回答 · 限时 ${durationMinutes} 分钟</p>
       </header>
       <section class="real-report-metrics">
-        <div><small>轮次使用率</small><b>${Math.round((completed / maxTurns) * 100)}%</b></div>
         <div><small>有效回答</small><b>${completed}</b></div>
-        <div><small>轮次上限</small><b>${maxTurns}</b></div>
+        <div><small>限时时长</small><b>${durationMinutes} 分钟</b></div>
+        <div><small>提问方式</small><b>动态追问</b></div>
       </section>
       <section class="real-report-feedback">
         <small>AI 证据反馈</small>
@@ -813,10 +836,9 @@
         ? `<section class="history-list">
             ${cards.map((session) => {
               const progress = session.completedTurns || 0;
-              const maxTurns = session.maxTurns || 10;
               const active = session.status === "in_progress" && Boolean(snapshot?.activeQuestion);
               const status = active
-                ? `第 ${Math.min(progress + 1, maxTurns)} 轮 · ${interviewTiming().label}`
+                ? `动态追问 · 已完成 ${progress} · ${interviewTiming().label}`
                 : `${formatHistoryDate(session.endedAt || session.startedAt)} · ${progress} 个有效回答`;
               return `<button class="history-card interview" data-real-action="${active ? "continue" : "report"}" data-session-id="${escapeHTML(session.id)}">
                 <span class="history-art interview-icon">◎</span>
@@ -824,7 +846,6 @@
                   <small>真实 Agent 面试 · ${formatHistoryDate(session.startedAt, true)}</small>
                   <strong>${escapeHTML(session.targetRole || "Software Engineer")}</strong>
                   <em><span>${escapeHTML(session.interviewer || "Senior Hiring Manager")}</span><span>${escapeHTML(status)}</span></em>
-                  <span class="history-progress"><i style="width:${Math.min((progress / maxTurns) * 100, 100)}%"></i></span>
                 </span>
                 <span class="history-open">${active ? "继续" : "详情"}</span>
               </button>`;
@@ -1100,6 +1121,7 @@
       <section class="real-archive-thread">${(archive.messages || []).map(archivedMessageHTML).join("")}</section>
       ${archiveDeleteConfirm ? `<section class="real-archive-delete-confirm"><b>删除这次历史对话？</b><p>删除后无法恢复，当前对话和简历不会受影响。</p><div><button data-real-action="cancel-delete-conversation">取消</button><button class="danger" data-real-action="confirm-delete-conversation" data-conversation-id="${escapeHTML(archive.id)}">确认删除</button></div></section>` : `<div class="real-archive-actions"><button class="secondary" data-real-action="back-chat">返回当前对话</button><button class="danger" data-real-action="request-delete-conversation">删除历史</button></div>`}
       ${correctionDetailSheetHTML()}
+      ${attachmentLightboxHTML()}
     </div>`;
   }
 
@@ -1921,31 +1943,62 @@
   }
 
   async function uploadAttachments(files) {
-    const selected = [...files].slice(0, 4 - pendingAttachments.length);
+    const capacity = 4 - pendingAttachments.length - uploadingAttachments.length;
+    const selected = [...files]
+      .filter((file) => ["application/pdf", "image/png", "image/jpeg", "image/webp"].includes(file.type))
+      .slice(0, capacity);
     if (!selected.length || attachmentUploading) return;
+    uploadingAttachments = selected.map((file, index) => ({
+      id: `uploading-${Date.now()}-${index}`,
+      name: file.name || `粘贴的图片-${index + 1}.png`,
+      mediaType: file.type,
+      previewURL: file.type.startsWith("image/") ? URL.createObjectURL(file) : "",
+      uploading: true,
+    }));
     attachmentUploading = true;
     bridgeError = "";
     rerender();
     try {
-      for (const file of selected) {
+      for (let index = 0; index < selected.length; index++) {
+        const file = selected[index];
         const form = new FormData();
-        form.append("file", file, file.name);
+        form.append("file", file, file.name || uploadingAttachments[index]?.name || "pasted-image.png");
         const response = await request("/v1/assistant/attachments", {
           method: "POST",
           body: form,
         });
         pendingAttachments.push(response.attachment);
+        const finished = uploadingAttachments.shift();
+        if (finished?.previewURL) URL.revokeObjectURL(finished.previewURL);
         if (response.candidate_profile?.id) {
           preparationProfile = response.candidate_profile;
         }
+        rerender();
       }
       await reloadManagedResumes();
     } catch (error) {
       bridgeError = error.message || "附件上传或模型解析失败";
     } finally {
+      for (const attachment of uploadingAttachments) {
+        if (attachment.previewURL) URL.revokeObjectURL(attachment.previewURL);
+      }
+      uploadingAttachments = [];
       attachmentUploading = false;
       rerender();
     }
+  }
+
+  function openAttachmentPreview(id, name) {
+    attachmentLightbox = {
+      source: `${API_BASE}/v1/assistant/attachments/${encodeURIComponent(id)}/content`,
+      name: name || "图片预览",
+    };
+    rerender(activeRealRoute);
+  }
+
+  function closeAttachmentPreview() {
+    attachmentLightbox = null;
+    rerender(activeRealRoute);
   }
 
   async function uploadVoiceRecording(blob) {
@@ -2509,7 +2562,54 @@
     }
   });
 
+  window.addEventListener("paste", (event) => {
+    if (activeRealRoute !== "agent-chat" || loading || attachmentUploading) return;
+    const images = [...(event.clipboardData?.files || [])].filter((file) => file.type.startsWith("image/"));
+    if (!images.length) return;
+    event.preventDefault();
+    void uploadAttachments(images);
+  });
+
+  window.addEventListener("dragenter", (event) => {
+    if (activeRealRoute !== "agent-chat" || !event.dataTransfer?.types?.includes("Files")) return;
+    event.preventDefault();
+    attachmentDragDepth++;
+    if (!attachmentDragActive) {
+      attachmentDragActive = true;
+      rerender("agent-chat");
+    }
+  });
+
+  window.addEventListener("dragover", (event) => {
+    if (activeRealRoute === "agent-chat" && event.dataTransfer?.types?.includes("Files")) event.preventDefault();
+  });
+
+  window.addEventListener("dragleave", (event) => {
+    if (!attachmentDragActive) return;
+    event.preventDefault();
+    attachmentDragDepth = Math.max(0, attachmentDragDepth - 1);
+    if (attachmentDragDepth === 0) {
+      attachmentDragActive = false;
+      rerender("agent-chat");
+    }
+  });
+
+  window.addEventListener("drop", (event) => {
+    if (!attachmentDragActive) return;
+    event.preventDefault();
+    attachmentDragDepth = 0;
+    attachmentDragActive = false;
+    const files = [...(event.dataTransfer?.files || [])];
+    rerender("agent-chat");
+    if (files.length) void uploadAttachments(files);
+  });
+
   window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && attachmentLightbox) {
+      event.preventDefault();
+      closeAttachmentPreview();
+      return;
+    }
     if (event.key === "Escape" && correctionDetailMessageID) {
       correctionDetailMessageID = "";
       rerender(activeRealRoute, { preserveThread: true });
@@ -2670,7 +2770,8 @@
     else if (action === "save-resume-rename") void renameManagedResume(target.dataset.resumeId);
     else if (action === "activate-resume") void activateManagedResume(target.dataset.resumeId);
     else if (action === "download-resume") window.open(`${API_BASE}/v1/preparation/resumes/${encodeURIComponent(target.dataset.resumeId)}/file`, "_blank", "noopener");
-    else if (action === "view-attachment") window.open(`${API_BASE}/v1/assistant/attachments/${encodeURIComponent(target.dataset.attachmentId)}/content`, "_blank", "noopener");
+    else if (action === "view-attachment") openAttachmentPreview(target.dataset.attachmentId, target.dataset.attachmentName);
+    else if (action === "close-attachment-preview") closeAttachmentPreview();
     else if (action === "open-conversation-history") void openConversationArchive(target.dataset.conversationId);
     else if (action === "request-delete-conversation") {
       archiveDeleteConfirm = true;

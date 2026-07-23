@@ -14,7 +14,9 @@ import (
 )
 
 const (
-	DefaultInterviewMaxTurns        = 10
+	// Zero means an interview has no fixed question count. The deadline or an
+	// explicit user stop ends the session; a caller may still provide a safety cap.
+	DefaultInterviewMaxTurns        = 0
 	DefaultInterviewDurationMinutes = 15
 	MaxManagedResumes               = 3
 )
@@ -32,6 +34,12 @@ func (p *MockPlanner) Plan(_ context.Context, request PlanRequest) (Plan, error)
 
 	state := p.tools.State()
 	if state.ActiveQuestion != "" {
+		if isInterviewStopRequest(text) {
+			return Plan{
+				Intent: "end_interview",
+				Steps:  []PlanStep{{ToolName: "review.generate_feedback", Arguments: map[string]any{"reason": "user_requested_stop"}}},
+			}, nil
+		}
 		last := state.ShouldCompleteAfterNextTurn(time.Now())
 		lastTool := "conversation.generate_next_question"
 		if last {
@@ -1064,6 +1072,18 @@ func (s MockDomainState) ShouldCompleteAfterNextTurn(now time.Time) bool {
 		return true
 	}
 	return s.MaxTurns > 0 && s.CompletedQuestionCount+1 >= s.MaxTurns
+}
+
+func isInterviewStopRequest(text string) bool {
+	for _, phrase := range []string{
+		"结束面试", "停止面试", "结束这场面试", "结束练习",
+		"end interview", "stop interview", "finish interview", "finish the interview",
+	} {
+		if strings.Contains(text, phrase) {
+			return true
+		}
+	}
+	return false
 }
 
 func boundedIntArgument(value any, fallback, minimum, maximum int) int {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/1024XEngineer/XE3-ESL-agent-demo/backend/internal/assistant"
 )
@@ -84,13 +85,23 @@ func NewService(state StateStore, generator assistant.AgentContentGenerator) Ser
 func (s service) GenerateNextQuestion(ctx context.Context) (questionResult Question, err error) {
 	_, err = s.state.Transact(func(state *assistant.RuntimeSnapshot, answers *[]string) (assistant.ToolResult, error) {
 		index := state.CompletedQuestionCount
-		question := fmt.Sprintf("Please continue this %s interview with a relevant follow-up based on answer turn %d.", state.TargetRole, index)
+		question := fmt.Sprintf("Please continue this %s interview with the single most relevant next question based on the candidate's latest answer.", state.TargetRole)
+		previousQuestion := ""
+		if len(state.Questions) > 0 {
+			previousQuestion = state.Questions[len(state.Questions)-1]
+		}
+		latestAnswer := ""
+		if len(*answers) > 0 {
+			latestAnswer = (*answers)[len(*answers)-1]
+		}
+		elapsedMinutes, remainingMinutes := interviewProgress(*state)
 		if s.generator != nil {
 			generated, err := s.generator.GenerateQuestion(ctx, assistant.InterviewGenerationInput{
-				CompletedQuestionCount: state.CompletedQuestionCount, PreviousQuestion: state.ActiveQuestion,
-				TargetRole: state.TargetRole, Answers: append([]string(nil), (*answers)...),
+				CompletedQuestionCount: state.CompletedQuestionCount, PreviousQuestion: previousQuestion,
+				LatestAnswer: latestAnswer, TargetRole: state.TargetRole, Answers: append([]string(nil), (*answers)...),
 				PreviousQuestions: append([]string(nil), state.Questions...), MaxTurns: state.MaxTurns,
-				DurationMinutes: state.DurationMinutes, CandidateProfile: state.CandidateProfile,
+				DurationMinutes: state.DurationMinutes, ElapsedMinutes: elapsedMinutes,
+				RemainingMinutes: remainingMinutes, CandidateProfile: state.CandidateProfile,
 			})
 			if err != nil {
 				return assistant.ToolResult{}, err
@@ -103,6 +114,17 @@ func (s service) GenerateNextQuestion(ctx context.Context) (questionResult Quest
 		return assistant.ToolResult{}, nil
 	})
 	return questionResult, err
+}
+
+func interviewProgress(state assistant.RuntimeSnapshot) (elapsedMinutes, remainingMinutes int) {
+	now := time.Now().UTC()
+	if !state.StartedAt.IsZero() {
+		elapsedMinutes = max(0, int(now.Sub(state.StartedAt).Minutes()))
+	}
+	if !state.Deadline.IsZero() {
+		remainingMinutes = max(0, int(state.Deadline.Sub(now).Minutes()))
+	}
+	return elapsedMinutes, remainingMinutes
 }
 
 func (s service) GenerateReply(ctx context.Context, command ReplyCommand) (replyResult Reply, err error) {
