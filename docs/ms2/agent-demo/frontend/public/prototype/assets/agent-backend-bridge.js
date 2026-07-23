@@ -14,6 +14,7 @@
   const LIVE_EVENT_TYPES = new Set([
     "transcript.partial",
     "turn.user_committed",
+    "assistant.delta",
     "turn.assistant_committed",
     "turn.failed",
     "attachment.linked",
@@ -24,7 +25,6 @@
     "turn.assistant_committed",
     "attachment.linked",
   ]);
-  const CONVERSATION_MODES = new Set(["normal", "live"]);
   const LIVE_CALL_STATES = new Set([
     "idle",
     "connecting",
@@ -147,7 +147,7 @@
 
   function validateLiveEvent(event) {
     if (!event || !LIVE_EVENT_TYPES.has(event.type)) return false;
-    if (!CONVERSATION_MODES.has(event.mode)) return false;
+    if (event.mode !== "live") return false;
     if (
       !event.thread_id ||
       !event.live_session_id ||
@@ -158,10 +158,18 @@
       event.sequence < 1
     ) return false;
     if (event.type === "transcript.partial" && event.message) return false;
-    if (
-      event.type === "turn.failed" &&
-      (typeof event.error !== "string" || event.error.length > 500)
-    ) return false;
+    if (event.type === "assistant.delta") {
+      return typeof event.delta === "string" &&
+        event.delta.length > 0 &&
+        event.delta.length <= 4000 &&
+        !event.message;
+    }
+    if (event.type === "turn.failed") {
+      return typeof event.error === "string" &&
+        event.error.length > 0 &&
+        event.error.length <= 500 &&
+        !event.message;
+    }
     if (LIVE_CANONICAL_EVENT_TYPES.has(event.type)) {
       return Boolean(
         event.message?.ID &&
@@ -303,7 +311,10 @@
     const canonicalIndex = snapshot.messages.findIndex(
       (item) =>
         item.ID === message.ID ||
-        item.client_message_id === clientMessageID,
+        (
+          item.client_message_id === clientMessageID &&
+          item.Role === message.Role
+        ),
     );
     if (canonicalIndex >= 0) snapshot.messages[canonicalIndex] = message;
     else snapshot.messages.push(message);
@@ -317,9 +328,24 @@
       rerender(activeRealRoute);
       return true;
     }
+    if (event.type === "assistant.delta") {
+      streamingText += event.delta;
+      rerender(activeRealRoute);
+      return true;
+    }
+    if (event.type === "turn.failed") {
+      streamingText = "";
+      rerender(activeRealRoute);
+      return true;
+    }
     if (LIVE_CANONICAL_EVENT_TYPES.has(event.type)) {
       reconcileCanonicalMessage(event.message);
-      if (event.type === "turn.user_committed") liveTranscript = "";
+      if (event.type === "turn.user_committed") {
+        liveTranscript = "";
+        streamingText = "";
+      } else if (event.type === "turn.assistant_committed") {
+        streamingText = "";
+      }
       rerender(activeRealRoute);
     }
     return true;
@@ -597,20 +623,40 @@
       .replace(/\bvery successfully\b/gi, "very successful")
       .replace(/^Good morning,\s*good morning\.?$/i, "Good morning!");
     const demoChanged = demoNativeExpression !== original;
-    return message?.learning_assessment ||
-      languageAssistanceState(message?.ID, "correct").result?.assessment || {
-        overall: 90,
-        fluency: 100,
-        pronunciation: 99,
-        naturalness: 70,
-        native_expression: correction?.corrected_text || demoNativeExpression,
-        explanations: correction?.items?.map((item) => item.explanation) || [
-          demoChanged
-            ? "当前为演示数据：推荐表达用于展示卡片效果，后续由真实评分模块替换。"
-            : "当前为演示评分，后续由真实语音评分模块提供分析说明。",
-        ],
-        is_demo: true,
-      };
+    const assessment = message?.learning_assessment ||
+      languageAssistanceState(message?.ID, "correct").result?.assessment;
+    if (assessment) return assessment;
+    return {
+      overall: 90,
+      fluency: 100,
+      pronunciation: 99,
+      naturalness: 70,
+      native_expression: correction?.corrected_text || demoNativeExpression,
+      explanations: correction?.items?.map((item) => item.explanation) || [
+        demoChanged
+          ? "当前为演示数据：推荐表达用于展示卡片效果，后续由真实评分模块替换。"
+          : "当前为演示评分，后续由真实语音评分模块提供分析说明。",
+      ],
+      is_demo: true,
+    };
+  }
+
+  function audioAttachmentForMessage(message) {
+    return message?.Attachments?.find(
+      (attachment) => String(attachment.mediaType || "").startsWith("audio/"),
+    ) || message?.attachments?.find(
+      (attachment) => String(attachment.mediaType || "").startsWith("audio/"),
+    );
+  }
+
+  function userRecordingControlHTML(message) {
+    if (audioAttachmentForMessage(message) || message?.recording_url || message?.audio_url) {
+      return `<button class="real-bubble-tool" data-real-action="play-user-recording" data-message-id="${escapeHTML(message.ID)}" aria-label="播放我的录音" title="播放我的录音">${soundIconHTML("ME")}</button>`;
+    }
+    if (message?.mode === "live") {
+      return `<button class="real-bubble-tool" type="button" disabled aria-label="录音处理中" title="录音上传并关联后可播放">${soundIconHTML("ME")}</button>`;
+    }
+    return `<button class="real-bubble-tool" data-real-action="play-user-recording" data-message-id="${escapeHTML(message.ID)}" aria-label="播放我的录音" title="播放我的录音">${soundIconHTML("ME")}</button>`;
   }
 
   function scoreBarHTML(message) {
@@ -643,7 +689,7 @@
           ${optimisticStatus ? `<small class="real-optimistic-status ${optimisticStatus}">${optimisticLabel}</small>` : ""}
           <div class="real-message-tools user-tools">
             <button class="real-bubble-tool" data-real-action="speak-text" data-text="${escapeHTML(message.Content)}" aria-label="AI 发音" title="AI 发音">${soundIconHTML("AI")}</button>
-            <button class="real-bubble-tool" data-real-action="play-user-recording" data-message-id="${escapeHTML(message.ID)}" aria-label="播放我的录音" title="播放我的录音">${soundIconHTML("ME")}</button>
+            ${userRecordingControlHTML(message)}
             ${optimisticStatus ? "" : `<button class="real-correction-tool" data-real-action="toggle-correction" data-message-id="${escapeHTML(message.ID)}" aria-expanded="${expandedCorrectionID === message.ID}"><strong>!!</strong><span>纠错</span></button>`}
           </div>
           ${optimisticStatus ? "" : correctionPreviewHTML(message)}
@@ -2075,11 +2121,7 @@
 
   async function playUserRecording(messageID) {
     const message = findLanguageMessage(messageID);
-    const audioAttachment = message?.Attachments?.find(
-      (attachment) => String(attachment.mediaType || "").startsWith("audio/"),
-    ) || message?.attachments?.find(
-      (attachment) => String(attachment.mediaType || "").startsWith("audio/"),
-    );
+    const audioAttachment = audioAttachmentForMessage(message);
     const recordingURL = message?.recording_url ||
       message?.audio_url ||
       (audioAttachment?.id

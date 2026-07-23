@@ -1,10 +1,10 @@
-import type { GoLLMResult } from "./providers/go-llm.js";
+import type { GoLLMCallbacks, GoLLMResult } from "./providers/go-llm.js";
 import type { TurnContext } from "./session-context.js";
 
 export type TurnStream = {
   streamTurn(
     turn: TurnContext,
-    onDelta?: (delta: string) => void,
+    callbacks?: GoLLMCallbacks,
     signal?: AbortSignal,
   ): Promise<GoLLMResult>;
 };
@@ -23,7 +23,7 @@ export class TurnCommitter {
 
   commit(
     turn: TurnContext,
-    onDelta: (delta: string) => void = () => undefined,
+    callbacks: GoLLMCallbacks = {},
     signal?: AbortSignal,
   ): Promise<GoLLMResult> {
     const key = `${turn.threadID}:${turn.clientMessageID}`;
@@ -31,7 +31,7 @@ export class TurnCommitter {
     if (existing) return existing;
 
     const pending = this.#stream
-      .streamTurn(turn, onDelta, signal)
+      .streamTurn(turn, callbacks, signal)
       .then((result) => {
         this.#completed.push(key);
         while (this.#completed.length > this.#maxRecent) {

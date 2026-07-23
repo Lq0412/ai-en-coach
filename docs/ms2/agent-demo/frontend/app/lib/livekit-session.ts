@@ -64,6 +64,7 @@ const LIVE_STATES = new Set<LiveCallState>([
 const LIVE_EVENT_TYPES = new Set([
   "transcript.partial",
   "turn.user_committed",
+  "assistant.delta",
   "turn.assistant_committed",
   "turn.failed",
   "attachment.linked",
@@ -87,6 +88,9 @@ export function isLiveEvent(value: unknown): value is RecordValue {
   }
   if (value.type === "turn.failed") {
     return boundedString(value.error, 500);
+  }
+  if (value.type === "assistant.delta") {
+    return boundedString(value.delta, 4_000);
   }
   if (["turn.user_committed", "turn.assistant_committed", "attachment.linked"].includes(String(value.type))) {
     return isRecord(value.message) &&

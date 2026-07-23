@@ -142,6 +142,7 @@ type LiveEventType string
 const (
 	LiveEventTranscriptPartial      LiveEventType = "transcript.partial"
 	LiveEventTurnUserCommitted      LiveEventType = "turn.user_committed"
+	LiveEventAssistantDelta         LiveEventType = "assistant.delta"
 	LiveEventTurnAssistantCommitted LiveEventType = "turn.assistant_committed"
 	LiveEventAttachmentLinked       LiveEventType = "attachment.linked"
 	LiveEventLatencyPoint           LiveEventType = "latency.point"
@@ -151,6 +152,7 @@ func (eventType LiveEventType) valid() bool {
 	switch eventType {
 	case LiveEventTranscriptPartial,
 		LiveEventTurnUserCommitted,
+		LiveEventAssistantDelta,
 		LiveEventTurnAssistantCommitted,
 		LiveEventAttachmentLinked,
 		LiveEventLatencyPoint:
@@ -179,6 +181,7 @@ type LiveEvent struct {
 	OccurredAt      time.Time         `json:"occurred_at"`
 	Sequence        uint64            `json:"sequence"`
 	Transcript      string            `json:"transcript,omitempty"`
+	Delta           string            `json:"delta,omitempty"`
 	Message         *AssistantMessage `json:"message,omitempty"`
 	Latency         *LiveLatencyPoint `json:"latency,omitempty"`
 }
@@ -222,6 +225,9 @@ func (event LiveEvent) Validate() error {
 	}
 	if event.Type == LiveEventLatencyPoint && event.Latency == nil {
 		return errors.New("assistant: latency.point event latency is required")
+	}
+	if event.Type == LiveEventAssistantDelta && strings.TrimSpace(event.Delta) == "" {
+		return errors.New("assistant: assistant.delta event delta is required")
 	}
 	return nil
 }

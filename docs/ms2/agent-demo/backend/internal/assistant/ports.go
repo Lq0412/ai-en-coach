@@ -301,7 +301,7 @@ type ToolInvocation struct {
 }
 
 type textDeltaWriterKey struct{}
-type canonicalUserMessageWriterKey struct{}
+type canonicalMessageWriterKey struct{}
 
 func WithTextDeltaWriter(ctx context.Context, writer func(string) error) context.Context {
 	return context.WithValue(ctx, textDeltaWriterKey{}, writer)
@@ -312,12 +312,12 @@ func textDeltaWriterFromContext(ctx context.Context) func(string) error {
 	return writer
 }
 
-func WithCanonicalUserMessageWriter(ctx context.Context, writer func(AssistantMessage) error) context.Context {
-	return context.WithValue(ctx, canonicalUserMessageWriterKey{}, writer)
+func WithCanonicalMessageWriter(ctx context.Context, writer func(AssistantMessage) error) context.Context {
+	return context.WithValue(ctx, canonicalMessageWriterKey{}, writer)
 }
 
-func canonicalUserMessageWriterFromContext(ctx context.Context) func(AssistantMessage) error {
-	writer, _ := ctx.Value(canonicalUserMessageWriterKey{}).(func(AssistantMessage) error)
+func canonicalMessageWriterFromContext(ctx context.Context) func(AssistantMessage) error {
+	writer, _ := ctx.Value(canonicalMessageWriterKey{}).(func(AssistantMessage) error)
 	return writer
 }
 

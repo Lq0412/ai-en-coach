@@ -23,6 +23,7 @@ test("Go LLM streams one canonical user message before assistant deltas", async 
         'event: turn.user_committed\ndata: {"message":{"ID":"message-1","Role":"user","Content":"hello","client_message_id":"client-1"}}',
         'event: assistant.delta\ndata: {"delta":"Hi"}',
         'event: assistant.delta\ndata: {"delta":" there"}',
+        'event: turn.assistant_committed\ndata: {"message":{"ID":"message-2","Role":"assistant","Content":"Hi there","client_message_id":"client-1"}}',
         'event: task.completed\ndata: {"task_run":{"ID":"run-1"}}',
       ]);
     },
@@ -37,9 +38,14 @@ test("Go LLM streams one canonical user message before assistant deltas", async 
       clientMessageID: "client-1",
       transcript: "hello",
     },
-    (delta) => deltas.push(delta),
+    {
+      onAssistantDelta: (delta) => {
+        deltas.push(delta);
+      },
+    },
   );
   assert.equal(result.userMessage.ID, "message-1");
+  assert.equal(result.assistantMessage.ID, "message-2");
   assert.equal(result.assistantText, "Hi there");
   assert.deepEqual(deltas, ["Hi", " there"]);
   assert.equal(requests[0]?.idempotency_key, "client-1");
@@ -53,6 +59,7 @@ test("turn committer coalesces concurrent and retried final transcripts", async 
       calls += 1;
       return {
         userMessage: { ID: "message-1", client_message_id: "client-1" },
+        assistantMessage: { ID: "message-2", client_message_id: "client-1" },
         assistantText: "Hi",
       };
     },
@@ -81,7 +88,14 @@ test("turn committer bounds completed idempotency entries", async () => {
       streamTurn: async (turn) => {
         calls += 1;
         return {
-          userMessage: { ID: `message-${turn.turnID}` },
+          userMessage: {
+            ID: `message-user-${turn.turnID}`,
+            client_message_id: turn.clientMessageID,
+          },
+          assistantMessage: {
+            ID: `message-assistant-${turn.turnID}`,
+            client_message_id: turn.clientMessageID,
+          },
           assistantText: "Hi",
         };
       },

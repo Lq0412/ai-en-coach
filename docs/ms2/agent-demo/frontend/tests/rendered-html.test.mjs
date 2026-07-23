@@ -246,6 +246,7 @@ test("defines realtime event, reconciliation, and latency bridge contracts", asy
 
   assert.match(bridge, /transcript\.partial/);
   assert.match(bridge, /turn\.user_committed/);
+  assert.match(bridge, /assistant\.delta/);
   assert.match(bridge, /turn\.assistant_committed/);
   assert.match(bridge, /attachment\.linked/);
   assert.match(bridge, /latency\.point/);
@@ -272,6 +273,10 @@ test("defines realtime event, reconciliation, and latency bridge contracts", asy
   assert.match(bridge, /data-real-action="start-live-call"/);
   assert.match(bridge, /data-real-action="toggle-live-mute"/);
   assert.match(bridge, /data-real-action="end-live-call"/);
+  assert.match(bridge, /streamingText \+= event\.delta/);
+  assert.match(bridge, /item\.Role === message\.Role/);
+  assert.match(bridge, /aria-label="录音处理中"/);
+  assert.match(bridge, /is_demo:\s*true/);
   assert.match(bridge, /LIVE_FEATURE_ENABLED/);
   assert.match(styles, /\.real-live-call/);
   assert.match(bridge, /live-entry-visible/);

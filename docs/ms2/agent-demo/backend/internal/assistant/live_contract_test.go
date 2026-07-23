@@ -92,6 +92,30 @@ func TestLiveContractKeepsPartialEphemeralAndCanonicalExplicit(t *testing.T) {
 	}
 }
 
+func TestLiveContractAcceptsAssistantDeltaAsEphemeral(t *testing.T) {
+	event := LiveEvent{
+		Type:            LiveEventAssistantDelta,
+		ThreadID:        "thread-1",
+		LiveSessionID:   "live-1",
+		TurnID:          "turn-1",
+		ClientMessageID: "client-1",
+		Mode:            ConversationModeLive,
+		OccurredAt:      time.UnixMilli(1000).UTC(),
+		Sequence:        1,
+		Delta:           "Hello",
+	}
+	if err := event.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if event.Canonical() {
+		t.Fatal("assistant delta must remain ephemeral")
+	}
+	event.Delta = ""
+	if err := event.Validate(); err == nil {
+		t.Fatal("empty assistant delta must be rejected")
+	}
+}
+
 func TestLiveContractReconcilesDuplicateClientMessageToCanonicalTurn(t *testing.T) {
 	existing := LiveTurn{
 		ThreadID:        "thread-1",

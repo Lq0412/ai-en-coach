@@ -51,9 +51,9 @@ func TestTaskStreamCommitsCanonicalUserBeforeAssistantDeltaAndLinksAttachment(t 
 		"user_message":"hello",
 		"idempotency_key":"client-1",
 		"client_message_id":"client-1",
-		"live_session_id":"normal-thread-demo-001",
+		"live_session_id":"live-1",
 		"turn_id":"turn-client-1",
-		"mode":"normal"
+		"mode":"live"
 	}`)
 	recorder := httptest.NewRecorder()
 	mux.ServeHTTP(recorder, httptest.NewRequest(
@@ -64,8 +64,16 @@ func TestTaskStreamCommitsCanonicalUserBeforeAssistantDeltaAndLinksAttachment(t 
 	stream := recorder.Body.String()
 	canonicalAt := strings.Index(stream, "event: turn.user_committed")
 	deltaAt := strings.Index(stream, "event: assistant.delta")
-	if canonicalAt < 0 || deltaAt < 0 || canonicalAt >= deltaAt {
-		t.Fatalf("canonical user event must precede AI delta:\n%s", stream)
+	assistantAt := strings.Index(stream, "event: turn.assistant_committed")
+	completedAt := strings.Index(stream, "event: task.completed")
+	if canonicalAt < 0 ||
+		deltaAt < 0 ||
+		assistantAt < 0 ||
+		completedAt < 0 ||
+		canonicalAt >= deltaAt ||
+		deltaAt >= assistantAt ||
+		assistantAt >= completedAt {
+		t.Fatalf("canonical stream order is invalid:\n%s", stream)
 	}
 
 	messages, err := store.ListMessages(context.Background(), DemoThreadID)
@@ -73,8 +81,21 @@ func TestTaskStreamCommitsCanonicalUserBeforeAssistantDeltaAndLinksAttachment(t 
 		t.Fatal(err)
 	}
 	user := messages[len(messages)-2]
-	if user.ClientMessageID != "client-1" || user.ID == "" {
+	assistant := messages[len(messages)-1]
+	if user.ClientMessageID != "client-1" ||
+		user.LiveSessionID != "live-1" ||
+		user.TurnID != "turn-client-1" ||
+		user.Mode != ConversationModeLive ||
+		user.ID == "" {
 		t.Fatalf("canonical user identity missing: %#v", user)
+	}
+	if assistant.Role != "assistant" ||
+		assistant.ClientMessageID != user.ClientMessageID ||
+		assistant.LiveSessionID != user.LiveSessionID ||
+		assistant.TurnID != user.TurnID ||
+		assistant.Mode != user.Mode ||
+		!strings.Contains(stream[completedAt:], `"ID":"`+assistant.ID+`"`) {
+		t.Fatalf("canonical assistant missing from persistence or snapshot: %#v", assistant)
 	}
 
 	attachment, err := tools.AddAttachment(context.Background(), AttachmentInput{

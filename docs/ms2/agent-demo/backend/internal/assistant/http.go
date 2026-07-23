@@ -697,14 +697,20 @@ func (h *HTTPHandler) streamTask(w http.ResponseWriter, r *http.Request) {
 		request.LiveSessionID != "" &&
 		request.TurnID != "" &&
 		request.Mode.Valid() {
-		ctx = WithCanonicalUserMessageWriter(ctx, func(message AssistantMessage) error {
+		var sequence uint64
+		ctx = WithCanonicalMessageWriter(ctx, func(message AssistantMessage) error {
+			eventType := LiveEventTurnUserCommitted
+			if message.Role == "assistant" {
+				eventType = LiveEventTurnAssistantCommitted
+			}
+			sequence++
 			event := LiveEvent{
-				Type: LiveEventTurnUserCommitted, ThreadID: r.PathValue("thread_id"),
+				Type: eventType, ThreadID: r.PathValue("thread_id"),
 				LiveSessionID: request.LiveSessionID, TurnID: request.TurnID,
 				ClientMessageID: request.ClientMessageID, Mode: request.Mode,
-				OccurredAt: time.Now().UTC(), Sequence: 1, Message: &message,
+				OccurredAt: time.Now().UTC(), Sequence: sequence, Message: &message,
 			}
-			if err := writeSSE(w, string(LiveEventTurnUserCommitted), event); err != nil {
+			if err := writeSSE(w, string(eventType), event); err != nil {
 				return err
 			}
 			flusher.Flush()

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -82,6 +83,20 @@ test("decodes bounded canonical and partial LiveKit data events", () => {
     }),
   );
   assert.equal(decodeLiveDataEvent(encoded)?.transcript, "hel");
+  const assistantDelta = new TextEncoder().encode(
+    JSON.stringify({
+      type: "assistant.delta",
+      mode: "live",
+      thread_id: "thread-1",
+      live_session_id: "live-1",
+      turn_id: "turn-1",
+      client_message_id: "client-1",
+      sequence: 2,
+      occurred_at: new Date().toISOString(),
+      payload: { delta: "Hi" },
+    }),
+  );
+  assert.equal(decodeLiveDataEvent(assistantDelta)?.delta, "Hi");
   assert.equal(decodeLiveDataEvent(new Uint8Array(20_000)), null);
 });
 
@@ -106,4 +121,27 @@ test("decodes bounded worker failures and rejects oversized details", () => {
     decodeLiveDataEvent(new TextEncoder().encode(JSON.stringify(event))),
     null,
   );
+});
+
+test("iframe bridge reconciles live roles and reuses existing message tools", async () => {
+  const bridge = await readFile(
+    new URL(
+      "../public/prototype/assets/agent-backend-bridge.js",
+      import.meta.url,
+    ),
+    "utf8",
+  );
+
+  assert.match(
+    bridge,
+    /item\.client_message_id === clientMessageID[\s\S]*item\.Role === message\.Role/,
+  );
+  assert.match(bridge, /streamingText \+= event\.delta/);
+  assert.match(bridge, /turn\.assistant_committed[\s\S]*streamingText = ""/);
+  assert.match(bridge, /userRecordingControlHTML/);
+  assert.match(bridge, /aria-label="录音处理中"/);
+  assert.match(bridge, /toggle-translation/);
+  assert.match(bridge, /toggle-correction/);
+  assert.match(bridge, /play-user-recording/);
+  assert.match(bridge, /scoreBarHTML/);
 });

@@ -3,8 +3,10 @@ import test from "node:test";
 
 import { SessionContext } from "../src/session-context.js";
 import { TurnAudioBuffer } from "../src/turn-audio-buffer.js";
+import { TurnCommitter } from "../src/turn-committer.js";
 import { parseJobMetadata } from "../src/worker.js";
 import { boundedTextSegments } from "../src/worker.js";
+import { streamCommittedTurn } from "../src/worker.js";
 
 test("worker metadata prefers job data and falls back to participant token metadata", () => {
   const job = JSON.stringify({
@@ -122,4 +124,107 @@ test("audio buffer bounds completed upload idempotency entries", async () => {
   buffer.append("1", new Uint8Array([1, 0]));
   await buffer.commit("1", "message-1b");
   assert.equal(uploads, 4);
+});
+
+test("committed turn publishes canonical, delta, attachment, and failure events", async () => {
+  const context = new SessionContext({
+    actorUserID: "demo-user",
+    threadID: "thread-1",
+    liveSessionID: "live-1",
+  });
+  const turn = context.beginTurn({
+    turnID: "turn-1",
+    clientMessageID: "client-1",
+  });
+  const audio = new TurnAudioBuffer({
+    maxBytes: 16,
+    upload: async () => "attachment-1",
+    link: async () => ({
+      ID: "message-user",
+      Role: "user",
+      Content: "hello",
+      client_message_id: "client-1",
+      attachments: [{ id: "attachment-1", mediaType: "audio/wav" }],
+    }),
+  });
+  audio.append(turn.turnID, new Uint8Array([1, 2]));
+  context.finalizeTranscript("hello");
+  const committer = new TurnCommitter({
+    streamTurn: async (_turn, callbacks = {}) => {
+      const userMessage = {
+        ID: "message-user",
+        Role: "user",
+        Content: "hello",
+        client_message_id: "client-1",
+      };
+      const assistantMessage = {
+        ID: "message-assistant",
+        Role: "assistant",
+        Content: "Hi there",
+        client_message_id: "client-1",
+      };
+      await callbacks.onUserCommitted?.(userMessage);
+      await callbacks.onAssistantDelta?.("Hi");
+      await callbacks.onAssistantDelta?.(" there");
+      await callbacks.onAssistantCommitted?.(assistantMessage);
+      return { userMessage, assistantMessage, assistantText: "Hi there" };
+    },
+  });
+  const events: Record<string, unknown>[] = [];
+  const deltas: string[] = [];
+  for await (const delta of streamCommittedTurn({
+    context,
+    committer,
+    audio,
+    publish: async (event) => {
+      events.push(event);
+    },
+  })) {
+    deltas.push(delta);
+  }
+
+  assert.deepEqual(deltas, ["Hi", " there"]);
+  assert.deepEqual(events.map((event) => event.type), [
+    "turn.user_committed",
+    "assistant.delta",
+    "assistant.delta",
+    "turn.assistant_committed",
+    "attachment.linked",
+  ]);
+  assert.deepEqual(events.map((event) => event.sequence), [1, 2, 3, 4, 5]);
+  assert.equal(
+    (events.at(-1)?.payload as Record<string, unknown>).attachment_id,
+    "attachment-1",
+  );
+
+  const failedContext = new SessionContext({
+    actorUserID: "demo-user",
+    threadID: "thread-1",
+    liveSessionID: "live-1",
+  });
+  failedContext.beginTurn({ turnID: "turn-failed", clientMessageID: "client-failed" });
+  failedContext.finalizeTranscript("fail");
+  const failedEvents: Record<string, unknown>[] = [];
+  const failedStream = streamCommittedTurn({
+    context: failedContext,
+    committer: new TurnCommitter({
+      streamTurn: async () => {
+        throw new Error("adapter unavailable");
+      },
+    }),
+    audio,
+    publish: async (event) => {
+      failedEvents.push(event);
+    },
+  });
+  await assert.rejects(async () => {
+    for await (const _delta of failedStream) {
+      // Drain the generator.
+    }
+  }, /adapter unavailable/);
+  assert.equal(failedEvents.at(-1)?.type, "turn.failed");
+  assert.match(
+    String((failedEvents.at(-1)?.payload as Record<string, unknown>).error),
+    /adapter unavailable/,
+  );
 });

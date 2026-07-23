@@ -103,8 +103,11 @@ const attachmentCallbacks = (baseURL: string) => {
       if (!id) throw new Error("Go attachment endpoint omitted attachment ID");
       return id;
     },
-    link: async (messageID: string, attachmentID: string): Promise<void> => {
-      await responseJSON(
+    link: async (
+      messageID: string,
+      attachmentID: string,
+    ): Promise<Record<string, unknown>> => {
+      const payload = await responseJSON(
         await fetch(
           `${root}/v1/assistant/messages/${encodeURIComponent(messageID)}/attachments`,
           {
@@ -114,9 +117,105 @@ const attachmentCallbacks = (baseURL: string) => {
           },
         ),
       );
+      const message = payload.message;
+      if (!message || typeof message !== "object" || !("ID" in message)) {
+        throw new Error("Go attachment link endpoint omitted canonical message");
+      }
+      return message as Record<string, unknown>;
     },
   };
 };
+
+type CommittedTurnStreamOptions = {
+  context: SessionContext;
+  committer: TurnCommitter;
+  audio: TurnAudioBuffer;
+  publish: (event: Record<string, unknown>) => Promise<void>;
+};
+
+export async function* streamCommittedTurn({
+  context,
+  committer,
+  audio,
+  publish,
+}: CommittedTurnStreamOptions): AsyncGenerator<string> {
+  const turn = context.takeFinalizedTurn();
+  if (!turn?.transcript) {
+    throw new Error("LLM node invoked without a finalized transcript");
+  }
+
+  const deltas: string[] = [];
+  let wake: (() => void) | undefined;
+  let completed = false;
+  let failure: unknown;
+  const committed = committer
+    .commit(turn, {
+      onUserCommitted: async (message) => {
+        await publish(context.event(turn, "turn.user_committed", { message }));
+      },
+      onAssistantDelta: async (delta) => {
+        deltas.push(delta);
+        wake?.();
+        wake = undefined;
+        await publish(context.event(turn, "assistant.delta", { delta }));
+      },
+      onAssistantCommitted: async (message) => {
+        await publish(
+          context.event(turn, "turn.assistant_committed", { message }),
+        );
+      },
+    })
+    .then(async (result) => {
+      const linked = await audio.commit(turn.turnID, result.userMessage.ID);
+      if (linked?.message) {
+        if (linked.message.client_message_id !== turn.clientMessageID) {
+          throw new Error("linked recording message correlation mismatch");
+        }
+        await publish(
+          context.event(turn, "attachment.linked", {
+            attachment_id: linked.attachmentID,
+            message: linked.message,
+          }),
+        );
+      }
+      completed = true;
+      wake?.();
+      return result;
+    })
+    .catch(async (error: unknown) => {
+      failure = error;
+      completed = true;
+      audio.cancel(turn.turnID);
+      wake?.();
+      try {
+        await publish(
+          context.event(turn, "turn.failed", {
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      } catch {
+        // Publishing recovery state must never hide the adapter failure.
+      }
+      throw error;
+    });
+
+  try {
+    while (!completed || deltas.length > 0) {
+      const delta = deltas.shift();
+      if (delta !== undefined) {
+        yield delta;
+      } else if (!completed) {
+        await new Promise<void>((resolve) => {
+          wake = resolve;
+        });
+      }
+    }
+    await committed;
+    if (failure) throw failure;
+  } finally {
+    context.completeTurn(turn.turnID);
+  }
+}
 
 export class ConversationOrchestrator {
   readonly context: SessionContext;
@@ -251,49 +350,12 @@ export class ConversationOrchestrator {
   }
 
   async *#generateReply(): AsyncGenerator<string> {
-    const turn = this.context.takeFinalizedTurn();
-    if (!turn?.transcript) throw new Error("LLM node invoked without a finalized transcript");
-
-    const deltas: string[] = [];
-    let wake: (() => void) | undefined;
-    let completed = false;
-    let failure: unknown;
-    const committed = this.committer
-      .commit(turn, (delta) => {
-        deltas.push(delta);
-        wake?.();
-        wake = undefined;
-      })
-      .then(async (result) => {
-        await this.audio.commit(turn.turnID, result.userMessage.ID);
-        completed = true;
-        wake?.();
-        return result;
-      })
-      .catch((error: unknown) => {
-        failure = error;
-        completed = true;
-        this.audio.cancel(turn.turnID);
-        wake?.();
-        throw error;
-      });
-
-    try {
-      while (!completed || deltas.length > 0) {
-        const delta = deltas.shift();
-        if (delta !== undefined) {
-          yield delta;
-        } else if (!completed) {
-          await new Promise<void>((resolve) => {
-            wake = resolve;
-          });
-        }
-      }
-      await committed;
-      if (failure) throw failure;
-    } finally {
-      this.context.completeTurn(turn.turnID);
-    }
+    yield* streamCommittedTurn({
+      context: this.context,
+      committer: this.committer,
+      audio: this.audio,
+      publish: (event) => this.#publish(event),
+    });
   }
 
   async *#synthesize(text: AsyncIterable<string>): AsyncGenerator<AudioFrame> {

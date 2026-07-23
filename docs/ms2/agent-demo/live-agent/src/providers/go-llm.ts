@@ -6,9 +6,20 @@ export type CanonicalUserMessage = {
   [key: string]: unknown;
 };
 
+export type CanonicalAssistantMessage = CanonicalUserMessage;
+
 export type GoLLMResult = {
   userMessage: CanonicalUserMessage;
+  assistantMessage: CanonicalAssistantMessage;
   assistantText: string;
+};
+
+export type GoLLMCallbacks = {
+  onUserCommitted?: (message: CanonicalUserMessage) => void | Promise<void>;
+  onAssistantDelta?: (delta: string) => void | Promise<void>;
+  onAssistantCommitted?: (
+    message: CanonicalAssistantMessage,
+  ) => void | Promise<void>;
 };
 
 export type GoLLMOptions = {
@@ -77,7 +88,7 @@ export class GoLLM {
 
   async streamTurn(
     turn: TurnContext,
-    onDelta: (delta: string) => void = () => undefined,
+    callbacks: GoLLMCallbacks = {},
     signal?: AbortSignal,
   ): Promise<GoLLMResult> {
     const response = await this.#fetch(
@@ -106,19 +117,27 @@ export class GoLLM {
     }
 
     let userMessage: CanonicalUserMessage | undefined;
+    let assistantMessage: CanonicalAssistantMessage | undefined;
     let assistantText = "";
     let completed = false;
     for await (const block of readSSE(response, signal)) {
       const data = block.data as Record<string, unknown>;
       if (block.event === "turn.user_committed") {
         userMessage = data.message as CanonicalUserMessage;
+        await callbacks.onUserCommitted?.(userMessage);
       } else if (block.event === "assistant.delta") {
         if (!userMessage) {
           throw new Error("assistant delta arrived before canonical user commit");
         }
         const delta = String(data.delta ?? "");
         assistantText += delta;
-        onDelta(delta);
+        await callbacks.onAssistantDelta?.(delta);
+      } else if (block.event === "turn.assistant_committed") {
+        if (!userMessage) {
+          throw new Error("assistant commit arrived before canonical user commit");
+        }
+        assistantMessage = data.message as CanonicalAssistantMessage;
+        await callbacks.onAssistantCommitted?.(assistantMessage);
       } else if (block.event === "task.failed") {
         throw new Error(String(data.error ?? data.message ?? "Go task failed"));
       } else if (block.event === "task.completed") {
@@ -128,6 +147,18 @@ export class GoLLM {
 
     if (!completed) throw new Error("Go task stream ended before task.completed");
     if (!userMessage?.ID) throw new Error("Go task stream omitted canonical user message");
-    return { userMessage, assistantText };
+    if (!assistantMessage?.ID) {
+      throw new Error("Go task stream omitted canonical assistant message");
+    }
+    if (
+      userMessage.client_message_id !== turn.clientMessageID ||
+      assistantMessage.client_message_id !== turn.clientMessageID
+    ) {
+      throw new Error("Go task stream returned mismatched canonical correlation");
+    }
+    if (!assistantText) {
+      assistantText = String(assistantMessage.Content ?? "");
+    }
+    return { userMessage, assistantMessage, assistantText };
   }
 }
