@@ -1,6 +1,7 @@
+import ComingSoonDialog from "./ComingSoonDialog";
 import InterviewDemo from "./InterviewDemo";
 
-const prototypeHref = "/pages/prototype.html";
+const comingSoonHref = "#coming-soon";
 
 const journeyStages = [
   {
@@ -9,7 +10,7 @@ const journeyStages = [
     type: "雅思口语",
     copy: "按 Part 1、2、3 的真实结构限时作答，从逐句证据回到同题复练。",
     action: "开始 Part 2 模拟",
-    href: `${prototypeHref}#ielts-part2-practice`,
+    href: comingSoonHref,
   },
   {
     index: "02",
@@ -17,7 +18,7 @@ const journeyStages = [
     type: "英文面试",
     copy: "结合 JD、简历和项目经历，生成多轮面试计划并持续压力追问。",
     action: "生成面试方案",
-    href: `${prototypeHref}#portal-interview-start`,
+    href: comingSoonHref,
   },
   {
     index: "03",
@@ -25,7 +26,7 @@ const journeyStages = [
     type: "海外日常",
     copy: "把下一件要办的事直接告诉 Agent。它会识别对方、目标和不能遗漏的信息，再接管角色追问。",
     action: "告诉 Agent 一件事",
-    href: `${prototypeHref}#daily-doctor-brief`,
+    href: comingSoonHref,
   },
   {
     index: "04",
@@ -33,7 +34,7 @@ const journeyStages = [
     type: "国际职场",
     copy: "先拿到能直接使用的表达，再排练客户、会议和绩效沟通中的追问。",
     action: "准备客户会议",
-    href: `${prototypeHref}#workplace-client-brief`,
+    href: comingSoonHref,
   },
 ];
 
@@ -44,7 +45,7 @@ const scenarioProofs = [
     copy: "题卡、计时、转写和逐句建议在同一页完成，用户可以直接回到同一道题继续说。",
     image: "/assets/portal-shots/portal-ielts-part2.jpg",
     alt: "SpeakUp IELTS Part 2 限时作答与逐句反馈界面",
-    href: `${prototypeHref}#ielts-part2-practice`,
+    href: comingSoonHref,
     action: "查看雅思口语 Mock",
   },
   {
@@ -53,7 +54,7 @@ const scenarioProofs = [
     copy: "SpeakUp 会从自然语言里识别人物、目标和限制条件，先给出能直接使用的表达，再接管角色进行追问。",
     image: "/assets/portal-shots/portal-daily-doctor.jpg",
     alt: "SpeakUp 从自然语言中理解海外就医任务并给出可直接使用的表达",
-    href: `${prototypeHref}#daily-doctor-brief`,
+    href: comingSoonHref,
     action: "看看 Agent 如何接住就医任务",
   },
   {
@@ -62,7 +63,7 @@ const scenarioProofs = [
     copy: "结合项目背景、客户关注点和承诺边界，先准备表达，再模拟对方最可能提出的质疑。",
     image: "/assets/portal-shots/portal-workplace-client.jpg",
     alt: "SpeakUp 海外客户延期沟通准备与压力排练方案",
-    href: `${prototypeHref}#workplace-client-brief`,
+    href: comingSoonHref,
     action: "查看工作沟通 Mock",
   },
 ];
@@ -75,7 +76,7 @@ const productFeatures = [
     image: "/assets/portal-shots/portal-interview-start.jpg",
     alt: "SpeakUp 根据后端开发工程师 JD 和简历生成四轮一对一面试计划",
     status: "提出任务",
-    href: `${prototypeHref}#portal-interview-start`,
+    href: comingSoonHref,
     action: "查看任务理解",
   },
   {
@@ -85,7 +86,7 @@ const productFeatures = [
     image: "/assets/portal-shots/portal-panel-practice.jpg",
     alt: "SpeakUp 多面试官模拟中三位面试官根据同一段回答连续追问",
     status: "单面 / 群面",
-    href: `${prototypeHref}#portal-panel-practice`,
+    href: comingSoonHref,
     action: "体验多面试官模拟",
   },
   {
@@ -95,7 +96,7 @@ const productFeatures = [
     image: "/assets/portal-shots/portal-evidence-report.jpg",
     alt: "SpeakUp 在面试结束后给出一条优先级明确的精简建议",
     status: "即时建议",
-    href: `${prototypeHref}#portal-agent-debrief`,
+    href: comingSoonHref,
     action: "查看 Agent 建议",
   },
   {
@@ -105,7 +106,7 @@ const productFeatures = [
     image: "/assets/portal-shots/portal-memory-chat.jpg",
     alt: "SpeakUp Memory 在对话中使用长期目标、真实项目、重复卡点与能力变化",
     status: "Memory 驱动",
-    href: `${prototypeHref}#career-context`,
+    href: comingSoonHref,
     action: "查看 Memory 如何工作",
   },
 ];
@@ -132,10 +133,10 @@ export default function Home() {
   return (
     <main>
       <div className="announcement">
-        <span>SpeakUp 模拟面试现已开放</span>
+        <span>SpeakUp 首批体验即将开放</span>
         <span className="announcement-separator" aria-hidden="true">·</span>
-        <a href={prototypeHref} target="_blank" rel="noreferrer">
-          立即体验 <span aria-hidden="true">↗</span>
+        <a href={comingSoonHref}>
+          查看开放进度 <span aria-hidden="true">↗</span>
         </a>
       </div>
 
@@ -149,7 +150,7 @@ export default function Home() {
           <a href="#demo">完整演示</a>
           <a href="#how-it-works">产品方式</a>
         </div>
-        <a className="button button-small" href={`${prototypeHref}#agent-chat`} target="_blank" rel="noreferrer">
+        <a className="button button-small" href={comingSoonHref}>
           体验 SpeakUp
         </a>
       </nav>
@@ -167,13 +168,13 @@ export default function Home() {
           </p>
           <div className="hero-scenario-links" aria-label="选择想准备的英语任务">
             {journeyStages.map((item) => (
-              <a key={item.type} href={item.href} target="_blank" rel="noreferrer" data-scenario={item.type}>
+              <a key={item.type} href={item.href} data-scenario={item.type}>
                 {item.type}
               </a>
             ))}
           </div>
           <div className="button-group">
-            <a className="button" href={`${prototypeHref}#agent-chat`} target="_blank" rel="noreferrer">
+            <a className="button" href={comingSoonHref}>
               告诉 SpeakUp 我要面对什么 <span aria-hidden="true">↗</span>
             </a>
             <a className="button button-secondary" href="#use-cases">
@@ -226,7 +227,7 @@ export default function Home() {
               <div className="journey-meta"><span>{item.index}</span><em>{item.stage}</em></div>
               <h3>{item.type}</h3>
               <p>{item.copy}</p>
-              <a href={item.href} target="_blank" rel="noreferrer" data-scenario={item.type}>
+              <a href={item.href} data-scenario={item.type}>
                 {item.action} <span aria-hidden="true">↗</span>
               </a>
             </article>
@@ -256,7 +257,7 @@ export default function Home() {
                 <div><span>{String(index + 1).padStart(2, "0")}</span><em>{proof.type}</em></div>
                 <h3>{proof.title}</h3>
                 <p>{proof.copy}</p>
-                <a href={proof.href} target="_blank" rel="noreferrer" data-scenario={proof.type}>
+                <a href={proof.href} data-scenario={proof.type}>
                   {proof.action} <span aria-hidden="true">↗</span>
                 </a>
               </div>
@@ -290,10 +291,12 @@ export default function Home() {
         <h2>告诉 SpeakUp，<br />接下来要面对什么。</h2>
         <p>可以是一场雅思口语考试、英文面试，也可以是海外生活和工作里马上要发生的关键沟通。</p>
         <div className="button-group">
-          <a className="button" href={`${prototypeHref}#agent-chat`} target="_blank" rel="noreferrer">开始一次任务准备 ↗</a>
+          <a className="button" href={comingSoonHref}>开始一次任务准备 ↗</a>
           <a className="button button-dark-secondary" href="#top">回到顶部</a>
         </div>
       </section>
+
+      <ComingSoonDialog />
 
       <footer>
         <a className="brand" href="#top"><span className="brand-mark" aria-hidden="true">S</span><span>SpeakUp</span></a>
