@@ -1,0 +1,12 @@
+name: xe3-speakup-portal
+
+services:
+  portal:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    container_name: xe3-speakup-portal
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:18082:3000"
