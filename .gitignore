@@ -62,3 +62,6 @@ prototype/speakup-premium/assets/spreak-prototype.js
 prototype/speakup-premium/*.design
 tasks/issue-bodies/
 backend-zsc
+
+# agent-demo
+docs/ms2/agent-demo/package.json

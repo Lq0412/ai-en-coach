@@ -10,17 +10,17 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "npm run dev --workspace frontend --",
-    "backend": "npm run start --workspace backend",
-    "build": "npm run build --workspace frontend",
-    "start": "npm run start --workspace frontend",
-    "test": "npm run test --workspace frontend",
-    "test:frontend": "npm run test --workspace frontend",
-    "test:server": "npm run test:go --workspace backend",
-    "test:mem0": "npm run test:mem0 --workspace backend",
-    "test:all": "npm run test --workspace backend && npm run test --workspace frontend",
-    "test:soak": "npm run test:soak --workspace backend --",
-    "lint": "npm run lint --workspace frontend",
-    "db:generate": "npm run db:generate --workspace frontend"
+    "dev": "PATH=/usr/local/opt/node@24/bin:$PATH npm run dev --workspace frontend --",
+    "backend": "PATH=/usr/local/opt/node@24/bin:$PATH npm run start --workspace backend",
+    "build": "PATH=/usr/local/opt/node@24/bin:$PATH npm run build --workspace frontend",
+    "start": "PATH=/usr/local/opt/node@24/bin:$PATH npm run start --workspace frontend",
+    "test": "PATH=/usr/local/opt/node@24/bin:$PATH npm run test --workspace frontend",
+    "test:frontend": "PATH=/usr/local/opt/node@24/bin:$PATH npm run test --workspace frontend",
+    "test:server": "PATH=/usr/local/opt/node@24/bin:$PATH npm run test:go --workspace backend",
+    "test:mem0": "PATH=/usr/local/opt/node@24/bin:$PATH npm run test:mem0 --workspace backend",
+    "test:all": "PATH=/usr/local/opt/node@24/bin:$PATH npm run test --workspace backend && PATH=/usr/local/opt/node@24/bin:$PATH npm run test --workspace frontend",
+    "test:soak": "PATH=/usr/local/opt/node@24/bin:$PATH npm run test:soak --workspace backend --",
+    "lint": "PATH=/usr/local/opt/node@24/bin:$PATH npm run lint --workspace frontend",
+    "db:generate": "PATH=/usr/local/opt/node@24/bin:$PATH npm run db:generate --workspace frontend"
   }
 }
