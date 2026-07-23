@@ -13,6 +13,7 @@ import (
 	"github.com/1024XEngineer/XE3-ESL-agent-demo/backend/internal/demomodules"
 	mem0client "github.com/1024XEngineer/XE3-ESL-agent-demo/backend/internal/platform/memory/mem0"
 	"github.com/1024XEngineer/XE3-ESL-agent-demo/backend/internal/preparation"
+	"github.com/1024XEngineer/XE3-ESL-agent-demo/backend/internal/usercontext"
 )
 
 func main() {
@@ -34,7 +35,8 @@ func main() {
 	if err != nil {
 		logger.Fatalf("interview state error: %v", err)
 	}
-	if _, err := preparation.NewFileScenarioRepository(filepath.Join(dataDirectory, "scenarios.json")); err != nil {
+	scenarioRepository, err := preparation.NewFileScenarioRepository(filepath.Join(dataDirectory, "scenarios.json"))
+	if err != nil {
 		logger.Fatalf("scenario repository error: %v", err)
 	}
 	preparationService := preparation.NewManagementService(state)
@@ -59,10 +61,19 @@ func main() {
 			logger.Printf("legacy active memories checked for Mem0 import count=%d", len(items))
 		}
 	}
-	contextBuilder := assistantcontext.NewBuilder(mem0)
+	scenarioService := preparation.NewScenarioService(scenarioRepository)
+	contextReader := usercontext.New(
+		preparation.NewProfileContextSource(preparation.NewService(state)),
+		preparation.NewCurrentScenarioContextSource(scenarioService),
+		mem0client.NewUserContextMemorySource(mem0),
+		preparation.NewLearningHistoryContextSource(state),
+	)
+	// Mem0 recall is performed by UserContextReader so it is retrieved once and
+	// rendered alongside the current Scenario and confirmed profile.
+	contextBuilder := assistantcontext.NewBuilder(nil)
 	service := assistant.NewService(assistant.Dependencies{
 		Planner:           provider,
-		ContextBuilder:    mem0client.AssistantContextBuilder{Builder: contextBuilder},
+		ContextBuilder:    mem0client.AssistantContextBuilder{Builder: contextBuilder, UserContext: contextReader},
 		MemoryObserver:    mem0,
 		Tools:             registry,
 		ConversationStore: store,
@@ -90,6 +101,7 @@ func main() {
 	mux := http.NewServeMux()
 	handler.Register(mux)
 	mem0client.NewHTTPHandler(mem0, assistant.DemoUserID).Register(mux)
+	preparation.NewScenarioHTTPHandler(scenarioService, assistant.DemoUserID).Register(mux)
 
 	addr := os.Getenv("AGENT_DEMO_ADDR")
 	if addr == "" {

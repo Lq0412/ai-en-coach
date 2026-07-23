@@ -37,6 +37,7 @@ type ScenarioRepository interface {
 	Get(context.Context, string, string) (Scenario, error)
 	List(context.Context, string, ScenarioListFilter) ([]Scenario, error)
 	Save(context.Context, Scenario, uint64) (Scenario, error)
+	Delete(context.Context, string, string, uint64) error
 	SetCurrent(context.Context, string, string, string) error
 	Current(context.Context, string, string) (Scenario, error)
 	ClearCurrent(context.Context, string, string, string) error
@@ -241,6 +242,49 @@ func (r *scenarioRepository) Save(ctx context.Context, scenario Scenario, expect
 		return Scenario{}, err
 	}
 	return updated.Clone(), nil
+}
+
+func (r *scenarioRepository) Delete(ctx context.Context, userID, scenarioID string, expectedVersion uint64) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	userID, scenarioID = strings.TrimSpace(userID), strings.TrimSpace(scenarioID)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	existing, found := r.scenarios[scenarioID]
+	if !found || existing.UserID != userID {
+		return ErrScenarioNotFound
+	}
+	if expectedVersion == 0 || existing.Version != expectedVersion {
+		return fmt.Errorf("%w: expected %d, current %d", ErrScenarioVersionConflict, expectedVersion, existing.Version)
+	}
+
+	removedRequests := map[string]string{}
+	for key, referencedID := range r.createRequests {
+		if referencedID == scenarioID {
+			removedRequests[key] = referencedID
+			delete(r.createRequests, key)
+		}
+	}
+	removedCurrent := map[string]string{}
+	for key, referencedID := range r.currentByThread {
+		if referencedID == scenarioID {
+			removedCurrent[key] = referencedID
+			delete(r.currentByThread, key)
+		}
+	}
+	delete(r.scenarios, scenarioID)
+	if err := r.persistLocked(); err != nil {
+		r.scenarios[scenarioID] = existing
+		for key, referencedID := range removedRequests {
+			r.createRequests[key] = referencedID
+		}
+		for key, referencedID := range removedCurrent {
+			r.currentByThread[key] = referencedID
+		}
+		return err
+	}
+	return nil
 }
 
 func (r *scenarioRepository) SetCurrent(ctx context.Context, userID, threadID, scenarioID string) error {

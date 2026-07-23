@@ -16,7 +16,7 @@ agent-demo/
 │   └── package.json          # 仅包含前端依赖
 ├── backend/                  # 服务端应用
 │   ├── cmd/server/           # Go API 组合根
-│   ├── internal/             # Assistant 与业务模块
+│   ├── internal/             # Assistant、usercontext 与业务模块
 │   ├── memory/               # 官方 Mem0 OSS sidecar 及测试
 │   ├── scripts/              # 后端启动与稳定性测试
 │   ├── go.mod
@@ -37,6 +37,9 @@ Browser UI
   -> Agent backend bridge
   -> REST
 Go AssistantService
+  -> UserContext Aggregator
+     -> confirmed CandidateProfile + current Scenario
+     -> recent learning history + Mem0 recall
   -> DashScopeProvider (qwen3.5-flash)
   -> Mem0 OSS v3 sidecar (mem0ai 3.1.0)
      -> ADD-only extraction + semantic/BM25/entity retrieval
@@ -161,6 +164,27 @@ NEXT_PUBLIC_AGENT_API_URL=http://localhost:8080 npm run dev
     设置 `MEM0_IMPORT_LEGACY=1` 后，启动时会把旧 `.data/memory.sqlite` 中的
     active facts 幂等导入 Mem0；该过程会把文本发送给 DashScope 生成 embedding。
     旧库此后只作为迁移源，不再参与写入或召回。
+16. 每次模型调用前由 `internal/usercontext` 统一读取已确认候选人档案、当前
+    Thread 关联的 Scenario、最近 3 条学习记录和最多 3 条 Mem0 记忆。任一来源
+    暂时不可用时只省略该部分，不中断当前对话。上下文明确标记为只读参考；与用户
+    当前消息冲突时以当前消息为准。达到 token 上限时优先裁剪旧对话，尽量保留
+    当前 Scenario，并始终优先保住当前用户消息。
+
+Scenario 管理接口使用独立的 Preparation Repository：
+
+```text
+POST  /v1/scenarios
+GET   /v1/scenarios?type=...&status=...&thread_id=...
+GET   /v1/scenarios/current?thread_id=...
+GET   /v1/scenarios/{scenario_id}
+PATCH /v1/scenarios/{scenario_id}
+DELETE /v1/scenarios/{scenario_id}
+PUT   /v1/assistant/threads/{thread_id}/scenario
+```
+
+创建 Scenario 必须携带 `Idempotency-Key`。更新使用 `expected_version` 做乐观
+锁，并通过 `action` 选择 `details`、`status`、`facts`、`attach_material` 或
+`detach_material`；删除请求体传入 `expected_version`。版本或事实冲突返回 `409`。
 
 记忆管理接口也直接使用 Mem0 资源模型，不再暴露旧系统的 fact、candidate、
 confidence 或 evidence 概念：
@@ -190,7 +214,8 @@ npm run test:server
 npm run test:mem0
 ```
 
-Go 测试覆盖确认与恢复、动态追问上下文、附件上下文、跨新会话简历记忆、
+Go 测试覆盖确认与恢复、动态追问上下文、统一用户上下文降级与裁剪、Scenario
+管理接口、附件上下文、跨新会话简历记忆、
 多简历上限、重命名、启用、删除和重启持久化、
 Qwen-Long Files API 协议、时间/轮次结束、提前结束、拒绝分支、幂等、
 DashScope Chat HTTP 契约、Mem0 sidecar/Go 适配契约，以及 ASR/TTS WebSocket 契约；前端测试覆盖
