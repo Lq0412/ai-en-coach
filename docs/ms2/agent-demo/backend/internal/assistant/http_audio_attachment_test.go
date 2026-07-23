@@ -21,7 +21,7 @@ func TestAudioAttachmentUploadPersistsPlayableRecording(t *testing.T) {
 	handler := NewHTTPHandler(
 		log.New(io.Discard, "", 0),
 		nil, NewMemoryConversationStore(), tools, tools,
-		nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil,
 	)
 	mux := http.NewServeMux()
 	handler.Register(mux)

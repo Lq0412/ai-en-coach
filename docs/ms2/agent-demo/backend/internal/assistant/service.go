@@ -456,6 +456,14 @@ func (s *Service) completeRun(ctx context.Context, actorUserID string, run TaskR
 		if err := s.appendReportCard(ctx, *report); err != nil {
 			return TaskRun{}, err
 		}
+	} else if history := historyCardsFromResult(run.Intent, result); history != nil {
+		if err := s.appendHistoryCards(ctx, *history); err != nil {
+			return TaskRun{}, err
+		}
+	} else if mistakes := mistakeCardsFromResult(run.Intent, result); mistakes != nil {
+		if err := s.appendMistakeCards(ctx, *mistakes); err != nil {
+			return TaskRun{}, err
+		}
 	} else if run.Intent != "submit_interview_answer" && run.Intent != "start_mock_interview" {
 		if err := s.appendMessage(ctx, "assistant", composeResponse(run.Intent, result)); err != nil {
 			return TaskRun{}, err
@@ -598,6 +606,20 @@ func (s *Service) appendReportCard(ctx context.Context, report InterviewReportCa
 	})
 }
 
+func (s *Service) appendHistoryCards(ctx context.Context, history InterviewHistoryCards) error {
+	return s.dependencies.ConversationStore.AppendMessage(ctx, AssistantMessage{
+		ID: nextID("message"), Role: "assistant", Kind: "interview_history_cards",
+		Content: "最近的模拟面试", History: &history, CreatedAt: time.Now().UTC(),
+	})
+}
+
+func (s *Service) appendMistakeCards(ctx context.Context, mistakes MistakeCards) error {
+	return s.dependencies.ConversationStore.AppendMessage(ctx, AssistantMessage{
+		ID: nextID("message"), Role: "assistant", Kind: "mistake_cards",
+		Content: "最近的错题", Mistakes: &mistakes, CreatedAt: time.Now().UTC(),
+	})
+}
+
 func reportCardFromResult(intent string, result map[string]any) *InterviewReportCard {
 	if intent != "submit_interview_answer" && intent != "end_interview" {
 		return nil
@@ -618,6 +640,69 @@ func reportCardFromResult(intent string, result map[string]any) *InterviewReport
 		MaxTurns:       boundedIntArgument(result["max_turns"], DefaultInterviewMaxTurns, 1, 100),
 		Summary:        compactReportSummary(summary),
 	}
+}
+
+func historyCardsFromResult(intent string, result map[string]any) *InterviewHistoryCards {
+	if intent != "view_practice_history" {
+		return nil
+	}
+	items, _ := result["items"].([]map[string]any)
+	if len(items) == 0 {
+		return nil
+	}
+	cards := make([]InterviewHistoryCard, 0, len(items))
+	for _, item := range items {
+		sessionID := strings.TrimSpace(fmt.Sprint(item["practice_session_id"]))
+		if sessionID == "" {
+			continue
+		}
+		cards = append(cards, InterviewHistoryCard{
+			SessionID:      sessionID,
+			TargetRole:     strings.TrimSpace(fmt.Sprint(item["scenario"])),
+			CompletedTurns: boundedIntArgument(item["completed_turns"], 0, 0, 100),
+			MaxTurns:       DefaultInterviewMaxTurns,
+			Status:         strings.TrimSpace(fmt.Sprint(item["status"])),
+			Summary:        compactReportSummary(fmt.Sprint(item["feedback"])),
+			StartedAt:      timeArgument(item["started_at"]),
+			EndedAt:        optionalTimeArgument(item["ended_at"]),
+		})
+	}
+	if len(cards) == 0 {
+		return nil
+	}
+	return &InterviewHistoryCards{Items: cards}
+}
+
+func mistakeCardsFromResult(intent string, result map[string]any) *MistakeCards {
+	if intent != "view_saved_mistakes" {
+		return nil
+	}
+	items, _ := result["items"].([]map[string]any)
+	if len(items) == 0 {
+		return nil
+	}
+	cards := make([]MistakeCard, 0, len(items))
+	for _, item := range items {
+		mistakeID := strings.TrimSpace(fmt.Sprint(item["mistake_id"]))
+		if mistakeID == "" {
+			continue
+		}
+		cards = append(cards, MistakeCard{
+			MistakeID:      mistakeID,
+			SessionID:      strings.TrimSpace(fmt.Sprint(item["practice_session_id"])),
+			QuestionIndex:  boundedIntArgument(item["question_index"], 0, 0, 100),
+			TargetRole:     strings.TrimSpace(fmt.Sprint(item["target_role"])),
+			QuestionText:   strings.TrimSpace(fmt.Sprint(item["question_text"])),
+			OriginalAnswer: strings.TrimSpace(fmt.Sprint(item["original_answer"])),
+			Status:         strings.TrimSpace(fmt.Sprint(item["status"])),
+			CreatedAt:      timeArgument(item["created_at"]),
+			LatestSummary:  strings.TrimSpace(fmt.Sprint(item["latest_summary"])),
+		})
+	}
+	if len(cards) == 0 {
+		return nil
+	}
+	return &MistakeCards{Items: cards}
 }
 
 func compactReportSummary(summary string) string {
@@ -722,6 +807,12 @@ func composeResponse(intent string, result map[string]any) string {
 			))
 		}
 		return "最近的模拟面试：\n" + strings.Join(lines, "\n")
+	case "view_saved_mistakes":
+		items, _ := result["items"].([]map[string]any)
+		if len(items) == 0 {
+			return "错题本里还没有保存的题目。你可以先在面试报告里把想复练的题加入错题。"
+		}
+		return fmt.Sprintf("已找到 %d 道最近错题。", len(items))
 	default:
 		return fmt.Sprint(result["summary"])
 	}
@@ -782,6 +873,30 @@ func compactText(value string, limit int) string {
 		return value
 	}
 	return string([]rune(value)[:limit]) + "…"
+}
+
+func timeArgument(value any) time.Time {
+	if typed, ok := value.(time.Time); ok {
+		return typed
+	}
+	if parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(fmt.Sprint(value))); err == nil {
+		return parsed
+	}
+	return time.Time{}
+}
+
+func optionalTimeArgument(value any) *time.Time {
+	if value == nil {
+		return nil
+	}
+	if typed, ok := value.(*time.Time); ok {
+		return typed
+	}
+	parsed := timeArgument(value)
+	if parsed.IsZero() {
+		return nil
+	}
+	return &parsed
 }
 
 func firstToolName(steps []PlanStep) string {

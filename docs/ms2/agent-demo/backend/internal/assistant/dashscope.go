@@ -89,6 +89,7 @@ const (
 	feedbackMaxTokens       = 240
 	answerCoachMaxTokens    = 600
 	languageAssistMaxTokens = 800
+	repracticeMaxTokens     = 500
 	profileMaxTokens        = 600
 	attachmentMaxTokens     = 5000
 )
@@ -139,7 +140,10 @@ Use max_turns=10 and duration_minutes=15 by default. If the user explicitly requ
 ]}
 The server enforces the time and turn limits and may replace the last step with review.generate_feedback.
 	5. View history: Intent view_practice_history, one review.list_history step.
-	6. Review: Intent review_latest_practice, one review.generate_feedback step.
+	6. View saved mistakes or repractice items: Intent view_saved_mistakes, one review.list_mistakes step. Use this when the user asks about 错题, mistakes, or recent repractice items.
+	7. View one saved mistake context only when the user provides a concrete mistake id: Intent view_mistake_context, one review.get_mistake_context step.
+	8. Submit a saved-mistake repractice answer only when the user provides a concrete mistake id and a new answer: Intent submit_mistake_repractice, one review.submit_mistake_repractice step.
+	9. Review: Intent review_latest_practice, one review.generate_feedback step.
 	The role argument must reflect the user's requested job, for example Product Manager, Frontend Engineer, or Go Backend Engineer. Do not force every interview to Go backend.
 	Interaction mode is an authoritative UI signal. When interaction_mode=conversation, never use submit_interview_answer even if an unfinished interview exists. When interaction_mode=interview and a session is active, use submit_interview_answer.
 	Greetings, questions, English practice, technical discussion, and all other messages use free_conversation.
@@ -215,6 +219,71 @@ func (p *DashScopeProvider) GenerateAnswerCoach(ctx context.Context, input Answe
 		true,
 		answerCoachMaxTokens,
 	)
+}
+
+func (p *DashScopeProvider) GenerateRepracticeFeedback(ctx context.Context, input RepracticeFeedbackInput) (ReviewNote, error) {
+	answer := strings.TrimSpace(input.NewAnswer)
+	if answer == "" {
+		return ReviewNote{}, errors.New("repractice answer is required")
+	}
+	type turn struct {
+		Index    int    `json:"index"`
+		Question string `json:"question"`
+		Answer   string `json:"answer"`
+	}
+	turns := make([]turn, 0, len(input.Session.Questions))
+	limit := input.QuestionIndex + 1
+	if limit <= 0 || limit > len(input.Session.Questions) {
+		limit = len(input.Session.Questions)
+	}
+	for index := 0; index < limit; index++ {
+		item := turn{Index: index + 1, Question: strings.TrimSpace(input.Session.Questions[index])}
+		if index < len(input.Session.Answers) {
+			item.Answer = strings.TrimSpace(input.Session.Answers[index])
+		}
+		turns = append(turns, item)
+	}
+	turnsJSON, _ := json.Marshal(turns)
+	payload := map[string]string{
+		"targetRole":     strings.TrimSpace(input.Session.TargetRole),
+		"focusQuestion":  strings.TrimSpace(input.Mistake.QuestionText),
+		"originalAnswer": strings.TrimSpace(input.Mistake.OriginalAnswer),
+		"newAnswer":      answer,
+	}
+	focusJSON, _ := json.Marshal(payload)
+	content, err := p.chat(ctx,
+		`You are an English interview repractice coach. Evaluate the candidate's new answer using the saved mistake and prior interview context. Return exactly one JSON object without markdown:
+{"type":"improvement|still_weak|evidence_gap","message":"","evidence":"","suggestion":""}
+Rules:
+- Write message and suggestion in concise Chinese.
+- Ground feedback only in the supplied questions and answers.
+- If the new answer is too short, mostly Chinese, or not relevant, use type evidence_gap.
+- If it improves but still lacks concrete result, metric, scope, tradeoff, or follow-up detail, use type still_weak.
+- If it clearly answers the question with background, action, and result, use type improvement.
+- evidence should quote or paraphrase the most relevant short part of the new answer, under 80 Chinese characters.`,
+		fmt.Sprintf("Prior interview turns up to this mistake: %s\nSaved mistake and new repractice answer: %s", turnsJSON, focusJSON),
+		false,
+		false,
+		repracticeMaxTokens,
+	)
+	if err != nil {
+		return ReviewNote{}, err
+	}
+	var note ReviewNote
+	if err := json.Unmarshal([]byte(stripJSONFence(content)), &note); err != nil {
+		return ReviewNote{}, fmt.Errorf("decode repractice feedback JSON: %w", err)
+	}
+	note.Type = normalizeReviewNoteType(note.Type)
+	note.Message = strings.TrimSpace(note.Message)
+	note.Evidence = strings.TrimSpace(note.Evidence)
+	note.Suggestion = strings.TrimSpace(note.Suggestion)
+	if note.Message == "" || note.Suggestion == "" {
+		return ReviewNote{}, errors.New("DashScope repractice feedback is incomplete")
+	}
+	if note.Evidence == "" {
+		note.Evidence = compactText(answer, 180)
+	}
+	return note, nil
 }
 
 func (p *DashScopeProvider) AnalyzeCandidateProfile(ctx context.Context, input CandidateProfileInput) (CandidateProfile, error) {
@@ -1196,6 +1265,10 @@ func validatePlan(plan Plan) error {
 		"practice.apply_turn_outcome":         true,
 		"review.generate_feedback":            true,
 		"review.list_history":                 true,
+		"review.save_mistake":                 true,
+		"review.list_mistakes":                true,
+		"review.get_mistake_context":          true,
+		"review.submit_mistake_repractice":    true,
 	}
 	if plan.Intent == "" || len(plan.Steps) == 0 {
 		return errors.New("planner returned an empty plan")
@@ -1226,7 +1299,12 @@ func validatePlan(plan Plan) error {
 				"review.generate_feedback",
 			},
 		},
-		"view_practice_history":  {{"review.list_history"}},
+		"view_practice_history": {{"review.list_history"}},
+		"view_saved_mistakes":   {{"review.list_mistakes"}},
+		"view_mistake_context":  {{"review.get_mistake_context"}},
+		"submit_mistake_repractice": {
+			{"review.submit_mistake_repractice"},
+		},
 		"review_latest_practice": {{"review.generate_feedback"}},
 	}
 	shapes, ok := expected[plan.Intent]
@@ -1257,6 +1335,15 @@ func stripJSONFence(value string) string {
 	value = strings.TrimPrefix(value, "```")
 	value = strings.TrimSuffix(value, "```")
 	return strings.TrimSpace(value)
+}
+
+func normalizeReviewNoteType(value string) string {
+	switch strings.TrimSpace(value) {
+	case "improvement", "still_weak", "evidence_gap":
+		return strings.TrimSpace(value)
+	default:
+		return "still_weak"
+	}
 }
 
 func envOrDefault(name, fallback string) string {

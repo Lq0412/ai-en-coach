@@ -24,6 +24,25 @@ type AnalyzeCommand struct {
 	Reason string
 }
 
+type SaveMistakeCommand struct {
+	SessionID     string
+	QuestionIndex int
+}
+
+type ListMistakesQuery struct {
+	Limit  int
+	Status string
+}
+
+type MistakeContextQuery struct {
+	MistakeID string
+}
+
+type SubmitMistakeRepracticeCommand struct {
+	MistakeID  string
+	AnswerText string
+}
+
 type Feedback struct {
 	ID             string
 	SessionID      string
@@ -109,9 +128,17 @@ type HistoryQueryUseCase interface {
 	ListHistory(context.Context, HistoryQuery) ([]HistoryItem, error)
 }
 
+type MistakeUseCase interface {
+	SaveMistake(context.Context, SaveMistakeCommand) (assistant.SavedMistake, error)
+	ListMistakes(context.Context, ListMistakesQuery) ([]assistant.MistakeCard, error)
+	GetMistakeContext(context.Context, MistakeContextQuery) (MistakeContext, error)
+	SubmitMistakeRepractice(context.Context, SubmitMistakeRepracticeCommand) (assistant.MistakeRepracticeResult, error)
+}
+
 type Service interface {
 	AnalyzeUseCase
 	HistoryQueryUseCase
+	MistakeUseCase
 }
 
 type StateStore interface {
@@ -184,6 +211,130 @@ func (s service) ListHistory(_ context.Context, query HistoryQuery) (items []His
 	return items, err
 }
 
+func (s service) SaveMistake(_ context.Context, command SaveMistakeCommand) (mistake assistant.SavedMistake, err error) {
+	_, err = s.state.Transact(func(state *assistant.RuntimeSnapshot, answers *[]string) (assistant.ToolResult, error) {
+		session, ok := sessionByID(*state, *answers, command.SessionID)
+		if !ok {
+			return assistant.ToolResult{}, fmt.Errorf("review: practice session %q not found", command.SessionID)
+		}
+		if command.QuestionIndex < 0 || command.QuestionIndex >= len(session.Questions) {
+			return assistant.ToolResult{}, fmt.Errorf("review: question index %d out of range", command.QuestionIndex)
+		}
+		if command.QuestionIndex >= len(session.Answers) || strings.TrimSpace(session.Answers[command.QuestionIndex]) == "" {
+			return assistant.ToolResult{}, fmt.Errorf("review: question %d has no saved answer", command.QuestionIndex)
+		}
+		for _, existing := range state.SavedMistakes {
+			if existing.SessionID == session.ID && existing.QuestionIndex == command.QuestionIndex && existing.Status != "dismissed" {
+				mistake = existing
+				return assistant.ToolResult{}, nil
+			}
+		}
+		now := time.Now().UTC()
+		mistake = assistant.SavedMistake{
+			ID:             fmt.Sprintf("saved-mistake-%s-q%d", stableIDPart(session.ID), command.QuestionIndex+1),
+			SessionID:      session.ID,
+			QuestionIndex:  command.QuestionIndex,
+			TargetRole:     session.TargetRole,
+			QuestionText:   strings.TrimSpace(session.Questions[command.QuestionIndex]),
+			OriginalAnswer: strings.TrimSpace(session.Answers[command.QuestionIndex]),
+			SourceReviewID: "review-" + stableIDPart(session.ID),
+			Status:         "pending",
+			CreatedAt:      now,
+			UpdatedAt:      now,
+		}
+		state.SavedMistakes = append(state.SavedMistakes, mistake)
+		return assistant.ToolResult{}, nil
+	})
+	return mistake, err
+}
+
+func (s service) ListMistakes(_ context.Context, query ListMistakesQuery) (cards []assistant.MistakeCard, err error) {
+	_, err = s.state.Transact(func(state *assistant.RuntimeSnapshot, _ *[]string) (assistant.ToolResult, error) {
+		status := strings.TrimSpace(query.Status)
+		cards = make([]assistant.MistakeCard, 0, len(state.SavedMistakes))
+		for index := len(state.SavedMistakes) - 1; index >= 0; index-- {
+			mistake := state.SavedMistakes[index]
+			if status != "" && mistake.Status != status {
+				continue
+			}
+			cards = append(cards, mistakeCardFromState(mistake, state.RepracticeResults))
+			if query.Limit > 0 && len(cards) >= query.Limit {
+				break
+			}
+		}
+		return assistant.ToolResult{}, nil
+	})
+	return cards, err
+}
+
+type MistakeContext struct {
+	Mistake       assistant.SavedMistake
+	Session       assistant.InterviewSession
+	Repractices   []assistant.MistakeRepracticeResult
+	QuestionIndex int
+}
+
+func (s service) GetMistakeContext(_ context.Context, query MistakeContextQuery) (context MistakeContext, err error) {
+	_, err = s.state.Transact(func(state *assistant.RuntimeSnapshot, answers *[]string) (assistant.ToolResult, error) {
+		mistake, ok := savedMistakeByID(state.SavedMistakes, query.MistakeID)
+		if !ok {
+			return assistant.ToolResult{}, fmt.Errorf("review: saved mistake %q not found", query.MistakeID)
+		}
+		session, ok := sessionByID(*state, *answers, mistake.SessionID)
+		if !ok {
+			return assistant.ToolResult{}, fmt.Errorf("review: practice session %q not found", mistake.SessionID)
+		}
+		context = MistakeContext{
+			Mistake:       mistake,
+			Session:       session,
+			Repractices:   repracticesForMistake(state.RepracticeResults, mistake.ID),
+			QuestionIndex: mistake.QuestionIndex,
+		}
+		return assistant.ToolResult{}, nil
+	})
+	return context, err
+}
+
+func (s service) SubmitMistakeRepractice(_ context.Context, command SubmitMistakeRepracticeCommand) (result assistant.MistakeRepracticeResult, err error) {
+	_, err = s.state.Transact(func(state *assistant.RuntimeSnapshot, _ *[]string) (assistant.ToolResult, error) {
+		mistakeIndex := -1
+		for index := range state.SavedMistakes {
+			if state.SavedMistakes[index].ID == command.MistakeID {
+				mistakeIndex = index
+				break
+			}
+		}
+		if mistakeIndex < 0 {
+			return assistant.ToolResult{}, fmt.Errorf("review: saved mistake %q not found", command.MistakeID)
+		}
+		answer := strings.TrimSpace(command.AnswerText)
+		if wordCount(answer) < 8 {
+			return assistant.ToolResult{}, fmt.Errorf("review: repractice answer is too short")
+		}
+		mistake := state.SavedMistakes[mistakeIndex]
+		now := time.Now().UTC()
+		note := repracticeNote(mistake, answer)
+		result = assistant.MistakeRepracticeResult{
+			ID:             fmt.Sprintf("repractice-%s-%d", stableIDPart(mistake.ID), now.UnixNano()),
+			MistakeID:      mistake.ID,
+			SessionID:      mistake.SessionID,
+			QuestionIndex:  mistake.QuestionIndex,
+			QuestionText:   mistake.QuestionText,
+			OriginalAnswer: mistake.OriginalAnswer,
+			NewAnswer:      answer,
+			Feedback:       note,
+			Summary:        note.Message,
+			CreatedAt:      now,
+		}
+		state.RepracticeResults = append(state.RepracticeResults, result)
+		state.SavedMistakes[mistakeIndex].Status = "practiced"
+		state.SavedMistakes[mistakeIndex].LatestRepracticeID = result.ID
+		state.SavedMistakes[mistakeIndex].UpdatedAt = now
+		return assistant.ToolResult{}, nil
+	})
+	return result, err
+}
+
 type reviewSource struct {
 	SessionID        string
 	TargetRole       string
@@ -195,6 +346,94 @@ type reviewSource struct {
 	Answers          []string
 	CandidateProfile assistant.CandidateProfile
 	Active           bool
+}
+
+func sessionByID(state assistant.RuntimeSnapshot, answers []string, sessionID string) (assistant.InterviewSession, bool) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return assistant.InterviewSession{}, false
+	}
+	if sessionID == state.CurrentSessionID {
+		return assistant.InterviewSession{
+			ID: sessionID, TargetRole: state.TargetRole, Interviewer: state.Interviewer,
+			Status: "in_progress", MaxTurns: state.MaxTurns, DurationMinutes: state.DurationMinutes,
+			CompletedTurns: state.CompletedQuestionCount, StartedAt: state.StartedAt,
+			Questions: append([]string(nil), state.Questions...), Answers: cleanedAnswers(answers),
+		}, true
+	}
+	for _, session := range state.Sessions {
+		if session.ID != sessionID {
+			continue
+		}
+		cloned := session
+		cloned.Questions = append([]string(nil), session.Questions...)
+		cloned.Answers = append([]string(nil), session.Answers...)
+		return cloned, true
+	}
+	return assistant.InterviewSession{}, false
+}
+
+func savedMistakeByID(mistakes []assistant.SavedMistake, id string) (assistant.SavedMistake, bool) {
+	id = strings.TrimSpace(id)
+	for _, mistake := range mistakes {
+		if mistake.ID == id {
+			return mistake, true
+		}
+	}
+	return assistant.SavedMistake{}, false
+}
+
+func repracticesForMistake(results []assistant.MistakeRepracticeResult, mistakeID string) []assistant.MistakeRepracticeResult {
+	items := make([]assistant.MistakeRepracticeResult, 0)
+	for _, result := range results {
+		if result.MistakeID == mistakeID {
+			items = append(items, result)
+		}
+	}
+	return items
+}
+
+func mistakeCardFromState(mistake assistant.SavedMistake, results []assistant.MistakeRepracticeResult) assistant.MistakeCard {
+	card := assistant.MistakeCard{
+		MistakeID: mistake.ID, SessionID: mistake.SessionID, QuestionIndex: mistake.QuestionIndex,
+		TargetRole: mistake.TargetRole, QuestionText: compactText(mistake.QuestionText, 120),
+		OriginalAnswer: compactText(mistake.OriginalAnswer, 140), Status: mistake.Status,
+		CreatedAt: mistake.CreatedAt,
+	}
+	for _, result := range results {
+		if result.ID == mistake.LatestRepracticeID || result.MistakeID == mistake.ID {
+			card.LatestSummary = compactText(result.Summary, 120)
+		}
+	}
+	return card
+}
+
+func repracticeNote(mistake assistant.SavedMistake, answer string) assistant.ReviewNote {
+	originalWords := wordCount(mistake.OriginalAnswer)
+	newWords := wordCount(answer)
+	lower := strings.ToLower(answer)
+	message := "这次复练回答已经形成了可点评的英文材料。"
+	suggestion := "继续把回答压到清晰的背景、行动、结果三段，并补一个量化结果。"
+	noteType := "improvement"
+	if newWords < originalWords {
+		message = "这次回答比原回答更短，信息密度可能还不够。"
+		suggestion = "先保留原回答中的有效信息，再补充你具体做了什么和结果。"
+		noteType = "still_weak"
+	} else if countAny(lower, []string{"situation", "action", "result", "because", "therefore", "improved", "reduced", "increased"}) >= 2 {
+		message = "这次复练比原回答更有结构，已经开始补充行动或结果线索。"
+		suggestion = "下一步可以把结果说得更具体，例如影响范围、指标或面试官能追问的细节。"
+	}
+	if englishRatio(answer) < 0.5 {
+		message = "这次复练仍然缺少足够英文表达证据。"
+		suggestion = "请用 3 到 5 句完整英文重新回答，暂时不要混入中文解释。"
+		noteType = "evidence_gap"
+	}
+	return assistant.ReviewNote{
+		Type:       noteType,
+		Message:    message,
+		Evidence:   compactText(answer, 180),
+		Suggestion: suggestion,
+	}
 }
 
 func reviewSourceFromState(state assistant.RuntimeSnapshot, answers []string) reviewSource {

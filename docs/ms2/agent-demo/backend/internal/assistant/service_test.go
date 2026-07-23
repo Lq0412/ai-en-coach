@@ -457,6 +457,53 @@ func TestTurnLimitCompletesSessionWithReview(t *testing.T) {
 	}
 }
 
+func TestPracticeHistoryIntentAppendsClickableHistoryCards(t *testing.T) {
+	service, store, tools := newRuntime()
+	seedAssistantCompletedSession(t, tools, "session-history-card", "AI Application Developer")
+
+	if _, err := service.StartTask(context.Background(), assistant.StartTaskCommand{
+		ActorUserID:    assistant.DemoUserID,
+		ThreadID:       assistant.DemoThreadID,
+		UserMessage:    "帮我查一下我最近面试过哪些面试",
+		IdempotencyKey: "history-cards",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := store.Snapshot(tools.State())
+	last := snapshot.Messages[len(snapshot.Messages)-1]
+	if last.Kind != "interview_history_cards" || last.History == nil || len(last.History.Items) != 1 {
+		t.Fatalf("missing history cards: %#v", last)
+	}
+	if last.History.Items[0].SessionID != "session-history-card" {
+		t.Fatalf("unexpected history card: %#v", last.History.Items[0])
+	}
+}
+
+func TestSavedMistakeIntentAppendsClickableMistakeCards(t *testing.T) {
+	service, store, tools := newRuntime()
+	seedAssistantCompletedSession(t, tools, "session-mistake-card", "AI Application Developer")
+	if _, err := tools.SaveReviewMistake("session-mistake-card", 0); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := service.StartTask(context.Background(), assistant.StartTaskCommand{
+		ActorUserID:    assistant.DemoUserID,
+		ThreadID:       assistant.DemoThreadID,
+		UserMessage:    "帮我看看我最近几道错题",
+		IdempotencyKey: "mistake-cards",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	snapshot := store.Snapshot(tools.State())
+	last := snapshot.Messages[len(snapshot.Messages)-1]
+	if last.Kind != "mistake_cards" || last.Mistakes == nil || len(last.Mistakes.Items) != 1 {
+		t.Fatalf("missing mistake cards: %#v", last)
+	}
+	if last.Mistakes.Items[0].SessionID != "session-mistake-card" {
+		t.Fatalf("unexpected mistake card: %#v", last.Mistakes.Items[0])
+	}
+}
+
 func TestInterviewQuestionGenerationReceivesDialogueHistory(t *testing.T) {
 	store := assistant.NewMemoryConversationStore()
 	generator := &contextCaptureGenerator{}
@@ -677,5 +724,25 @@ func TestStartTaskIsIdempotent(t *testing.T) {
 	snapshot := store.Snapshot(tools.State())
 	if len(snapshot.TaskRuns) != 1 || len(snapshot.ToolCalls) != 1 {
 		t.Fatalf("idempotent request duplicated state: %#v", snapshot)
+	}
+}
+
+func seedAssistantCompletedSession(t *testing.T, tools *assistant.DemoState, id, role string) {
+	t.Helper()
+	_, err := tools.Transact(func(snapshot *assistant.RuntimeSnapshot, _ *[]string) (assistant.ToolResult, error) {
+		startedAt := time.Now().UTC().Add(-time.Hour)
+		endedAt := startedAt.Add(12 * time.Minute)
+		snapshot.Sessions = append(snapshot.Sessions, assistant.InterviewSession{
+			ID: id, TargetRole: role, Interviewer: "Senior Hiring Manager",
+			Status: "completed", MaxTurns: 10, DurationMinutes: 15,
+			CompletedTurns: 1, StartedAt: startedAt, EndedAt: &endedAt,
+			Questions: []string{"Tell me about a project where you used AI."},
+			Answers:   []string{"I built an AI workflow and improved response quality by measuring review outcomes."},
+			Feedback:  "本次回答有项目背景，可以继续补充技术取舍。",
+		})
+		return assistant.ToolResult{}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

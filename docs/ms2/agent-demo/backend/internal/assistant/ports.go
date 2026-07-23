@@ -78,6 +78,11 @@ type DemoReadAPI interface {
 	ListInterviewSessions() []InterviewSessionSummary
 	GetInterviewSession(string) (InterviewSession, error)
 	DeleteInterviewSession(string) error
+	SaveReviewMistake(string, int) (SavedMistake, error)
+	ListSavedMistakeCards() []MistakeCard
+	GetSavedMistakeContext(string) (SavedMistakeContext, error)
+	SubmitSavedMistakeRepractice(string, string) (MistakeRepracticeResult, error)
+	SubmitSavedMistakeRepracticeWithFeedback(string, string, ReviewNote) (MistakeRepracticeResult, error)
 }
 
 type CandidatePreparationAPI interface {
@@ -105,6 +110,10 @@ type ConversationResponder interface {
 
 type LanguageAssistanceGenerator interface {
 	GenerateLanguageAssistance(context.Context, LanguageAssistanceInput) (LanguageAssistanceResult, error)
+}
+
+type RepracticeFeedbackGenerator interface {
+	GenerateRepracticeFeedback(context.Context, RepracticeFeedbackInput) (ReviewNote, error)
 }
 
 type LanguageAssistanceInput struct {
@@ -158,6 +167,13 @@ type AnswerCoachInput struct {
 type AnswerCoach struct {
 	Question string `json:"question"`
 	Answer   string `json:"answer"`
+}
+
+type RepracticeFeedbackInput struct {
+	Mistake       SavedMistake
+	Session       InterviewSession
+	QuestionIndex int
+	NewAnswer     string
 }
 
 type AgentContentGenerator interface {

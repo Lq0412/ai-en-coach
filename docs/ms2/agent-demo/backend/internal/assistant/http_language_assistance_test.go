@@ -32,7 +32,7 @@ func TestLanguageAssistanceHTTPResponse(t *testing.T) {
 	}}
 	handler := NewHTTPHandler(
 		log.New(io.Discard, "", 0),
-		nil, nil, nil, nil, nil, stub, nil, nil, nil,
+		nil, nil, nil, nil, nil, stub, nil, nil, nil, nil,
 	)
 	mux := http.NewServeMux()
 	handler.Register(mux)
@@ -62,7 +62,7 @@ func TestLanguageAssistanceHTTPResponse(t *testing.T) {
 func TestLanguageAssistanceHTTPValidatesOperationAndText(t *testing.T) {
 	handler := NewHTTPHandler(
 		log.New(io.Discard, "", 0),
-		nil, nil, nil, nil, nil, &languageAssistanceStub{}, nil, nil, nil,
+		nil, nil, nil, nil, nil, &languageAssistanceStub{}, nil, nil, nil, nil,
 	)
 	mux := http.NewServeMux()
 	handler.Register(mux)

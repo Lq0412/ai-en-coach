@@ -23,7 +23,7 @@ func TestAnswerCoachHTTPResponse(t *testing.T) {
 	handler := NewHTTPHandler(
 		log.New(io.Discard, "", 0), nil, nil, nil, nil,
 		answerCoachStub{answer: AnswerCoach{Question: "Why this role?", Answer: "I enjoy solving practical backend problems."}},
-		nil, nil, nil, nil,
+		nil, nil, nil, nil, nil,
 	)
 	mux := http.NewServeMux()
 	handler.Register(mux)
@@ -45,7 +45,7 @@ func TestAnswerCoachHTTPResponse(t *testing.T) {
 func TestAnswerCoachHTTPRejectsMissingActiveQuestion(t *testing.T) {
 	handler := NewHTTPHandler(
 		log.New(io.Discard, "", 0), nil, nil, nil, nil,
-		answerCoachStub{err: ErrNoActiveQuestion}, nil, nil, nil, nil,
+		answerCoachStub{err: ErrNoActiveQuestion}, nil, nil, nil, nil, nil,
 	)
 	mux := http.NewServeMux()
 	handler.Register(mux)

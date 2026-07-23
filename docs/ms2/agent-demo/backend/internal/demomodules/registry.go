@@ -101,6 +101,37 @@ func (r *Registry) Execute(ctx context.Context, invocation assistant.ToolInvocat
 			})
 		}
 		return output(map[string]any{"items": mapped}, err)
+	case "review.save_mistake":
+		value, err := r.review.SaveMistake(ctx, review.SaveMistakeCommand{
+			SessionID:     stringArgument(invocation.Arguments["practice_session_id"]),
+			QuestionIndex: intArgument(invocation.Arguments["question_index"]),
+		})
+		return output(map[string]any{"mistake": savedMistakeOutput(value), "card": mistakeCardOutput(mistakeCardFromSaved(value))}, err)
+	case "review.list_mistakes":
+		items, err := r.review.ListMistakes(ctx, review.ListMistakesQuery{
+			Limit:  intArgument(invocation.Arguments["limit"]),
+			Status: stringArgument(invocation.Arguments["status"]),
+		})
+		return output(map[string]any{"items": mistakeCardsOutput(items)}, err)
+	case "review.get_mistake_context":
+		value, err := r.review.GetMistakeContext(ctx, review.MistakeContextQuery{MistakeID: stringArgument(invocation.Arguments["mistake_id"])})
+		return output(map[string]any{
+			"mistake": savedMistakeOutput(value.Mistake),
+			"session": map[string]any{
+				"id": value.Session.ID, "target_role": value.Session.TargetRole,
+				"interviewer": value.Session.Interviewer, "status": value.Session.Status,
+				"completed_turns": value.Session.CompletedTurns, "max_turns": value.Session.MaxTurns,
+				"questions": value.Session.Questions, "answers": value.Session.Answers,
+			},
+			"question_index": value.QuestionIndex,
+			"repractices":    repracticeResultsOutput(value.Repractices),
+		}, err)
+	case "review.submit_mistake_repractice":
+		value, err := r.review.SubmitMistakeRepractice(ctx, review.SubmitMistakeRepracticeCommand{
+			MistakeID:  stringArgument(invocation.Arguments["mistake_id"]),
+			AnswerText: fmt.Sprint(invocation.Arguments["answer_text"]),
+		})
+		return output(map[string]any{"repractice": repracticeResultOutput(value), "summary": value.Summary}, err)
 	default:
 		return assistant.ToolResult{}, fmt.Errorf("unregistered tool: %s", invocation.ToolName)
 	}
@@ -167,6 +198,64 @@ func repracticeTargetsOutput(items []review.RepracticeTarget) []map[string]any {
 	return mapped
 }
 
+func savedMistakeOutput(item assistant.SavedMistake) map[string]any {
+	return map[string]any{
+		"id": item.ID, "practice_session_id": item.SessionID,
+		"question_index": item.QuestionIndex, "target_role": item.TargetRole,
+		"question_text": item.QuestionText, "original_answer": item.OriginalAnswer,
+		"source_review_id": item.SourceReviewID, "status": item.Status,
+		"latest_repractice_id": item.LatestRepracticeID, "created_at": item.CreatedAt,
+		"updated_at": item.UpdatedAt,
+	}
+}
+
+func mistakeCardFromSaved(item assistant.SavedMistake) assistant.MistakeCard {
+	return assistant.MistakeCard{
+		MistakeID: item.ID, SessionID: item.SessionID, QuestionIndex: item.QuestionIndex,
+		TargetRole: item.TargetRole, QuestionText: item.QuestionText,
+		OriginalAnswer: item.OriginalAnswer, Status: item.Status, CreatedAt: item.CreatedAt,
+	}
+}
+
+func mistakeCardsOutput(items []assistant.MistakeCard) []map[string]any {
+	mapped := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		mapped = append(mapped, mistakeCardOutput(item))
+	}
+	return mapped
+}
+
+func mistakeCardOutput(item assistant.MistakeCard) map[string]any {
+	return map[string]any{
+		"mistake_id": item.MistakeID, "practice_session_id": item.SessionID,
+		"question_index": item.QuestionIndex, "target_role": item.TargetRole,
+		"question_text": item.QuestionText, "original_answer": item.OriginalAnswer,
+		"status": item.Status, "created_at": item.CreatedAt,
+		"latest_summary": item.LatestSummary,
+	}
+}
+
+func repracticeResultsOutput(items []assistant.MistakeRepracticeResult) []map[string]any {
+	mapped := make([]map[string]any, 0, len(items))
+	for _, item := range items {
+		mapped = append(mapped, repracticeResultOutput(item))
+	}
+	return mapped
+}
+
+func repracticeResultOutput(item assistant.MistakeRepracticeResult) map[string]any {
+	return map[string]any{
+		"id": item.ID, "mistake_id": item.MistakeID,
+		"practice_session_id": item.SessionID, "question_index": item.QuestionIndex,
+		"question_text": item.QuestionText, "original_answer": item.OriginalAnswer,
+		"new_answer": item.NewAnswer, "summary": item.Summary, "created_at": item.CreatedAt,
+		"feedback": map[string]any{
+			"type": item.Feedback.Type, "message": item.Feedback.Message,
+			"evidence": item.Feedback.Evidence, "suggestion": item.Feedback.Suggestion,
+		},
+	}
+}
+
 func conversationMessages(value any) ([]conversation.ContextMessage, error) {
 	messages, ok := value.([]assistant.ContextMessage)
 	if !ok || len(messages) == 0 {
@@ -188,4 +277,11 @@ func intArgument(value any) int {
 	default:
 		return 0
 	}
+}
+
+func stringArgument(value any) string {
+	if value == nil {
+		return ""
+	}
+	return strings.TrimSpace(fmt.Sprint(value))
 }

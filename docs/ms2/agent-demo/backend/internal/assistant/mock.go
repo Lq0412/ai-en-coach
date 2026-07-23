@@ -49,7 +49,13 @@ func (p *MockPlanner) Plan(_ context.Context, request PlanRequest) (Plan, error)
 		}, nil
 	}
 
-	if strings.Contains(text, "历史") || strings.Contains(text, "history") || strings.Contains(text, "记录") {
+	if strings.Contains(text, "错题") || strings.Contains(text, "mistake") || strings.Contains(text, "复练") {
+		return Plan{
+			Intent: "view_saved_mistakes",
+			Steps:  []PlanStep{{ToolName: "review.list_mistakes", Arguments: map[string]any{"limit": 3, "status": ""}}},
+		}, nil
+	}
+	if strings.Contains(text, "历史") || strings.Contains(text, "history") || strings.Contains(text, "记录") || strings.Contains(text, "最近面试") {
 		return Plan{
 			Intent: "view_practice_history",
 			Steps:  []PlanStep{{ToolName: "review.list_history", Arguments: map[string]any{"limit": 3}}},
@@ -110,6 +116,8 @@ type MockDomainState struct {
 	Deadline               time.Time
 	Questions              []string
 	Sessions               []InterviewSession
+	SavedMistakes          []SavedMistake
+	RepracticeResults      []MistakeRepracticeResult
 	CandidateProfile       CandidateProfile
 	Attachments            []Attachment
 	Resumes                []ResumeDocument
@@ -148,6 +156,8 @@ func (r *DemoState) State() MockDomainState {
 	state := r.state
 	state.Questions = append([]string(nil), r.state.Questions...)
 	state.Sessions = cloneInterviewSessions(r.state.Sessions)
+	state.SavedMistakes = cloneSavedMistakes(r.state.SavedMistakes)
+	state.RepracticeResults = cloneMistakeRepracticeResults(r.state.RepracticeResults)
 	state.Attachments = cloneAttachments(r.state.Attachments)
 	state.Resumes = cloneResumes(r.state.Resumes)
 	state.CandidateProfile.Skills = append([]string(nil), r.state.CandidateProfile.Skills...)
@@ -222,21 +232,152 @@ func (r *DemoState) DeleteInterviewSession(id string) error {
 			r.state.Questions = nil
 			r.answers = nil
 		}
+		r.removeMistakesForSessionLocked(session.ID)
 		return r.persistLocked()
 	}
 	return ErrNotFound
+}
+
+func (r *DemoState) SaveReviewMistake(sessionID string, questionIndex int) (SavedMistake, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	session, ok := r.interviewSessionLocked(sessionID)
+	if !ok {
+		return SavedMistake{}, ErrNotFound
+	}
+	if questionIndex < 0 || questionIndex >= len(session.Questions) || questionIndex >= len(session.Answers) {
+		return SavedMistake{}, fmt.Errorf("assistant: question index %d is unavailable", questionIndex)
+	}
+	answer := strings.TrimSpace(session.Answers[questionIndex])
+	if answer == "" {
+		return SavedMistake{}, errors.New("assistant: this question has no saved answer")
+	}
+	for _, mistake := range r.state.SavedMistakes {
+		if mistake.SessionID == session.ID && mistake.QuestionIndex == questionIndex && mistake.Status != "dismissed" {
+			return mistake, nil
+		}
+	}
+	now := time.Now().UTC()
+	mistake := SavedMistake{
+		ID:             fmt.Sprintf("saved-mistake-%s-q%d", session.ID, questionIndex+1),
+		SessionID:      session.ID,
+		QuestionIndex:  questionIndex,
+		TargetRole:     session.TargetRole,
+		QuestionText:   strings.TrimSpace(session.Questions[questionIndex]),
+		OriginalAnswer: answer,
+		SourceReviewID: "review-" + session.ID,
+		Status:         "pending",
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+	r.state.SavedMistakes = append(r.state.SavedMistakes, mistake)
+	if err := r.persistLocked(); err != nil {
+		return SavedMistake{}, err
+	}
+	return mistake, nil
+}
+
+func (r *DemoState) ListSavedMistakeCards() []MistakeCard {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	cards := make([]MistakeCard, 0, len(r.state.SavedMistakes))
+	for index := len(r.state.SavedMistakes) - 1; index >= 0; index-- {
+		cards = append(cards, mistakeCardLocked(r.state.SavedMistakes[index], r.state.RepracticeResults))
+	}
+	return cards
+}
+
+func (r *DemoState) GetSavedMistakeContext(id string) (SavedMistakeContext, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, mistake := range r.state.SavedMistakes {
+		if mistake.ID != id {
+			continue
+		}
+		session, ok := r.interviewSessionLocked(mistake.SessionID)
+		if !ok {
+			return SavedMistakeContext{}, ErrNotFound
+		}
+		return SavedMistakeContext{
+			Mistake:       mistake,
+			Session:       session,
+			Repractices:   repracticeResultsLocked(r.state.RepracticeResults, mistake.ID),
+			QuestionIndex: mistake.QuestionIndex,
+		}, nil
+	}
+	return SavedMistakeContext{}, ErrNotFound
+}
+
+func (r *DemoState) SubmitSavedMistakeRepractice(id, answer string) (MistakeRepracticeResult, error) {
+	return r.SubmitSavedMistakeRepracticeWithFeedback(id, answer, ReviewNote{})
+}
+
+func (r *DemoState) SubmitSavedMistakeRepracticeWithFeedback(id, answer string, note ReviewNote) (MistakeRepracticeResult, error) {
+	answer = strings.TrimSpace(answer)
+	if answer == "" {
+		return MistakeRepracticeResult{}, errors.New("assistant: repractice answer is required")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	mistakeIndex := -1
+	for index := range r.state.SavedMistakes {
+		if r.state.SavedMistakes[index].ID == id {
+			mistakeIndex = index
+			break
+		}
+	}
+	if mistakeIndex < 0 {
+		return MistakeRepracticeResult{}, ErrNotFound
+	}
+	mistake := r.state.SavedMistakes[mistakeIndex]
+	now := time.Now().UTC()
+	if strings.TrimSpace(note.Message) == "" {
+		note = repracticeReviewNote(mistake, answer)
+	}
+	note.Message = strings.TrimSpace(note.Message)
+	note.Suggestion = strings.TrimSpace(note.Suggestion)
+	note.Evidence = strings.TrimSpace(note.Evidence)
+	note.Type = strings.TrimSpace(note.Type)
+	if note.Type == "" {
+		note.Type = "improvement"
+	}
+	result := MistakeRepracticeResult{
+		ID:             fmt.Sprintf("repractice-%s-%d", mistake.ID, now.UnixNano()),
+		MistakeID:      mistake.ID,
+		SessionID:      mistake.SessionID,
+		QuestionIndex:  mistake.QuestionIndex,
+		QuestionText:   mistake.QuestionText,
+		OriginalAnswer: mistake.OriginalAnswer,
+		NewAnswer:      answer,
+		Feedback:       note,
+		Summary:        note.Message,
+		CreatedAt:      now,
+	}
+	r.state.RepracticeResults = append(r.state.RepracticeResults, result)
+	r.state.SavedMistakes[mistakeIndex].Status = "practiced"
+	r.state.SavedMistakes[mistakeIndex].LatestRepracticeID = result.ID
+	r.state.SavedMistakes[mistakeIndex].UpdatedAt = now
+	if err := r.persistLocked(); err != nil {
+		return MistakeRepracticeResult{}, err
+	}
+	return result, nil
 }
 
 func (r *DemoState) Reset() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	sessions := cloneInterviewSessions(r.state.Sessions)
+	mistakes := cloneSavedMistakes(r.state.SavedMistakes)
+	repracticeResults := cloneMistakeRepracticeResults(r.state.RepracticeResults)
 	attachments := cloneAttachments(r.state.Attachments)
 	resumes := cloneResumes(r.state.Resumes)
 	profile := r.state.CandidateProfile
 	profile.Skills = append([]string(nil), profile.Skills...)
 	profile.Experiences = append([]string(nil), profile.Experiences...)
-	r.state = MockDomainState{Sessions: sessions, CandidateProfile: profile, Attachments: attachments, Resumes: resumes, ActiveResumeID: r.state.ActiveResumeID}
+	r.state = MockDomainState{
+		Sessions: sessions, SavedMistakes: mistakes, RepracticeResults: repracticeResults,
+		CandidateProfile: profile, Attachments: attachments, Resumes: resumes, ActiveResumeID: r.state.ActiveResumeID,
+	}
 	r.answers = nil
 	_ = r.persistLocked()
 }
@@ -767,6 +908,96 @@ func cloneInterviewSessions(value []InterviewSession) []InterviewSession {
 		result[index].Answers = append([]string(nil), session.Answers...)
 	}
 	return result
+}
+
+func cloneSavedMistakes(value []SavedMistake) []SavedMistake {
+	return append([]SavedMistake(nil), value...)
+}
+
+func cloneMistakeRepracticeResults(value []MistakeRepracticeResult) []MistakeRepracticeResult {
+	return append([]MistakeRepracticeResult(nil), value...)
+}
+
+func (r *DemoState) interviewSessionLocked(id string) (InterviewSession, bool) {
+	if id == r.state.CurrentSessionID && r.state.ActiveQuestion != "" {
+		return InterviewSession{
+			ID: id, TargetRole: r.state.TargetRole, Interviewer: r.state.Interviewer,
+			Status: "in_progress", MaxTurns: r.state.MaxTurns, DurationMinutes: r.state.DurationMinutes,
+			CompletedTurns: r.state.CompletedQuestionCount, StartedAt: r.state.StartedAt,
+			Questions: append([]string(nil), r.state.Questions...), Answers: append([]string(nil), r.answers...),
+		}, true
+	}
+	for _, session := range r.state.Sessions {
+		if session.ID == id {
+			cloned := cloneInterviewSessions([]InterviewSession{session})
+			return cloned[0], true
+		}
+	}
+	return InterviewSession{}, false
+}
+
+func (r *DemoState) removeMistakesForSessionLocked(sessionID string) {
+	keptMistakes := r.state.SavedMistakes[:0]
+	removed := map[string]bool{}
+	for _, mistake := range r.state.SavedMistakes {
+		if mistake.SessionID == sessionID {
+			removed[mistake.ID] = true
+			continue
+		}
+		keptMistakes = append(keptMistakes, mistake)
+	}
+	r.state.SavedMistakes = keptMistakes
+	keptResults := r.state.RepracticeResults[:0]
+	for _, result := range r.state.RepracticeResults {
+		if removed[result.MistakeID] {
+			continue
+		}
+		keptResults = append(keptResults, result)
+	}
+	r.state.RepracticeResults = keptResults
+}
+
+func mistakeCardLocked(mistake SavedMistake, results []MistakeRepracticeResult) MistakeCard {
+	card := MistakeCard{
+		MistakeID: mistake.ID, SessionID: mistake.SessionID, QuestionIndex: mistake.QuestionIndex,
+		TargetRole: mistake.TargetRole, QuestionText: compactText(mistake.QuestionText, 120),
+		OriginalAnswer: compactText(mistake.OriginalAnswer, 140), Status: mistake.Status,
+		CreatedAt: mistake.CreatedAt,
+	}
+	for _, result := range results {
+		if result.ID == mistake.LatestRepracticeID || result.MistakeID == mistake.ID {
+			card.LatestSummary = compactText(result.Summary, 120)
+		}
+	}
+	return card
+}
+
+func repracticeResultsLocked(results []MistakeRepracticeResult, mistakeID string) []MistakeRepracticeResult {
+	items := make([]MistakeRepracticeResult, 0)
+	for _, result := range results {
+		if result.MistakeID == mistakeID {
+			items = append(items, result)
+		}
+	}
+	return items
+}
+
+func repracticeReviewNote(mistake SavedMistake, answer string) ReviewNote {
+	message := "这次复练回答已经形成了可点评的英文材料。"
+	suggestion := "继续把回答压到清晰的背景、行动、结果三段，并补一个量化结果。"
+	noteType := "improvement"
+	if len(strings.Fields(answer)) < len(strings.Fields(mistake.OriginalAnswer)) {
+		message = "这次回答比原回答更短，信息密度可能还不够。"
+		suggestion = "先保留原回答中的有效信息，再补充你具体做了什么和结果。"
+		noteType = "still_weak"
+	}
+	lower := strings.ToLower(answer)
+	if strings.Contains(lower, "situation") || strings.Contains(lower, "action") || strings.Contains(lower, "result") ||
+		strings.Contains(lower, "improved") || strings.Contains(lower, "reduced") || strings.Contains(lower, "increased") {
+		message = "这次复练比原回答更有结构，已经开始补充行动或结果线索。"
+		suggestion = "下一步可以把结果说得更具体，例如影响范围、指标或面试官能追问的细节。"
+	}
+	return ReviewNote{Type: noteType, Message: message, Evidence: compactText(answer, 180), Suggestion: suggestion}
 }
 
 func cloneAttachments(value []Attachment) []Attachment {

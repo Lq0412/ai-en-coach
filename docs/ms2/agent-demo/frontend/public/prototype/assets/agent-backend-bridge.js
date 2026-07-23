@@ -61,6 +61,11 @@
   let interviewHistorySessions = [];
   let selectedInterviewSessionDetail = null;
   let interviewHistoryDeleteConfirm = false;
+  let savedMistakeCards = [];
+  let selectedMistakeContext = null;
+  let mistakeAnswerDraft = "";
+  let mistakeSubmitting = false;
+  let mistakeTextInputVisible = false;
   let practiceTranscriptVisible = false;
   let practiceTextInputVisible = false;
   let practiceCoachVisible = false;
@@ -129,11 +134,15 @@
     return Boolean(recordingStream);
   }
 
+  function voiceAnswerRouteActive() {
+    return activeRealRoute === "practice" || activeRealRoute === "mistake-practice";
+  }
+
   function conversationVoiceState() {
     if (isRecording()) return { key: "listening", label: "正在听你说话" };
     if (speaking) return { key: "speaking", label: "正在说话" };
     if (loading) return { key: "thinking", label: streamingText ? "正在组织表达" : "正在理解" };
-    return { key: "ready", label: activeRealRoute === "practice" ? "等待你的回答" : "随时可以开始说话" };
+    return { key: "ready", label: voiceAnswerRouteActive() ? "等待你的回答" : "随时可以开始说话" };
   }
 
   function taskRuns(intent) {
@@ -363,6 +372,26 @@
   }
 
   function standardConversationMessageHTML(message, archived = false) {
+    if (message.kind === "interview_history_cards" && message.history) {
+      return `<article class="real-message assistant">
+        <img src="../assets/speakup-agent.png" alt="">
+        <div class="real-message-copy">
+          <header><b>SpeakUp</b></header>
+          <p>${escapeHTML(message.Content || "最近的模拟面试")}</p>
+          <div class="real-chat-card-list">${(message.history.items || []).map(interviewHistoryMessageCardHTML).join("")}</div>
+        </div>
+      </article>`;
+    }
+    if (message.kind === "mistake_cards" && message.mistakes) {
+      return `<article class="real-message assistant">
+        <img src="../assets/speakup-agent.png" alt="">
+        <div class="real-message-copy">
+          <header><b>SpeakUp</b></header>
+          <p>${escapeHTML(message.Content || "最近的错题")}</p>
+          <div class="real-chat-card-list">${(message.mistakes.items || []).map(mistakeMessageCardHTML).join("")}</div>
+        </div>
+      </article>`;
+    }
     if (message.Role === "user") {
       const optimisticStatus = message.optimisticStatus || "";
       const optimisticLabel = {
@@ -460,6 +489,29 @@
       </article>`;
     }
     return standardConversationMessageHTML(message);
+  }
+
+  function interviewHistoryMessageCardHTML(item) {
+    return `<button class="history-card interview real-chat-history-card" data-real-action="report" data-session-id="${escapeHTML(item.sessionId)}">
+      <span class="history-art interview-icon">◎</span>
+      <span class="history-copy">
+        <small>${escapeHTML(formatHistoryDate(item.startedAt, true))}</small>
+        <strong>${escapeHTML(item.targetRole || "模拟面试")}</strong>
+        <em><span>${escapeHTML(item.status || "completed")}</span><span>${escapeHTML(item.completedTurns || 0)} 个有效回答</span></em>
+      </span>
+      <span class="history-open">详情</span>
+    </button>`;
+  }
+
+  function mistakeMessageCardHTML(item) {
+    return `<button class="mistake-recent-row latest-mistake-source real-chat-mistake-card" data-real-action="open-mistake" data-mistake-id="${escapeHTML(item.mistakeId)}">
+      <span>
+        <small>${escapeHTML(item.targetRole || "模拟面试")} · Q${Number(item.questionIndex || 0) + 1}</small>
+        <strong>${escapeHTML(item.questionText || "已保存的复练题")}</strong>
+        <em>${escapeHTML(item.latestSummary || item.status || "待复练")}</em>
+      </span>
+      <i>›</i>
+    </button>`;
   }
 
   function mainConversationMessages(messages) {
@@ -721,7 +773,7 @@
         <button data-real-action="speak-text" data-text="${escapeHTML(feedback)}">▶ 朗读反馈</button>
       </section>
       ${session?.startedAt ? `<section class="real-history-metadata"><span><small>开始时间</small><b>${escapeHTML(formatHistoryDate(session.startedAt, true))}</b></span><span><small>结束时间</small><b>${escapeHTML(session.endedAt ? formatHistoryDate(session.endedAt, true) : "尚未结束")}</b></span></section>` : ""}
-      ${questions.length ? `<section class="real-history-transcript"><div class="real-history-section-head"><small>真实问答记录</small><b>${answers.length} 个有效回答</b></div>${questions.map((question, index) => `<article><header><span>Q${index + 1}</span><b>${escapeHTML(question)}</b></header>${answers[index] ? `<div><span>A${index + 1}</span><p>${escapeHTML(answers[index])}</p></div>` : `<div class="unanswered"><span>—</span><p>本题未回答，不计入有效 Turn</p></div>`}</article>`).join("")}</section>` : ""}
+      ${questions.length ? `<section class="real-history-transcript"><div class="real-history-section-head"><small>真实问答记录</small><b>${answers.length} 个有效回答</b></div>${questions.map((question, index) => reportQuestionHTML(session, question, answers[index], index)).join("")}</section>` : ""}
       ${realErrorHTML()}
       ${interviewHistoryDeleteConfirm && session ? `<section class="real-history-delete-confirm"><b>删除这场面试历史？</b><p>问题、回答和反馈将永久删除，且无法恢复。</p><div><button class="secondary" data-real-action="cancel-delete-interview-history">取消</button><button class="danger" data-real-action="confirm-delete-interview-history" data-session-id="${escapeHTML(session.id)}">确认删除</button></div></section>` : ""}
       <div class="real-report-actions">
@@ -729,6 +781,17 @@
         ${!isActive && session?.id ? `<button class="danger" data-real-action="request-delete-interview-history">删除记录</button>` : ""}
       </div>
     </div>`;
+  }
+
+  function reportQuestionHTML(session, question, answer, index) {
+    const saved = savedMistakeCards.some((item) => item.sessionId === session?.id && Number(item.questionIndex) === index);
+    const button = session?.id && answer
+      ? `<button class="secondary real-save-mistake-btn" data-real-action="save-review-mistake" data-session-id="${escapeHTML(session.id)}" data-question-index="${index}" ${saved ? "disabled" : ""}>${saved ? "已加入错题" : "加入错题"}</button>`
+      : "";
+    return `<article class="${saved ? "real-saved-mistake-source" : ""}">
+      <header><span>Q${index + 1}</span><b>${escapeHTML(question)}</b>${button}</header>
+      ${answer ? `<div><span>A${index + 1}</span><p>${escapeHTML(answer)}</p></div>` : `<div class="unanswered"><span>—</span><p>本题未回答，不计入有效 Turn</p></div>`}
+    </article>`;
   }
 
   function realHistoryView() {
@@ -770,6 +833,114 @@
         : `<div class="empty-state"><b>还没有真实面试计划</b><p>在自由对话中告诉 SpeakUp 你想进行模拟面试。</p><button class="primary btn-wide" data-real-action="back-chat">去找 SpeakUp</button></div>`}
       ${realErrorHTML()}
     </div>`;
+  }
+
+  function realMistakesView() {
+    return `<div class="mistake-redesign">
+      ${topbar("错题", "agent-chat", `<span class="chip">${savedMistakeCards.length} 道</span>`)}
+      <div class="mistake-page-scroll">
+        <section class="mistake-intro">
+          <h1>待复练题目</h1>
+          <p>这里收集你从真实面试报告里手动加入的题目。</p>
+          <button class="mistake-start" data-real-action="back-chat">回到对话</button>
+        </section>
+        <section class="mistake-section">
+          <div class="mistake-section-head"><h2>全部错题</h2><small>${savedMistakeCards.length} 道题</small></div>
+          ${savedMistakeCards.length ? `<div class="mistake-source-list">${savedMistakeCards.map(mistakeListItemHTML).join("")}</div>` : `<p class="mistake-context-note"><b>暂无错题。</b>先完成一次面试，然后在报告页把想复练的问题加入错题。</p>`}
+        </section>
+        ${realErrorHTML()}
+      </div>
+    </div>`;
+  }
+
+  function mistakeListItemHTML(item) {
+    return `<button data-real-action="open-mistake" data-mistake-id="${escapeHTML(item.mistakeId)}">
+      <p><b>${escapeHTML(item.targetRole || "模拟面试")} · Q${Number(item.questionIndex || 0) + 1}</b><small>${escapeHTML(item.questionText || "已保存的题目")}</small></p>
+      <em>${escapeHTML(item.status === "practiced" ? "已复练" : "待复练")}</em>
+      <i>›</i>
+    </button>`;
+  }
+
+  function realMistakeDetailView() {
+    const context = selectedMistakeContext;
+    const mistake = context?.mistake || {};
+    const session = context?.session || {};
+    const questions = session.questions || [];
+    const answers = session.answers || [];
+    const focusIndex = Number(context?.questionIndex ?? mistake.questionIndex ?? 0);
+    return `<div class="mistake-redesign">
+      ${topbar("面试上下文", "mistakes", `<span class="chip">Q${focusIndex + 1}</span>`)}
+      <div class="mistake-page-scroll">
+        <section class="mistake-intro">
+          <h1>${escapeHTML(mistake.targetRole || session.targetRole || "模拟面试")}</h1>
+          <p>先看完整面试上下文。被标记的错题已经高亮，点击它进入同题复练。</p>
+          <button class="mistake-start" data-real-action="practice-saved-mistake">练习标记题</button>
+        </section>
+        ${questions.length ? `<section class="real-history-transcript"><div class="real-history-section-head"><small>整场面试题目</small><b>${answers.length} 个有效回答</b></div>${questions.map((question, index) => mistakeContextQuestionHTML(question, answers[index], index, focusIndex)).join("")}</section>` : `<p class="mistake-context-note">没有找到这场面试的题目记录。</p>`}
+        ${realErrorHTML()}
+      </div>
+    </div>`;
+  }
+
+  function mistakeContextQuestionHTML(question, answer, index, focusIndex) {
+    const active = index === focusIndex;
+    const action = active ? ' data-real-action="practice-saved-mistake"' : "";
+    return `<article class="${active ? "real-saved-mistake-source" : ""}"${action}>
+      <header><span>Q${index + 1}</span><b>${escapeHTML(question)}</b>${active ? "<em>已标记错题</em>" : ""}</header>
+      ${answer ? `<div><span>A${index + 1}</span><p>${escapeHTML(answer)}</p></div>` : `<div class="unanswered"><span>—</span><p>本题未回答</p></div>`}
+    </article>`;
+  }
+
+  function realMistakePracticeView() {
+    const context = selectedMistakeContext;
+    const mistake = context?.mistake || {};
+    const session = context?.session || {};
+    const questions = session.questions || [];
+    const answers = session.answers || [];
+    const focusIndex = Number(context?.questionIndex ?? mistake.questionIndex ?? 0);
+    const latest = [...(context?.repractices || [])].pop();
+    return `<div class="mistake-practice-page">
+      ${topbar("重新回答", "mistake-detail", `<span class="chip">Q${focusIndex + 1}</span>`)}
+      <div class="mistake-practice-scroll">
+        <section class="mistake-voice-question">
+          <small class="mistake-voice-meta">${escapeHTML(mistake.targetRole || session.targetRole || "模拟面试")}</small>
+          <h1>${escapeHTML(mistake.questionText || questions[focusIndex] || "已保存的复练题")}</h1>
+          <p>${escapeHTML(mistake.originalAnswer || answers[focusIndex] || "")}</p>
+        </section>
+        ${mistakePracticeComposerHTML()}
+        ${latest ? `<section class="mistake-voice-feedback"><small>最近一次点评</small><h2>${escapeHTML(latest.summary)}</h2><p>${escapeHTML(latest.feedback?.suggestion || "")}</p></section>` : ""}
+        ${realErrorHTML()}
+      </div>
+      <div class="mistake-practice-actions">
+        <button class="real-practice-secondary ${mistakeTextInputVisible ? "active" : ""}" data-real-action="toggle-mistake-input" aria-label="${mistakeTextInputVisible ? "收起文字输入" : "打开文字输入"}" title="${mistakeTextInputVisible ? "收起文字输入" : "打开文字输入"}"><span aria-hidden="true">⌨</span></button>
+        <button class="mistake-record-action ${isRecording() ? "recording" : ""}" data-real-action="record" aria-label="${isRecording() ? "结束语音回答" : "开始语音回答"}">${isRecording() ? '<span class="mistake-stop-icon"></span>结束回答' : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10"/><path d="M8 9v1a4 4 0 0 0 8 0V9"/><path d="M19 10a7 7 0 0 1-14 0"/><path d="M12 17v4"/><path d="M8 21h8"/></svg>语音回答'}</button>
+      </div>
+    </div>`;
+  }
+
+  function mistakePracticeComposerHTML() {
+    if (isRecording()) {
+      return `<section class="real-practice-recording">
+        <span><i></i><b>${formatRecordingTime(recordingElapsedSeconds)}</b></span>
+        <p>${escapeHTML(liveTranscript || recordingStatus)}</p>
+        <button data-real-action="cancel-record">取消</button>
+      </section>`;
+    }
+    if (!mistakeTextInputVisible) {
+      return `<section class="mistake-voice-prompt">
+        <div class="mistake-voice-wave idle"><i></i><i></i><i></i><i></i><i></i></div>
+        <h2>说出你的新答案</h2>
+        <p>点击底部麦克风开始语音回答，结束后会自动生成本题点评。</p>
+      </section>`;
+    }
+    return `<section class="mistake-spoken-answer">
+      <small>文字输入</small>
+      <textarea class="field" data-mistake-answer placeholder="Type your improved answer here">${escapeHTML(mistakeAnswerDraft)}</textarea>
+      <div class="real-practice-actions">
+        <button class="secondary" data-real-action="toggle-mistake-input">收起</button>
+        <button class="primary" data-real-action="submit-mistake-repractice" data-mistake-id="${escapeHTML(selectedMistakeContext?.mistake?.id)}" ${mistakeSubmitting || !mistakeAnswerDraft.trim() ? "disabled" : ""}>${mistakeSubmitting ? "点评中…" : "提交复练"}</button>
+      </div>
+    </section>`;
   }
 
   function formatFileSize(size) {
@@ -899,12 +1070,16 @@
   function recentConversationHTML() {
     const firstUserMessage = (snapshot?.messages || []).find((item) => item.Role === "user");
     if (!firstUserMessage && !conversationArchives.length) {
-      return '<section class="app-drawer-recent"><small>最近对话</small><p class="real-drawer-empty">暂无对话</p></section>';
+      return `<section class="app-drawer-recent"><small>学习入口</small>
+        <button data-real-action="open-mistakes">错题本<em>${savedMistakeCards.length} 道</em></button>
+      </section><section class="app-drawer-recent"><small>最近对话</small><p class="real-drawer-empty">暂无对话</p></section>`;
     }
     const currentTitle = firstUserMessage
       ? String(firstUserMessage.Content).replace(/\s+/g, " ").slice(0, 18)
       : "";
-    return `<section class="app-drawer-recent"><small>最近对话</small>
+    return `<section class="app-drawer-recent"><small>学习入口</small>
+      <button data-real-action="open-mistakes">错题本<em>${savedMistakeCards.length} 道</em></button>
+    </section><section class="app-drawer-recent"><small>最近对话</small>
       ${firstUserMessage ? `<button class="${selectedConversationArchive ? "" : "active"}" data-real-action="back-chat">${escapeHTML(currentTitle)}${firstUserMessage.Content.length > 18 ? "…" : ""}<em>当前</em></button>` : ""}
       ${conversationArchives.slice(0, 8).map((archive) => `<button class="${selectedConversationArchive?.id === archive.id ? "active" : ""}" data-real-action="open-conversation-history" data-conversation-id="${escapeHTML(archive.id)}">${escapeHTML(archive.title)}<em>${archive.messageCount} 条</em></button>`).join("")}
     </section>`;
@@ -976,6 +1151,9 @@
   views["resumes"] = realResumeView;
   views["conversation-history"] = realConversationArchiveView;
   views["memory"] = realMemoryView;
+  views["mistakes"] = realMistakesView;
+  views["mistake-detail"] = realMistakeDetailView;
+  views["mistake-practice"] = realMistakePracticeView;
 
   async function loadMemory() {
     memoryLoading = true;
@@ -1152,17 +1330,19 @@
     bridgeError = "";
     rerender();
     try {
-      const [threadSnapshot, resumes, conversations, interviewHistory] = await Promise.all([
+      const [threadSnapshot, resumes, conversations, interviewHistory, mistakes] = await Promise.all([
         request(`/v1/assistant/threads/${THREAD_ID}?actor_user_id=${ACTOR_ID}`),
         request("/v1/preparation/resumes"),
         request("/v1/assistant/conversations"),
         request("/v1/practice/sessions"),
+        request("/v1/review/mistakes"),
       ]);
       snapshot = threadSnapshot;
       managedResumes = resumes.items || [];
       managedResumeLimit = resumes.limit || 3;
       conversationArchives = conversations.items || [];
       interviewHistorySessions = interviewHistory.items || [];
+      savedMistakeCards = mistakes.items || [];
       syncManagedResumeState();
       contextLimitExceeded = Boolean(snapshot?.requiresNewThread);
     } catch (error) {
@@ -1181,6 +1361,75 @@
   async function reloadInterviewHistory() {
     const response = await request("/v1/practice/sessions");
     interviewHistorySessions = response.items || [];
+  }
+
+  async function reloadSavedMistakes() {
+    const response = await request("/v1/review/mistakes");
+    savedMistakeCards = response.items || [];
+  }
+
+  async function saveReviewMistake(sessionID, questionIndex) {
+    if (!sessionID) return;
+    bridgeError = "";
+    try {
+      await request("/v1/review/mistakes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ practice_session_id: sessionID, question_index: Number(questionIndex || 0) }),
+      });
+      await reloadSavedMistakes();
+      toast("已加入错题");
+      rerender("report");
+    } catch (error) {
+      bridgeError = error.message || "加入错题失败";
+      rerender("report");
+    }
+  }
+
+  async function openSavedMistake(id) {
+    if (!id) return;
+    loading = true;
+    bridgeError = "";
+    selectedMistakeContext = null;
+    mistakeAnswerDraft = "";
+    mistakeTextInputVisible = false;
+    rerender("mistakes");
+    try {
+      selectedMistakeContext = await request(`/v1/review/mistakes/${encodeURIComponent(id)}`);
+      rerender("mistake-detail");
+    } catch (error) {
+      bridgeError = error.message || "读取错题失败";
+      rerender("mistakes");
+    } finally {
+      loading = false;
+      rerender(activeRealRoute);
+    }
+  }
+
+  async function submitMistakeRepractice(id, answerOverride = "") {
+    if (!id || mistakeSubmitting) return;
+    const input = document.querySelector("[data-mistake-answer]");
+    mistakeAnswerDraft = answerOverride || input?.value || mistakeAnswerDraft;
+    mistakeSubmitting = true;
+    bridgeError = "";
+    rerender("mistake-detail");
+    try {
+      await request(`/v1/review/mistakes/${encodeURIComponent(id)}/repractice`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answer_text: mistakeAnswerDraft }),
+      });
+      selectedMistakeContext = await request(`/v1/review/mistakes/${encodeURIComponent(id)}`);
+      await reloadSavedMistakes();
+      mistakeAnswerDraft = "";
+      mistakeTextInputVisible = false;
+      toast("复练点评已生成");
+    } catch (error) {
+      bridgeError = error.message || "复练点评失败";
+    } finally {
+      mistakeSubmitting = false;
+      rerender("mistake-detail");
+    }
   }
 
   async function openInterviewHistory(id) {
@@ -1649,6 +1898,7 @@
       });
       await reloadConversationArchives();
       await reloadInterviewHistory();
+      await reloadSavedMistakes();
       selectedConversationArchive = null;
     } catch (error) {
       bridgeError = error.message || "无法开始新对话";
@@ -2220,6 +2470,10 @@
       resumeEditDraft.experiences[Number(event.target.dataset.resumeEditExperience)] = event.target.value;
       return;
     }
+    if (event.target.matches("[data-mistake-answer]")) {
+      mistakeAnswerDraft = event.target.value;
+      return;
+    }
     if (!event.target.matches("[data-real-input]")) return;
     inputValue = event.target.value;
     const action = activeRealRoute === "practice" ? "submit-answer" : "send";
@@ -2263,9 +2517,10 @@
     const target = event.target.closest("[data-real-action]");
     if (!target) {
       const routeTarget = event.target.closest("[data-route]");
-      if (routeTarget && ["agent-chat", "home", "practice", "report", "memory"].includes(routeTarget.dataset.route)) {
+      if (routeTarget && ["agent-chat", "home", "practice", "report", "memory", "mistakes", "mistake-detail"].includes(routeTarget.dataset.route)) {
         activeRealRoute = routeTarget.dataset.route;
         if (activeRealRoute === "memory") void loadMemory();
+        if (activeRealRoute === "mistakes") void reloadSavedMistakes();
       }
       return;
     }
@@ -2423,6 +2678,13 @@
     else if (action === "continue") rerender("practice");
     else if (action === "open-report-card") void openInterviewHistory(target.dataset.sessionId);
     else if (action === "report") void openInterviewHistory(target.dataset.sessionId);
+    else if (action === "save-review-mistake") void saveReviewMistake(target.dataset.sessionId, target.dataset.questionIndex);
+    else if (action === "open-mistake") void openSavedMistake(target.dataset.mistakeId);
+    else if (action === "open-mistakes") {
+      selectedMistakeContext = null;
+      void reloadSavedMistakes().then(() => rerender("mistakes"));
+    }
+    else if (action === "submit-mistake-repractice") void submitMistakeRepractice(target.dataset.mistakeId);
     else if (action === "history") {
       selectedHistorySessionID = "";
       selectedInterviewSessionDetail = null;

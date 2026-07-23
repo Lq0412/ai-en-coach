@@ -130,6 +130,53 @@ func TestListHistoryProjectsReviewMetadata(t *testing.T) {
 	}
 }
 
+func TestSavedMistakeLifecycle(t *testing.T) {
+	state := assistant.NewDemoState()
+	seedCompletedSession(t, state, "session-1", "Go Backend Engineer", "Feedback", []string{
+		"I built a worker system but did not mention the result.",
+	})
+	service := NewService(state, nil)
+
+	mistake, err := service.SaveMistake(context.Background(), SaveMistakeCommand{SessionID: "session-1", QuestionIndex: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := service.SaveMistake(context.Background(), SaveMistakeCommand{SessionID: "session-1", QuestionIndex: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mistake.ID != again.ID || len(state.State().SavedMistakes) != 1 {
+		t.Fatalf("save should be idempotent: first=%#v again=%#v state=%#v", mistake, again, state.State().SavedMistakes)
+	}
+
+	cards, err := service.ListMistakes(context.Background(), ListMistakesQuery{Limit: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cards) != 1 || cards[0].MistakeID != mistake.ID || cards[0].QuestionIndex != 0 {
+		t.Fatalf("unexpected mistake cards: %#v", cards)
+	}
+
+	mistakeContext, err := service.GetMistakeContext(context.Background(), MistakeContextQuery{MistakeID: mistake.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mistakeContext.Session.ID != "session-1" || len(mistakeContext.Session.Questions) != 1 || mistakeContext.QuestionIndex != 0 {
+		t.Fatalf("unexpected mistake context: %#v", mistakeContext)
+	}
+
+	result, err := service.SubmitMistakeRepractice(context.Background(), SubmitMistakeRepracticeCommand{
+		MistakeID:  mistake.ID,
+		AnswerText: "In that project, I designed the worker queue, measured failure rates, and improved reconciliation reliability for daily reports.",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Summary == "" || state.State().SavedMistakes[0].Status != "practiced" {
+		t.Fatalf("repractice did not update state: result=%#v state=%#v", result, state.State().SavedMistakes)
+	}
+}
+
 func seedActiveSession(t *testing.T, state *assistant.DemoState, questions, answers []string) {
 	t.Helper()
 	_, err := state.Transact(func(snapshot *assistant.RuntimeSnapshot, savedAnswers *[]string) (assistant.ToolResult, error) {
