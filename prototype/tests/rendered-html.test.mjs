@@ -27,10 +27,11 @@ test("routes unfinished product actions to an honest early-access application", 
   const response = await render();
   assert.equal(response.status, 200);
   const html = await response.text();
+  const visibleText = html.replace(/<[^>]+>/g, "");
   assert.match(html, /面向真实任务的英语沟通 Agent/);
   assert.doesNotMatch(html, /href="\/pages\/prototype\.html/);
   assert.match(html, /申请首批体验/);
-  assert.match(html, /下一场重要的英文沟通/);
+  assert.match(visibleText, /下一场重要的英文沟通/);
   assert.match(html, /portal-interview-start\.jpg/);
   assert.match(html, /portal-panel-practice\.jpg/);
   assert.match(html, /portal-evidence-report\.jpg/);
@@ -41,7 +42,7 @@ test("routes unfinished product actions to an honest early-access application", 
   assert.match(html, /SpeakUp 正在招募首批体验用户/);
   assert.doesNotMatch(html, /SpeakUp 模拟面试现已开放/);
   assert.match(html, /结合目标、经历和过往练习/);
-  assert.match(html, /考出去、面进去，.*适应好/s);
+  assert.match(visibleText, /考出去、面进去，.*适应好/s);
   assert.match(html, /雅思口语/);
   assert.match(html, /海外日常/);
   assert.match(html, /国际职场/);
@@ -95,9 +96,12 @@ test("balances marketing headlines without hard-coded line breaks", async () => 
   assert.match(styles, /\.hero h1\s*\{[\s\S]*?text-wrap:\s*balance/);
   assert.match(styles, /\.section-intro h2,[\s\S]*?\.final-cta h2\s*\{[\s\S]*?text-wrap:\s*balance/);
   assert.match(styles, /\.section-intro\s*\{\s*max-width:\s*960px/);
+  assert.match(styles, /\.title-phrase\s*\{[\s\S]*?display:\s*inline-block[\s\S]*?white-space:\s*nowrap/);
 
   const mobileStyles = styles.slice(styles.indexOf("@media (max-width: 640px)"));
+  assert.match(mobileStyles, /\.hero h1\s*\{[\s\S]*?font-size:\s*clamp\(36px, 9\.7vw, 44px\)/);
   assert.match(mobileStyles, /\.section-intro h2,[\s\S]*?\.final-cta h2\s*\{[\s\S]*?font-size:\s*clamp\(38px, 10\.5vw, 42px\)/);
+  assert.match(mobileStyles, /\.title-line\s*\{[\s\S]*?display:\s*inline[\s\S]*?white-space:\s*normal/);
 });
 
 test("keeps contact data behind a password-protected admin API", async () => {

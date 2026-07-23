@@ -159,7 +159,8 @@ export default function Home() {
         <div className="hero-copy">
           <p className="eyebrow">面向真实任务的英语沟通 Agent</p>
           <h1>
-            <span className="headline-muted">下一场重要的英文沟通，</span>先和 SpeakUp 练一遍。
+            <span className="title-line headline-muted"><span className="title-phrase">下一场重要的</span><span className="title-phrase">英文沟通，</span></span>
+            <span className="title-line"><span className="title-phrase">先和 SpeakUp</span><span className="title-phrase">练一遍。</span></span>
           </h1>
           <p className="hero-subtitle">
             说出你接下来要面对什么，SpeakUp 会结合目标、经历和过往练习，帮你准备、排练和复盘。
@@ -213,7 +214,10 @@ export default function Home() {
       <section className="journey-section" id="use-cases">
         <div className="section-intro dark-copy">
           <p className="eyebrow">从任何阶段开始</p>
-          <h2>考出去、面进去，适应好，再到真正发展好。</h2>
+          <h2>
+            <span className="title-line"><span className="title-phrase">考出去、</span><span className="title-phrase">面进去，</span></span>
+            <span className="title-line"><span className="title-phrase">适应好，</span><span className="title-phrase">再到真正</span><span className="title-phrase">发展好。</span></span>
+          </h2>
           <p>四类任务共用同一个 SpeakUp：先理解下一件要发生的事，再准备、排练、复盘，并把结果带到下一次。</p>
         </div>
         <div className="journey-grid" aria-label="SpeakUp 覆盖的四类真实英语任务">
@@ -233,7 +237,10 @@ export default function Home() {
       <section className="features-section" id="demo">
         <div className="section-intro dark-copy">
           <p className="eyebrow">完整演示 · 后端开发工程师英文面试</p>
-          <h2>一次面试任务，看见 Agent 的四种能力。</h2>
+          <h2>
+            <span className="title-line"><span className="title-phrase">一次面试任务，</span></span>
+            <span className="title-line"><span className="title-phrase">看见 Agent 的</span><span className="title-phrase">四种能力。</span></span>
+          </h2>
           <p>从理解任务到单面 / 多面试官模拟，再到即时建议和长期 Memory；四步共用同一位候选人与同一个目标岗位。</p>
         </div>
         <InterviewDemo features={productFeatures} />
@@ -242,7 +249,10 @@ export default function Home() {
       <section className="scenario-proof-section">
         <div className="section-intro dark-copy">
           <p className="eyebrow">不只是一场英文面试</p>
-          <h2>同一个 Agent，接住不同的真实任务。</h2>
+          <h2>
+            <span className="title-line"><span className="title-phrase">同一个 Agent，</span></span>
+            <span className="title-line"><span className="title-phrase">接住不同的</span><span className="title-phrase">真实任务。</span></span>
+          </h2>
           <p>结构化考试可以进入专门训练；生活与工作不要求用户先创建场景，只需把事情说出来，SpeakUp 负责理解背景、整理表达并模拟对方。</p>
         </div>
         <div className="scenario-proof-list">
@@ -267,7 +277,10 @@ export default function Home() {
       <section className="principles-section" id="how-it-works">
         <div className="section-intro centered dark-copy">
           <p className="eyebrow">四类任务，共用同一个 SpeakUp</p>
-          <h2>围绕真实任务，形成<em>长期进步</em>。</h2>
+          <h2>
+            <span className="title-line"><span className="title-phrase">围绕真实任务，</span></span>
+            <span className="title-line"><span className="title-phrase">形成</span><span className="title-phrase"><em>长期进步</em>。</span></span>
+          </h2>
           <p>一次练习的内容会继续服务下一次准备，而不是在对话关闭后消失。</p>
         </div>
         <div className="principle-grid">
@@ -283,7 +296,10 @@ export default function Home() {
 
       <section className="final-cta">
         <p className="eyebrow eyebrow-light">从下一件必须说清楚的事开始</p>
-        <h2>告诉 SpeakUp，接下来要面对什么。</h2>
+        <h2>
+          <span className="title-line"><span className="title-phrase">告诉 SpeakUp，</span></span>
+          <span className="title-line"><span className="title-phrase">接下来要</span><span className="title-phrase">面对什么。</span></span>
+        </h2>
         <p>可以是一场雅思口语考试、英文面试，也可以是海外生活和工作里马上要发生的关键沟通。</p>
         <div className="button-group">
           <a className="button" href={earlyAccessHref} data-scenario="英文面试">申请首批体验 ↗</a>
