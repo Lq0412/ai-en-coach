@@ -103,6 +103,38 @@ type ConversationResponder interface {
 	GenerateConversationReply(context.Context, ConversationReplyInput) (string, error)
 }
 
+type LanguageAssistanceGenerator interface {
+	GenerateLanguageAssistance(context.Context, LanguageAssistanceInput) (LanguageAssistanceResult, error)
+}
+
+type LanguageAssistanceInput struct {
+	Operation      string `json:"operation"`
+	Text           string `json:"text"`
+	TargetLanguage string `json:"target_language,omitempty"`
+}
+
+type LanguageAssistanceResult struct {
+	Operation      string              `json:"operation"`
+	TargetLanguage string              `json:"target_language,omitempty"`
+	Translation    string              `json:"translation,omitempty"`
+	Correction     *LanguageCorrection `json:"correction,omitempty"`
+}
+
+type LanguageCorrection struct {
+	HasIssues      bool                     `json:"has_issues"`
+	CorrectedText  string                   `json:"corrected_text"`
+	Brief          string                   `json:"brief"`
+	Items          []LanguageCorrectionItem `json:"items"`
+	NaturalVersion string                   `json:"natural_version,omitempty"`
+}
+
+type LanguageCorrectionItem struct {
+	Type        string `json:"type"`
+	Original    string `json:"original"`
+	Corrected   string `json:"corrected"`
+	Explanation string `json:"explanation"`
+}
+
 // AnswerCoachGenerator produces a complete example answer for the active
 // interview question. It remains separate from AgentContentGenerator so the
 // Assistant's existing generator contract does not grow with Demo UI needs.

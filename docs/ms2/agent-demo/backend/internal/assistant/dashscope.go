@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/1024XEngineer/XE3-ESL-agent-demo/backend/internal/assistant/prompts"
 	"github.com/gorilla/websocket"
 )
 
@@ -82,13 +83,14 @@ type DashScopeProvider struct {
 }
 
 const (
-	plannerMaxTokens      = 512
-	conversationMaxTokens = 160
-	questionMaxTokens     = 96
-	feedbackMaxTokens     = 240
-	answerCoachMaxTokens  = 600
-	profileMaxTokens      = 600
-	attachmentMaxTokens   = 5000
+	plannerMaxTokens        = 512
+	conversationMaxTokens   = 160
+	questionMaxTokens       = 96
+	feedbackMaxTokens       = 240
+	answerCoachMaxTokens    = 600
+	languageAssistMaxTokens = 800
+	profileMaxTokens        = 600
+	attachmentMaxTokens     = 5000
 )
 
 func NewDashScopeProvider(config DashScopeConfig) *DashScopeProvider {
@@ -236,6 +238,81 @@ Use only facts present in the supplied resume and job description. Keep summary 
 	}
 	profile.ID = fmt.Sprintf("background-%d", time.Now().UTC().UnixNano())
 	return profile, nil
+}
+
+func (p *DashScopeProvider) GenerateLanguageAssistance(
+	ctx context.Context,
+	input LanguageAssistanceInput,
+) (LanguageAssistanceResult, error) {
+	text := strings.TrimSpace(input.Text)
+	if text == "" {
+		return LanguageAssistanceResult{}, errors.New("language assistance text is required")
+	}
+	payload, err := json.Marshal(map[string]string{"text": text})
+	if err != nil {
+		return LanguageAssistanceResult{}, fmt.Errorf("encode language assistance input: %w", err)
+	}
+
+	switch input.Operation {
+	case "translate":
+		translation, chatErr := p.chat(
+			ctx,
+			prompts.TranslationSystem,
+			string(payload),
+			false,
+			false,
+			languageAssistMaxTokens,
+		)
+		if chatErr != nil {
+			return LanguageAssistanceResult{}, chatErr
+		}
+		if translation == "" {
+			return LanguageAssistanceResult{}, errors.New("DashScope returned an empty translation")
+		}
+		return LanguageAssistanceResult{
+			Operation:      "translate",
+			TargetLanguage: "zh-CN",
+			Translation:    translation,
+		}, nil
+	case "correct":
+		content, chatErr := p.chat(
+			ctx,
+			prompts.CorrectionSystem,
+			string(payload),
+			false,
+			false,
+			languageAssistMaxTokens,
+		)
+		if chatErr != nil {
+			return LanguageAssistanceResult{}, chatErr
+		}
+		var correction LanguageCorrection
+		if decodeErr := json.Unmarshal([]byte(stripJSONFence(content)), &correction); decodeErr != nil {
+			return LanguageAssistanceResult{}, fmt.Errorf("decode language correction JSON: %w", decodeErr)
+		}
+		correction.CorrectedText = strings.TrimSpace(correction.CorrectedText)
+		correction.Brief = strings.TrimSpace(correction.Brief)
+		correction.NaturalVersion = strings.TrimSpace(correction.NaturalVersion)
+		for index := range correction.Items {
+			correction.Items[index].Type = strings.TrimSpace(correction.Items[index].Type)
+			correction.Items[index].Original = strings.TrimSpace(correction.Items[index].Original)
+			correction.Items[index].Corrected = strings.TrimSpace(correction.Items[index].Corrected)
+			correction.Items[index].Explanation = strings.TrimSpace(correction.Items[index].Explanation)
+		}
+		if correction.CorrectedText == "" || correction.Brief == "" {
+			return LanguageAssistanceResult{}, errors.New("DashScope language correction is incomplete")
+		}
+		if !correction.HasIssues {
+			correction.Items = []LanguageCorrectionItem{}
+			correction.NaturalVersion = ""
+		}
+		return LanguageAssistanceResult{
+			Operation:  "correct",
+			Correction: &correction,
+		}, nil
+	default:
+		return LanguageAssistanceResult{}, fmt.Errorf("unsupported language assistance operation %q", input.Operation)
+	}
 }
 
 func (p *DashScopeProvider) AnalyzeAttachment(ctx context.Context, input AttachmentInput) (AttachmentAnalysis, error) {
