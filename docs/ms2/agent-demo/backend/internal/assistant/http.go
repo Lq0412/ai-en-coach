@@ -58,6 +58,9 @@ func (h *HTTPHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/assistant/threads/{thread_id}", h.getThread)
 	mux.HandleFunc("POST /v1/assistant/threads/{thread_id}/tasks", h.startTask)
 	mux.HandleFunc("POST /v1/assistant/threads/{thread_id}/tasks/stream", h.streamTask)
+	mux.HandleFunc("POST /v1/assistant/threads/{thread_id}/live-sessions", h.startLiveSession)
+	mux.HandleFunc("POST /v1/assistant/live-sessions/{live_session_id}/resume", h.resumeLiveSession)
+	mux.HandleFunc("POST /v1/assistant/live-sessions/{live_session_id}/end", h.endLiveSession)
 	mux.HandleFunc("POST /v1/assistant/threads/{thread_id}/interview/end/stream", h.streamEndInterview)
 	mux.HandleFunc("POST /v1/assistant/task-runs/{task_run_id}/resume", h.resumeTask)
 	mux.HandleFunc("POST /v1/assistant/task-runs/{task_run_id}/reject", h.rejectTask)
@@ -87,6 +90,60 @@ func (h *HTTPHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/audio/transcriptions", h.transcribe)
 	mux.HandleFunc("GET /v1/audio/transcriptions/stream", h.streamTranscription)
 	mux.HandleFunc("POST /v1/audio/speech", h.synthesize)
+}
+
+type liveSessionRequest struct {
+	ActorUserID    string `json:"actor_user_id"`
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
+}
+
+func (h *HTTPHandler) startLiveSession(w http.ResponseWriter, r *http.Request) {
+	var request liveSessionRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&request); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON body"})
+		return
+	}
+	credentials, err := h.service.StartLiveSession(r.Context(), StartLiveSessionCommand{
+		ActorUserID: request.ActorUserID, ThreadID: r.PathValue("thread_id"),
+		IdempotencyKey: request.IdempotencyKey,
+	})
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, credentials)
+}
+
+func (h *HTTPHandler) resumeLiveSession(w http.ResponseWriter, r *http.Request) {
+	var request liveSessionRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&request); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON body"})
+		return
+	}
+	credentials, err := h.service.ResumeLiveSession(r.Context(), ResumeLiveSessionCommand{
+		ActorUserID: request.ActorUserID, LiveSessionID: r.PathValue("live_session_id"),
+	})
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, credentials)
+}
+
+func (h *HTTPHandler) endLiveSession(w http.ResponseWriter, r *http.Request) {
+	var request liveSessionRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&request); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON body"})
+		return
+	}
+	session, err := h.service.EndLiveSession(r.Context(), EndLiveSessionCommand{
+		ActorUserID: request.ActorUserID, LiveSessionID: r.PathValue("live_session_id"),
+	})
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"live_session": session})
 }
 
 func (h *HTTPHandler) generateLanguageAssistance(w http.ResponseWriter, r *http.Request) {
@@ -949,6 +1006,8 @@ func (h *HTTPHandler) writeError(w http.ResponseWriter, err error) {
 	status := http.StatusInternalServerError
 	if errors.Is(err, ErrNotFound) {
 		status = http.StatusNotFound
+	} else if errors.Is(err, ErrLiveVoiceUnavailable) {
+		status = http.StatusServiceUnavailable
 	} else if errors.Is(err, ErrForbidden) {
 		status = http.StatusForbidden
 	} else if errors.Is(err, ErrInvalidTaskRunState) || errors.Is(err, ErrNoPendingConfirm) {

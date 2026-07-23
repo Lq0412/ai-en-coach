@@ -39,15 +39,20 @@ type Dependencies struct {
 	Runtime           InterviewRuntime
 	Attachments       AttachmentResolver
 	Resetter          DemoResetter
+	LiveKit           LiveKitConfig
 }
 
 type Service struct {
 	dependencies Dependencies
 	taskMu       sync.Mutex
+	live         *liveSessionCoordinator
 }
 
 func NewService(dependencies Dependencies) *Service {
-	return &Service{dependencies: dependencies}
+	return &Service{
+		dependencies: dependencies,
+		live:         newLiveSessionCoordinator(dependencies.LiveKit),
+	}
 }
 
 type StartTaskCommand struct {

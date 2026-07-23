@@ -60,12 +60,16 @@ const (
 )
 
 type LiveSession struct {
-	ID        string            `json:"live_session_id"`
-	ThreadID  string            `json:"thread_id"`
-	Mode      ConversationMode  `json:"mode"`
-	Status    LiveSessionStatus `json:"status"`
-	CreatedAt time.Time         `json:"created_at"`
-	UpdatedAt time.Time         `json:"updated_at"`
+	ID                  string            `json:"live_session_id"`
+	ThreadID            string            `json:"thread_id"`
+	RoomName            string            `json:"room_name"`
+	ParticipantIdentity string            `json:"participant_identity"`
+	Mode                ConversationMode  `json:"mode"`
+	Status              LiveSessionStatus `json:"status"`
+	PartialTurnID       string            `json:"partial_turn_id,omitempty"`
+	CommittedTurnIDs    []string          `json:"committed_turn_ids,omitempty"`
+	CreatedAt           time.Time         `json:"created_at"`
+	UpdatedAt           time.Time         `json:"updated_at"`
 }
 
 // LiveClientMessage is allocated by the browser before network submission.

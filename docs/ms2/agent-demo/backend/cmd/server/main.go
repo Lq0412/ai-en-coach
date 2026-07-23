@@ -80,6 +80,7 @@ func main() {
 		Runtime:           state,
 		Attachments:       preparationService,
 		Resetter:          state,
+		LiveKit:           assistant.LoadLiveKitConfig(),
 	})
 	handler := assistant.NewHTTPHandler(
 		logger,
