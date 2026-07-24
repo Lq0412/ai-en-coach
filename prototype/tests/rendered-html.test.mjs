@@ -23,85 +23,188 @@ async function readActivePrototype() {
   ]);
 }
 
-test("routes unfinished product actions to an honest early-access application", async () => {
+test("presents SpeakUp as a long-term Agent teacher connected to real outcomes", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   const html = await response.text();
-  const visibleText = html.replace(/<[^>]+>/g, "");
-  assert.match(html, /面向真实任务的英语沟通 Agent/);
+  const flowMarkup = html.match(/<div class="scenario-flow"[\s\S]*?<div class="hero-product"/)?.[0] || "";
+  assert.match(html, /<h1><span class="headline-muted">下一场重要的英文沟通，<\/span><br\/>先和 SpeakUp 练一遍。<\/h1>/);
+  assert.match(html, /<p class="hero-subtitle">一个有记忆、越用越懂你的 AI 口语老师。<\/p>/);
+  assert.match(html, /告诉 SpeakUp，我要准备什么/);
+  assert.doesNotMatch(html, /<p class="eyebrow">有记忆的 AI Agent 口语老师<\/p>/);
+  assert.match(html, /scenario-flow/);
+  assert.match(html, /我下周有一场英文面试/);
+  assert.match(html, /明天要第一次独自去医院/);
+  assert.match(html, /我要向海外客户汇报项目/);
+  assert.match(html, /帮我准备 IELTS Part 2/);
+  assert.match(html, /我要参加第一次全英文会议/);
+  assert.match(html, /帮我和房东说明维修问题/);
+  assert.match(html, /下周要做一次英文产品演示/);
+  assert.match(html, /我要准备海外大学课堂发言/);
+  assert.doesNotMatch(html, /英文面试……|独自去医院……|汇报项目……|IELTS Part 2……/);
+  assert.match(html, /<textPath/);
+  assert.match(html, /scenario-flow-input-path/);
+  assert.match(flowMarkup, /M -40 196 C 180 208 330 190 470 158 C 610 126 720 102 840 108 C 980 116 1100 82 1240 48/);
+  assert.doesNotMatch(flowMarkup, /　·　/);
+  assert.doesNotMatch(html, /scenario-flow-output-path|scenario-flow-ribbon|scenario-flow-copy-bright/);
+  assert.doesNotMatch(flowMarkup, /<strong>SpeakUp<\/strong>|把下一件真实的事说给我听/);
+  assert.doesNotMatch(html, /scenario-flow-viewport/);
   assert.doesNotMatch(html, /href="\/pages\/prototype\.html/);
-  assert.match(html, /申请首批体验/);
-  assert.match(visibleText, /下一场重要的英文沟通/);
+  assert.match(html, /href="#early-access"/);
+  assert.match(html, /下一场重要的英文沟通/);
+  assert.match(html, /越用越懂你/);
+  assert.match(html, /把岗位 JD 和简历发给我/);
   assert.match(html, /portal-interview-start\.jpg/);
-  assert.match(html, /portal-panel-practice\.jpg/);
-  assert.match(html, /portal-evidence-report\.jpg/);
   assert.match(html, /portal-memory-chat\.jpg/);
-  assert.match(html, /portal-ielts-part2\.jpg/);
-  assert.match(html, /portal-daily-doctor\.jpg/);
-  assert.match(html, /portal-workplace-client\.jpg/);
-  assert.match(html, /SpeakUp 正在招募首批体验用户/);
+  assert.doesNotMatch(html, /portal-interview-practice\.jpg|portal-panel-practice\.jpg/);
+  assert.doesNotMatch(html, /portal-ielts-part2\.jpg|portal-daily-doctor\.jpg|portal-workplace-client\.jpg/);
+  assert.doesNotMatch(html, /SpeakUp 正在招募首批体验用户/);
   assert.doesNotMatch(html, /SpeakUp 模拟面试现已开放/);
-  assert.match(html, /结合目标、经历和过往练习/);
-  assert.match(visibleText, /考出去、面进去，.*适应好/s);
+  assert.match(html, /先理解你，不急着开练/);
+  assert.match(html, /先教会你，再邀请实战/);
+  assert.match(html, /面试官接管真实追问/);
+  assert.match(html, /模拟结束，陪你复盘/);
+  assert.match(html, /真实面试回来，继续一起准备/);
+  assert.match(html, /从一句“下周有面试”，.*面试结束后继续进步/s);
+  assert.match(html, /考出去、面进去，.*适应好/s);
   assert.match(html, /雅思口语/);
   assert.match(html, /海外日常/);
   assert.match(html, /国际职场/);
-  assert.match(html, /它记得的，是你的目标和能力变化/);
-  assert.match(html, /完整演示 · 后端开发工程师英文面试/);
-  assert.match(html, /Memory 会持续记住岗位、真实项目、反复卡点和已经改善的能力/);
-  assert.match(html, /单面之外，也能应对多人连续追问/);
-  assert.match(html, /英文面试完整演示步骤/);
+  assert.match(html, /每一次练习，.*都留给下一次/s);
+  assert.doesNotMatch(html, /Memory 正在使用/);
+  assert.match(html, /老师，你压中 Kafka 了/);
+  assert.match(html, /数据库迁移/);
+  assert.match(html, /SpeakUp 陪伴一次真实任务的五个阶段/);
+  assert.doesNotMatch(html, /一次面试任务，.*Agent 的四种能力/s);
+  assert.doesNotMatch(html, /同一个 Agent，.*接住不同的真实任务/s);
   assert.doesNotMatch(html, /class="feature-card"/);
   assert.match(html, /id="early-access"/);
   assert.match(html, /<dialog/);
-  assert.match(html, /href="#early-access"/);
-  assert.match(html, /产品仍在开发中/);
-  assert.match(html, /不会自动注册账号/);
+  assert.doesNotMatch(html, /id="coming-soon"|href="#coming-soon"/);
   assert.doesNotMatch(html, /验证入口|方向验证|产品行为占位|待验证|产品验证门户|体验现有原型/);
   assert.doesNotMatch(html, /portal-task-intake\.jpg|portal-task-brief\.jpg/);
   assert.doesNotMatch(html, /portal-career-history\.jpg|portal-career-context\.jpg|portal-interview-plan\.jpg/);
   assert.doesNotMatch(html, /职业上下文|职业英语联系人|群面计划/);
 });
 
-test("uses native dialog behavior and records the early-access funnel", async () => {
+test("renders five interactive product states instead of cropped screenshots", async () => {
+  const [source, styles, pageSource] = await Promise.all([
+    readFile(new URL("app/InterviewDemo.tsx", root), "utf8"),
+    readFile(new URL("app/globals.css", root), "utf8"),
+    readFile(new URL("app/page.tsx", root), "utf8"),
+  ]);
+  assert.match(source, /demo-product-screen/);
+  assert.doesNotMatch(source, /<img/);
+  assert.match(source, /我下周有一场外企后端面试，好紧张/);
+  assert.match(source, /进入模拟面试/);
+  assert.match(source, /Why did you choose Kafka/);
+  assert.match(source, /demo-interviewer-bubble/);
+  assert.match(source, />翻译</);
+  assert.match(source, /aria-label="重播问题"/);
+  assert.match(source, />提示</);
+  assert.match(source, /模拟面试已完成/);
+  assert.match(source, /今天的面试怎么样/);
+  assert.doesNotMatch(source, /duration="0:00"/);
+  assert.match(source, /数据库迁移与回滚 · 专项模拟/);
+  assert.match(source, /进入专项练习/);
+  assert.doesNotMatch(source, /和老师还原这道题/);
+  assert.match(source, /IntersectionObserver/);
+  assert.match(source, /scrollIntoView/);
+  assert.match(source, /demo-mobile-story/);
+  assert.match(pageSource, /M -40 196 C 180 208 330 190 470 158 C 610 126 720 102 840 108 C 980 116 1100 82 1240 48/);
+  assert.match(pageSource, /attributeName="startOffset"[\s\S]*?dur="2\.2s"/);
+  const practicePanel = source.match(/if \(kind === "practice"\)[\s\S]*?if \(kind === "interview"\)/)?.[0] || "";
+  assert.equal(practicePanel.match(/<VoiceBubble/g)?.length, 2);
+  assert.match(styles, /\.demo-step-list[\s\S]*?border-right:\s*2px solid var\(--ink\)/);
+
+  const demoStyles = styles.slice(
+    styles.indexOf(".demo-sequence"),
+    styles.indexOf(".scenario-proof-section"),
+  );
+  assert.doesNotMatch(demoStyles, /gradient|glow/i);
+  assert.doesNotMatch(styles, /@keyframes scenario-flow/);
+  assert.match(styles, /\.scenario-flow-stage/);
+  assert.doesNotMatch(styles, /\.scenario-flow-ribbon|\.scenario-flow-copy-bright/);
+  assert.match(styles, /\.scenario-flow-stage[\s\S]*?height:\s*clamp\(200px,\s*20vw,\s*240px\)/);
+  assert.match(styles, /\.scenario-flow-stage svg[\s\S]*?width:\s*100%[\s\S]*?height:\s*100%/);
+  assert.equal(styles.match(/\.scenario-flow-stage svg\s*\{/g)?.length, 1);
+  assert.match(styles, /\.hero h1[\s\S]*?font-size:\s*clamp\(48px,\s*5\.4vw,\s*70px\)/);
+  assert.match(styles, /\.headline-muted[\s\S]*?rgba\(26,\s*26,\s*26,\s*0\.52\)/);
+  assert.match(styles, /--section-space:/);
+  assert.match(styles, /prefers-reduced-motion[\s\S]*\.scenario-flow-copy-motion/);
+  assert.match(styles, /prefers-reduced-motion[\s\S]*\.scenario-flow-copy-static/);
+});
+
+test("uses one responsive layout scale across the portal", async () => {
+  const [styles, source] = await Promise.all([
+    readFile(new URL("app/globals.css", root), "utf8"),
+    readFile(new URL("app/InterviewDemo.tsx", root), "utf8"),
+  ]);
+  assert.match(styles, /--section-space:\s*clamp\(80px,\s*8vw,\s*120px\)/);
+  assert.match(styles, /--section-heading:\s*clamp\(44px,\s*5\.2vw,\s*68px\)/);
+  assert.match(styles, /\.section-intro h2,[\s\S]*?font-size:\s*var\(--section-heading\)/);
+  assert.match(styles, /\.demo-stage[\s\S]*?position:\s*sticky[\s\S]*?top:\s*24px/);
+  assert.match(styles, /\.demo-step[\s\S]*?min-height:\s*clamp\(260px,\s*36vh,\s*320px\)[\s\S]*?gap:\s*12px[\s\S]*?padding:\s*28px 24px/);
+  assert.match(styles, /\.demo-tone-1\s*\{[\s\S]*?var\(--glow\)/);
+  assert.match(styles, /\.demo-tone-2\s*\{[\s\S]*?var\(--lumen-dark\)/);
+  assert.match(styles, /\.demo-tone-3\s*\{[\s\S]*?var\(--dawn\)/);
+  assert.match(styles, /\.demo-tone-4\s*\{[\s\S]*?var\(--lumen\)/);
+  assert.match(styles, /\.demo-tone-5\s*\{[\s\S]*?#d7eadf/);
+  assert.match(styles, /\.demo-screen-bar\s*\{[\s\S]*?font-size:\s*14px/);
+  assert.match(styles, /\.demo-user-message\s*\{[\s\S]*?font-size:\s*15px/);
+  assert.match(styles, /\.demo-coach-turn p\s*\{[\s\S]*?font-size:\s*15px/);
+  assert.match(styles, /\.demo-interviewer-bubble > p\s*\{[\s\S]*?font-size:\s*18px/);
+  assert.match(styles, /\.demo-question-actions button\s*\{[\s\S]*?font-size:\s*12px/);
+  assert.match(styles, /\.demo-session-summary\s*\{[\s\S]*?font-size:\s*13px/);
+  assert.match(source, /demo-sequence demo-tone-\$\{activeIndex \+ 1\}/);
+  assert.match(source, /demo-mobile-chapter demo-tone-\$\{index \+ 1\}/);
+  assert.match(styles, /\.context-section[\s\S]*?border-radius:\s*64px/);
+  assert.match(styles, /@media \(min-width:\s*641px\)[\s\S]*?\.site-nav\s*\{[\s\S]*?position:\s*sticky[\s\S]*?top:\s*16px[\s\S]*?min-height:\s*73px[\s\S]*?border:\s*2px solid var\(--lumen-dark\)[\s\S]*?border-radius:\s*12px/);
+  assert.match(styles, /@media \(min-width:\s*641px\)[\s\S]*?\.hero\s*\{[\s\S]*?padding:\s*clamp\(150px,\s*12vw,\s*170px\) 0 var\(--section-space\)/);
+  assert.match(styles, /@media \(min-width:\s*641px\)[\s\S]*?\.hero h1\s*\{[\s\S]*?max-width:\s*var\(--content-width\)[\s\S]*?font-size:\s*clamp\(74px,\s*6\.7vw,\s*96px\)/);
+  assert.match(styles, /@media \(min-width:\s*641px\)[\s\S]*?\.hero-subtitle\s*\{[\s\S]*?margin-top:\s*56px/);
+  assert.match(styles, /@media \(min-width:\s*641px\)[\s\S]*?\.scenario-flow\s*\{[\s\S]*?margin-top:\s*20px/);
+  assert.match(styles, /@media \(min-width:\s*641px\) and \(max-height:\s*800px\)[\s\S]*?\.hero\s*\{[\s\S]*?padding-top:\s*88px/);
+  assert.match(styles, /@media \(min-width:\s*641px\) and \(max-height:\s*800px\)[\s\S]*?\.scenario-flow-stage\s*\{[\s\S]*?height:\s*146px/);
+  assert.match(styles, /@media \(max-width:\s*640px\)[\s\S]*?\.hero h1\s*\{[\s\S]*?width:\s*calc\(100vw - 20px\)[\s\S]*?font-size:\s*clamp\(32px,\s*9\.1vw,\s*38px\)/);
+  assert.match(styles, /@media \(max-width:\s*640px\)[\s\S]*?\.hero-subtitle\s*\{[\s\S]*?margin-top:\s*44px/);
+  assert.match(styles, /\.hero-product\s*\{[\s\S]*?width:\s*calc\(100vw - 32px\)[\s\S]*?transform:\s*translateX\(-50%\)/);
+  assert.match(styles, /@media \(max-width:\s*640px\)[\s\S]*?\.scenario-flow\s*\{[\s\S]*?margin:\s*8px -18px 16px/);
+  assert.match(styles, /@media \(max-width:\s*640px\)[\s\S]*?\.hero-product\s*\{[\s\S]*?width:\s*calc\(100vw - 16px\)/);
+  assert.match(styles, /@media \(min-width:\s*641px\)[\s\S]*?\.hero \.button-secondary\s*\{[\s\S]*?border:\s*0/);
+  assert.match(styles, /@media \(max-width:\s*640px\)[\s\S]*?--section-space:\s*72px/);
+  assert.match(styles, /@media \(max-width:\s*640px\)[\s\S]*?\.site-nav\s*\{[\s\S]*?position:\s*sticky[\s\S]*?top:\s*8px[\s\S]*?min-height:\s*54px[\s\S]*?border:\s*2px solid var\(--lumen-dark\)/);
+  assert.match(styles, /@media \(max-width:\s*640px\)[\s\S]*?\.hero\s*\{[\s\S]*?padding:\s*98px 0 var\(--section-space\)/);
+  assert.match(styles, /@media \(max-width:\s*640px\)[\s\S]*?\.hero \.button-secondary\s*\{[\s\S]*?border:\s*0/);
+  assert.match(styles, /@media \(max-width:\s*640px\)[\s\S]*?\.features-section \.section-intro h2\s*\{[\s\S]*?font-size:\s*clamp\(24px,\s*7\.5vw,\s*28px\)[\s\S]*?white-space:\s*nowrap/);
+  assert.match(styles, /@media \(max-width:\s*640px\)[\s\S]*?\.demo-question\s*\{[\s\S]*?font-size:\s*28px/);
+  assert.match(styles, /@media \(max-width:\s*640px\)[\s\S]*?\.demo-sequence\s*\{\s*display:\s*none/);
+  assert.match(styles, /@media \(max-width:\s*640px\)[\s\S]*?\.demo-mobile-story\s*\{[\s\S]*?display:\s*grid/);
+});
+
+test("uses one consistent font system across the portal", async () => {
+  const styles = await readFile(new URL("app/globals.css", root), "utf8");
+  assert.match(styles, /--font-sans:\s*-apple-system,\s*BlinkMacSystemFont/);
+  assert.match(styles, /--font-serif:\s*Georgia,\s*"Times New Roman",\s*"Songti SC",\s*STSong,\s*serif/);
+  assert.match(styles, /--font-mark:\s*Georgia,\s*"Times New Roman",\s*serif/);
+  assert.match(styles, /body\s*\{[\s\S]*?font-family:\s*var\(--font-sans\)/);
+  assert.match(styles, /h1,[\s\S]*?h2\s*\{[\s\S]*?font-family:\s*var\(--font-serif\)/);
+  assert.match(styles, /\.brand-mark\s*\{[\s\S]*?font-family:\s*var\(--font-mark\)/);
+});
+
+test("opens the original information collection form from primary calls to action", async () => {
   const source = await readFile(new URL("app/EarlyAccessDialog.tsx", root), "utf8");
   assert.match(source, /dialog\.showModal\(\)/);
   assert.match(source, /document\.addEventListener\("click"/);
   assert.match(source, /trackPortalEvent\("page_view"\)/);
   assert.match(source, /trackPortalEvent\("cta_click"/);
   assert.match(source, /fetch\("\/api\/waitlist"/);
+  assert.match(source, /name="scenario"/);
+  assert.match(source, /name="urgency"/);
+  assert.match(source, /name="targetRole"/);
+  assert.match(source, /name="challenge"/);
+  assert.match(source, /name="contact"/);
   assert.match(source, /name="consent"/);
-});
-
-test("centers the application dialog and keeps the mobile demo fully visible", async () => {
-  const styles = await readFile(new URL("app/globals.css", root), "utf8");
-  assert.match(styles, /\.early-access-modal\s*\{[\s\S]*?inset:\s*50% auto auto 50%/);
-  assert.match(styles, /\.early-access-modal\[open\]\s*\{[\s\S]*?translate\(-50%, -50%\)/);
-
-  const mobileStyles = styles.slice(styles.indexOf("@media (max-width: 640px)"));
-  assert.match(mobileStyles, /\.demo-sequence\s*\{[\s\S]*?height:\s*auto/);
-  assert.match(mobileStyles, /\.demo-step-list\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2/);
-  assert.match(mobileStyles, /\.demo-stage-frame\s*\{[\s\S]*?aspect-ratio:\s*4 \/ 5/);
-  assert.doesNotMatch(mobileStyles, /\.demo-step-list\s*\{[\s\S]*?overflow-x:\s*auto/);
-});
-
-test("balances marketing headlines without hard-coded line breaks", async () => {
-  const [source, styles] = await Promise.all([
-    readFile(new URL("app/page.tsx", root), "utf8"),
-    readFile(new URL("app/globals.css", root), "utf8"),
-  ]);
-
-  assert.doesNotMatch(source, /<br\s*\/?>/);
-  assert.doesNotMatch(source, /journey-title-line/);
-  assert.match(styles, /\.hero h1\s*\{[\s\S]*?text-wrap:\s*balance/);
-  assert.match(styles, /\.section-intro h2,[\s\S]*?\.final-cta h2\s*\{[\s\S]*?text-wrap:\s*balance/);
-  assert.match(styles, /\.section-intro\s*\{\s*max-width:\s*960px/);
-  assert.match(styles, /\.title-phrase\s*\{[\s\S]*?display:\s*inline-block[\s\S]*?white-space:\s*nowrap/);
-
-  const mobileStyles = styles.slice(styles.indexOf("@media (max-width: 640px)"));
-  assert.match(mobileStyles, /\.hero h1\s*\{[\s\S]*?font-size:\s*clamp\(36px, 9\.7vw, 44px\)/);
-  assert.match(mobileStyles, /\.section-intro h2,[\s\S]*?\.final-cta h2\s*\{[\s\S]*?font-size:\s*clamp\(38px, 10\.5vw, 42px\)/);
-  assert.match(mobileStyles, /\.title-line\s*\{[\s\S]*?display:\s*inline[\s\S]*?white-space:\s*normal/);
 });
 
 test("keeps contact data behind a password-protected admin API", async () => {
