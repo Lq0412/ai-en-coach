@@ -112,13 +112,19 @@ func (p *DashScopeProvider) Plan(ctx context.Context, request PlanRequest) (Plan
 	}
 	system := `You are the planner for SpeakUp, an English interview practice application.
 Return one JSON object only, without markdown:
-{"Intent":"intent_name","Steps":[{"ToolName":"tool.name","Arguments":{}}],"Confidence":0.0,"MissingSlots":[],"Reason":"brief routing reason"}
+{"Intent":"intent_name","Scenario":"scenario_name","ScenarioVariant":"scenario_variant","KnowledgeTags":[],"Steps":[{"ToolName":"tool.name","Arguments":{}}],"Confidence":0.0,"MissingSlots":[],"Reason":"brief routing reason"}
 
 You are an intent router. You may only choose an Intent from the Intent Catalog below, and every tool sequence must exactly match one AllowedPlanShapes entry for that intent.
 Intent Catalog:
 ` + RenderPlannerPromptCatalog() + `
 
+Scenario Catalog:
+` + RenderPlannerScenarioCatalog() + `
+
 Argument rules:
+- If the user asks to practice a concrete scenario such as Go interview, Java interview, restaurant ordering, or apartment rental, prefer Intent scenario_practice with a ScenarioVariant from the Scenario Catalog.
+- For scenario_practice, never invent a ScenarioVariant. Use go_backend_interview for Go/Golang backend interview and java_backend_interview for Java backend interview.
+- Planner may return KnowledgeTags for explanation, but backend Scenario Catalog is authoritative.
 - For start_mock_interview, set preparation.get_confirmed_context scenario to "PROGRAMMER_INTERVIEW".
 - For start_mock_interview, set practice.create_plan role to the user's requested target role. Use max_turns=0 and duration_minutes=15 by default.
 - max_turns=0 means no fixed question count; the session ends when time expires or the user asks to stop.
@@ -160,10 +166,15 @@ func (p *DashScopeProvider) GenerateQuestion(ctx context.Context, input Intervie
 	answers, _ := json.Marshal(input.Answers)
 	questions, _ := json.Marshal(input.PreviousQuestions)
 	profile, _ := json.Marshal(candidateProfilePrompt(input.CandidateProfile))
+	roleGuidance := ScenarioKnowledgePrompt(input.ScenarioKnowledge)
+	if strings.TrimSpace(roleGuidance) == "" {
+		roleGuidance = interviewRoleGuidance(role)
+	}
 	return p.chat(ctx,
-		fmt.Sprintf("You are a senior hiring manager conducting a realistic continuous English interview for a %s. Ask exactly one concise question in English. There is no fixed question count: adapt the interview until the time limit or the user's explicit stop. Use the candidate's latest answer to choose the next move. If it is vague, clarify; if it contains a concrete decision, probe trade-offs or impact; if it is complete, move to an uncovered competency for the target role. Never use a fixed question bank, repeat a previous question, add commentary, or add numbering.", role),
-		fmt.Sprintf("Target role: %s\nCompleted answers: %d\nSession duration: %d minutes\nElapsed minutes: %d\nRemaining minutes: %d\nConfirmed candidate and JD background: %s\nPrevious question: %s\nLatest candidate answer: %s\nPrevious questions: %s\nCandidate answers in matching order: %s\nAsk the single best next interview question based on the target role, latest answer, uncovered competencies, and confirmed background. Do not mention turn counts or invent resume facts.",
+		fmt.Sprintf("You are a senior hiring manager conducting a realistic continuous English interview for a %s. Ask exactly one concise question in English. There is no fixed question count: adapt the interview until the time limit or the user's explicit stop. Use the candidate's latest answer to choose the next move. Balance the candidate's resume evidence with retrieved scenario knowledge. If the answer is vague, clarify; if it contains a concrete decision, probe trade-offs or impact; if it is complete, move to an uncovered competency for the target role. Never use a fixed question bank, repeat a previous question, add commentary, or add numbering.", role),
+		fmt.Sprintf("Target role: %s\nRetrieved scenario knowledge: %s\nCompleted answers: %d\nSession duration: %d minutes\nElapsed minutes: %d\nRemaining minutes: %d\nConfirmed candidate and JD background: %s\nPrevious question: %s\nLatest candidate answer: %s\nPrevious questions: %s\nCandidate answers in matching order: %s\nAsk the single best next interview question based on the target role, retrieved scenario knowledge, latest answer, uncovered competencies, and confirmed background. Do not mention turn counts or invent resume facts.",
 			role,
+			roleGuidance,
 			input.CompletedQuestionCount,
 			input.DurationMinutes,
 			input.ElapsedMinutes,

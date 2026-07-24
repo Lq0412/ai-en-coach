@@ -102,6 +102,7 @@ func (s service) GenerateNextQuestion(ctx context.Context) (questionResult Quest
 				PreviousQuestions: append([]string(nil), state.Questions...), MaxTurns: state.MaxTurns,
 				DurationMinutes: state.DurationMinutes, ElapsedMinutes: elapsedMinutes,
 				RemainingMinutes: remainingMinutes, CandidateProfile: state.CandidateProfile,
+				ScenarioKnowledge: state.ScenarioKnowledge,
 			})
 			if err != nil {
 				return assistant.ToolResult{}, err

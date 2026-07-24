@@ -158,6 +158,7 @@ func (s *Service) startTask(ctx context.Context, command StartTaskCommand) (Task
 		UserMessage:     visibleMessage,
 		InteractionMode: interactionMode,
 	}, state)
+	NormalizeScenarioPlan(&plan, visibleMessage)
 	if plan.Intent == "submit_interview_answer" {
 		for index := range plan.Steps {
 			if plan.Steps[index].ToolName == "conversation.submit_turn" {
@@ -171,6 +172,14 @@ func (s *Service) startTask(ctx context.Context, command StartTaskCommand) (Task
 	}
 	if plan.Intent == "start_mock_interview" {
 		normalizeInterviewPlan(&plan)
+		applyUserRequestedRole(&plan, visibleMessage)
+		NormalizeScenarioPlan(&plan, visibleMessage)
+	}
+	if plan.Intent == "scenario_practice" && plan.Scenario == "interview" {
+		normalizeInterviewPlan(&plan)
+		applyUserRequestedRole(&plan, visibleMessage)
+		NormalizeScenarioPlan(&plan, visibleMessage)
+		ensureScenarioInterviewCreatePlan(&plan, visibleMessage)
 	}
 	if plan.Intent == "clarify_interview_requirements" {
 		for index := range plan.Steps {
@@ -193,6 +202,16 @@ func (s *Service) startTask(ctx context.Context, command StartTaskCommand) (Task
 			if plan.Steps[index].ToolName == "conversation.generate_reply" {
 				plan.Steps[index].Arguments["user_message"] = contextContent
 				plan.Steps[index].Arguments["context_summary"] = conversationSummary
+				plan.Steps[index].Arguments["conversation_messages"] = messages
+			}
+		}
+	}
+	if plan.Intent == "scenario_practice" && plan.Scenario != "interview" {
+		contextSummary := scenarioPracticeContextSummary(plan, thread.ContextSummary)
+		for index := range plan.Steps {
+			if plan.Steps[index].ToolName == "conversation.generate_reply" {
+				plan.Steps[index].Arguments["user_message"] = contextContent
+				plan.Steps[index].Arguments["context_summary"] = contextSummary
 				plan.Steps[index].Arguments["conversation_messages"] = messages
 			}
 		}
@@ -229,10 +248,11 @@ func (s *Service) startTask(ctx context.Context, command StartTaskCommand) (Task
 		return TaskRun{}, err
 	}
 
-	if plan.Intent == "start_mock_interview" {
+	if plan.Intent == "start_mock_interview" || (plan.Intent == "scenario_practice" && plan.Scenario == "interview") {
 		targetRole := targetRoleFromPlan(plan)
 		maxTurns, durationMinutes := interviewLimitsFromPlan(plan)
-		if _, err := s.executeSteps(ctx, command.ActorUserID, run, plan.Steps[:1]); err != nil {
+		preConfirmSteps := preConfirmationSteps(plan)
+		if _, err := s.executeSteps(ctx, command.ActorUserID, run, preConfirmSteps); err != nil {
 			return TaskRun{}, err
 		}
 		scope := interviewScopeDescription(maxTurns, durationMinutes)
@@ -261,6 +281,39 @@ func (s *Service) startTask(ctx context.Context, command StartTaskCommand) (Task
 	}
 
 	return s.completeRun(ctx, command.ActorUserID, run, plan.Steps)
+}
+
+func preConfirmationSteps(plan Plan) []PlanStep {
+	if plan.Intent == "scenario_practice" && plan.Scenario == "interview" {
+		limit := 0
+		for index, step := range plan.Steps {
+			if step.ToolName == "practice.create_plan" {
+				limit = index
+				break
+			}
+		}
+		if limit > 0 {
+			return plan.Steps[:limit]
+		}
+	}
+	if len(plan.Steps) == 0 {
+		return nil
+	}
+	return plan.Steps[:1]
+}
+
+func confirmationResumeIndex(plan Plan) int {
+	if plan.Intent == "scenario_practice" && plan.Scenario == "interview" {
+		for index, step := range plan.Steps {
+			if step.ToolName == "practice.create_plan" {
+				return index
+			}
+		}
+	}
+	if len(plan.Steps) > 1 {
+		return 1
+	}
+	return 0
 }
 
 func (s *Service) enforceStateGuards(plan Plan, command StartTaskCommand, state RuntimeSnapshot) Plan {
@@ -362,6 +415,18 @@ func oralPracticeContextSummary(previous string, interviewPaused bool) string {
 	return strings.Join(parts, "；")
 }
 
+func scenarioPracticeContextSummary(plan Plan, previous string) string {
+	knowledge := RetrieveScenarioKnowledge(plan.ScenarioVariant, plan.KnowledgeTags)
+	parts := []string{
+		"场景练习中；不要进入面试流程；回复短一点，适合用户开口练习",
+		ScenarioKnowledgePrompt(knowledge),
+	}
+	if strings.TrimSpace(previous) != "" {
+		parts = append(parts, "上一轮上下文："+strings.TrimSpace(previous))
+	}
+	return strings.Join(parts, "；")
+}
+
 func (s *Service) ResumeTask(ctx context.Context, command ResumeTaskCommand) (TaskRun, error) {
 	s.taskMu.Lock()
 	defer s.taskMu.Unlock()
@@ -391,13 +456,14 @@ func (s *Service) ResumeTask(ctx context.Context, command ResumeTaskCommand) (Ta
 	if err != nil {
 		return TaskRun{}, err
 	}
+	resumeIndex := confirmationResumeIndex(plan)
 	run.Status = TaskRunStatusRunning
-	run.CurrentStep = plan.Steps[1].ToolName
+	run.CurrentStep = plan.Steps[resumeIndex].ToolName
 	run.UpdatedAt = time.Now().UTC()
 	if err := s.dependencies.ConversationStore.SaveTaskRun(ctx, run); err != nil {
 		return TaskRun{}, err
 	}
-	return s.completeRun(ctx, command.ActorUserID, run, plan.Steps[1:])
+	return s.completeRun(ctx, command.ActorUserID, run, plan.Steps[resumeIndex:])
 }
 
 func (s *Service) EndInterview(ctx context.Context, command EndInterviewCommand) (TaskRun, error) {
@@ -536,7 +602,8 @@ func (s *Service) completeRun(ctx context.Context, actorUserID string, run TaskR
 		if err := s.appendMistakeCards(ctx, *mistakes); err != nil {
 			return TaskRun{}, err
 		}
-	} else if run.Intent != "submit_interview_answer" && run.Intent != "start_mock_interview" {
+	} else if run.Intent != "submit_interview_answer" && run.Intent != "start_mock_interview" &&
+		!(run.Intent == "scenario_practice" && result["summary"] == nil) {
 		if err := s.appendMessage(ctx, "assistant", composeResponse(run.Intent, result)); err != nil {
 			return TaskRun{}, err
 		}
@@ -640,10 +707,13 @@ func (s *Service) updateThreadSummary(ctx context.Context, run TaskRun) error {
 	}
 	if run.Intent == "clarify_interview_requirements" {
 		thread.ContextSummary = "面试需求收集中；interview_requirement=pending_target_role；session_in_progress=false"
-	} else if run.Intent == "free_conversation" || run.Intent == "oral_free_practice" {
+	} else if run.Intent == "free_conversation" || run.Intent == "oral_free_practice" ||
+		(run.Intent == "scenario_practice" && !active) {
 		prefix := "自由对话中"
 		if run.Intent == "oral_free_practice" {
 			prefix = "自由口语陪练中"
+		} else if run.Intent == "scenario_practice" {
+			prefix = "场景练习中"
 		}
 		thread.ContextSummary = fmt.Sprintf(
 			"%s；最近用户消息：%s；最近助手回复：%s；session_in_progress=false",
@@ -859,7 +929,7 @@ func attachmentContext(message string, attachments []Attachment) string {
 
 func composeResponse(intent string, result map[string]any) string {
 	switch intent {
-	case "free_conversation", "oral_free_practice", "clarify_interview_requirements":
+	case "free_conversation", "oral_free_practice", "scenario_practice", "clarify_interview_requirements":
 		return fmt.Sprint(result["summary"])
 	case "start_mock_interview":
 		return fmt.Sprintf("面试开始。%v", result["content"])
@@ -926,6 +996,82 @@ func normalizeInterviewPlan(plan *Plan) {
 		plan.Steps[index].Arguments["duration_minutes"] = durationMinutes
 		return
 	}
+}
+
+func applyUserRequestedRole(plan *Plan, userMessage string) {
+	role := detectTargetRole(userMessage)
+	if role == "" {
+		return
+	}
+	for index := range plan.Steps {
+		if plan.Steps[index].ToolName != "practice.create_plan" {
+			continue
+		}
+		if plan.Steps[index].Arguments == nil {
+			plan.Steps[index].Arguments = map[string]any{}
+		}
+		plan.Steps[index].Arguments["role"] = role
+		return
+	}
+}
+
+func ensureScenarioInterviewCreatePlan(plan *Plan, userMessage string) {
+	if plan == nil || plan.Intent != "scenario_practice" || plan.Scenario != "interview" {
+		return
+	}
+	spec, ok := FindScenarioSpec(plan.ScenarioVariant)
+	if !ok {
+		return
+	}
+	for index := range plan.Steps {
+		if plan.Steps[index].ToolName != "practice.create_plan" {
+			continue
+		}
+		if plan.Steps[index].Arguments == nil {
+			plan.Steps[index].Arguments = map[string]any{}
+		}
+		plan.Steps[index].Arguments["scenario_id"] = spec.ID
+		for key, value := range spec.DefaultArguments {
+			if strings.TrimSpace(fmt.Sprint(plan.Steps[index].Arguments[key])) == "" ||
+				strings.TrimSpace(fmt.Sprint(plan.Steps[index].Arguments[key])) == "<nil>" {
+				plan.Steps[index].Arguments[key] = value
+			}
+		}
+		if !hasExplicitTurnLimit(userMessage) {
+			plan.Steps[index].Arguments["max_turns"] = DefaultInterviewMaxTurns
+		}
+		return
+	}
+}
+
+func hasExplicitTurnLimit(message string) bool {
+	text := strings.ToLower(strings.TrimSpace(message))
+	if text == "" {
+		return false
+	}
+	limitWords := []string{"最多", "不超过", "限制", "题", "问题", "回答", "turn", "turns", "question", "questions", "answer", "answers"}
+	hasLimitWord := false
+	for _, word := range limitWords {
+		if strings.Contains(text, word) {
+			hasLimitWord = true
+			break
+		}
+	}
+	if !hasLimitWord {
+		return false
+	}
+	for _, r := range text {
+		if r >= '0' && r <= '9' {
+			return true
+		}
+	}
+	chineseNumbers := []string{"一", "二", "三", "四", "五", "六", "七", "八", "九", "十"}
+	for _, number := range chineseNumbers {
+		if strings.Contains(text, number) {
+			return true
+		}
+	}
+	return false
 }
 
 func interviewLimitsFromPlan(plan Plan) (int, int) {

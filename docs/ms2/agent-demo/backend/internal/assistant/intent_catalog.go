@@ -81,6 +81,40 @@ func IntentCatalog() []IntentSpec {
 			AllowedPlanShapes: [][]string{{"conversation.generate_reply"}},
 		},
 		{
+			Intent:        "scenario_practice",
+			Description:   "用户想进入某个具体场景练习，例如 Go 面试、Java 面试、餐厅点餐或租房沟通。",
+			Examples:      []string{"我要 Go 后端面试", "我想练餐厅点餐", "练一下租房英语"},
+			RequiredSlots: []string{"scenario_variant"},
+			AllowedModes:  []string{"conversation", "interview"},
+			Preconditions: []string{"ScenarioVariant 必须来自 Scenario Catalog", "KnowledgeTags 以后端 Scenario Catalog 为准"},
+			AllowedPlanShapes: [][]string{
+				{
+					"scenario.retrieve_knowledge",
+					"preparation.get_confirmed_context",
+					"practice.create_plan",
+					"practice.start_session",
+					"conversation.generate_next_question",
+				},
+				{
+					"preparation.get_confirmed_context",
+					"scenario.retrieve_knowledge",
+					"practice.create_plan",
+					"practice.start_session",
+					"conversation.generate_next_question",
+				},
+				{
+					"scenario.retrieve_knowledge",
+					"practice.create_plan",
+					"practice.start_session",
+					"conversation.generate_next_question",
+				},
+				{
+					"scenario.retrieve_knowledge",
+					"conversation.generate_reply",
+				},
+			},
+		},
+		{
 			Intent:            "review_latest_practice",
 			Description:       "用户想复盘最近一次练习或查看反馈。",
 			Examples:          []string{"帮我复盘刚才的面试", "review my latest practice"},
@@ -193,6 +227,9 @@ func ValidatePlanAgainstCatalog(plan Plan) error {
 	if err := validateRequiredSlots(plan, spec); err != nil {
 		return err
 	}
+	if err := validateScenarioPlan(plan); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -228,6 +265,10 @@ func validateRequiredSlots(plan Plan, spec IntentSpec) error {
 			return fmt.Errorf("planner returned %q with missing required slot %q", plan.Intent, slot)
 		}
 		switch slot {
+		case "scenario_variant":
+			if strings.TrimSpace(plan.ScenarioVariant) == "" {
+				return fmt.Errorf("planner returned %q without required scenario_variant", plan.Intent)
+			}
 		case "target_role":
 			if plan.Intent == "clarify_interview_requirements" {
 				continue
@@ -258,6 +299,20 @@ func planHasNonEmptyArgument(plan Plan, toolName, argument string) bool {
 		}
 	}
 	return false
+}
+
+func validateScenarioPlan(plan Plan) error {
+	if plan.Intent != "scenario_practice" {
+		return nil
+	}
+	spec, ok := FindScenarioSpec(plan.ScenarioVariant)
+	if !ok {
+		return fmt.Errorf("planner returned unsupported scenario_variant %q", plan.ScenarioVariant)
+	}
+	if strings.TrimSpace(plan.Scenario) != "" && strings.TrimSpace(plan.Scenario) != spec.Scenario {
+		return fmt.Errorf("planner returned scenario %q for variant %q, want %q", plan.Scenario, spec.ID, spec.Scenario)
+	}
+	return nil
 }
 
 func IntentAllowsMode(intent, mode string) bool {

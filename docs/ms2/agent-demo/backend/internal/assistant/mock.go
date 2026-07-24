@@ -87,6 +87,9 @@ func (p *MockPlanner) Plan(_ context.Context, request PlanRequest) (Plan, error)
 			}},
 		}, nil
 	}
+	if variant := ScenarioVariantFromMessage(request.UserMessage); variant == "restaurant_ordering" || variant == "apartment_rental" {
+		return scenarioPracticePlan(variant, false), nil
+	}
 
 	interviewRequested := strings.Contains(text, "面试") || strings.Contains(text, "interview")
 	requirementPending := strings.Contains(request.ContextSummary, "interview_requirement=pending_target_role")
@@ -97,6 +100,9 @@ func (p *MockPlanner) Plan(_ context.Context, request PlanRequest) (Plan, error)
 		role := detectTargetRole(request.UserMessage)
 		if role == "" {
 			return interviewRequirementQuestionPlan(), nil
+		}
+		if variant := ScenarioVariantFromRole(role); variant != "" {
+			return scenarioPracticePlan(variant, true), nil
 		}
 		return Plan{
 			Intent: "start_mock_interview",
@@ -124,12 +130,44 @@ func (p *MockPlanner) Plan(_ context.Context, request PlanRequest) (Plan, error)
 	}, nil
 }
 
+func scenarioPracticePlan(variant string, interview bool) Plan {
+	spec, _ := FindScenarioSpec(variant)
+	plan := Plan{
+		Intent:          "scenario_practice",
+		Scenario:        spec.Scenario,
+		ScenarioVariant: variant,
+		KnowledgeTags:   append([]string(nil), spec.KnowledgeTags...),
+		Steps: []PlanStep{{
+			ToolName: "scenario.retrieve_knowledge",
+			Arguments: map[string]any{
+				"scenario_variant": variant,
+				"tags":             append([]string(nil), spec.KnowledgeTags...),
+			},
+		}},
+	}
+	if interview {
+		plan.Steps = append(plan.Steps,
+			PlanStep{ToolName: "preparation.get_confirmed_context", Arguments: map[string]any{"scenario": "PROGRAMMER_INTERVIEW"}},
+			PlanStep{ToolName: "practice.create_plan", Arguments: map[string]any{}},
+			PlanStep{ToolName: "practice.start_session", Arguments: map[string]any{}},
+			PlanStep{ToolName: "conversation.generate_next_question", Arguments: map[string]any{}},
+		)
+		return plan
+	}
+	plan.Steps = append(plan.Steps, PlanStep{ToolName: "conversation.generate_reply", Arguments: map[string]any{}})
+	return plan
+}
+
 type MockDomainState struct {
 	CurrentSessionID       string
 	ActiveQuestion         string
 	CompletedQuestionCount int
 	TargetRole             string
 	Interviewer            string
+	Scenario               string
+	ScenarioVariant        string
+	KnowledgeTags          []string
+	ScenarioKnowledge      ScenarioKnowledge
 	MaxTurns               int
 	DurationMinutes        int
 	StartedAt              time.Time

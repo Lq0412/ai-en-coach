@@ -113,6 +113,7 @@ func TestDashScopeInterviewQuestionUsesRoleLatestAnswerAndDynamicContext(t *test
 		prompt := string(encoded)
 		for _, expected := range []string{
 			"Product Manager",
+			"prioritization",
 			"I prioritized retention after reviewing cohort data.",
 			"How did you choose the product metric?",
 			"Remaining minutes",

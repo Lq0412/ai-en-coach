@@ -42,3 +42,14 @@ func TestIntentCatalogRejectsMissingInterviewTargetRole(t *testing.T) {
 		t.Fatalf("expected missing role validation error, got %v", err)
 	}
 }
+
+func TestInterviewRoleGuidanceDistinguishesJavaAndGo(t *testing.T) {
+	java := interviewRoleGuidance("Java Backend Engineer")
+	goRole := interviewRoleGuidance("Go Backend Engineer")
+	if !strings.Contains(java, "JVM") || strings.Contains(java, "goroutines") {
+		t.Fatalf("unexpected Java guidance: %s", java)
+	}
+	if !strings.Contains(goRole, "goroutines") || strings.Contains(goRole, "Spring Boot") {
+		t.Fatalf("unexpected Go guidance: %s", goRole)
+	}
+}

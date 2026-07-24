@@ -234,6 +234,7 @@ type InterviewGenerationInput struct {
 	ElapsedMinutes         int
 	RemainingMinutes       int
 	CandidateProfile       CandidateProfile
+	ScenarioKnowledge      ScenarioKnowledge
 }
 
 type InterviewFeedbackInput struct {

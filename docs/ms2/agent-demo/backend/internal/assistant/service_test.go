@@ -26,6 +26,14 @@ func newRuntime() (*assistant.Service, *assistant.MemoryConversationStore, *assi
 	return service, store, tools
 }
 
+type staticPlanner struct {
+	plan assistant.Plan
+}
+
+func (p staticPlanner) Plan(context.Context, assistant.PlanRequest) (assistant.Plan, error) {
+	return p.plan, nil
+}
+
 func TestStartTaskPausesAndResumeStartsSession(t *testing.T) {
 	service, store, tools := newRuntime()
 	ctx := context.Background()
@@ -42,7 +50,10 @@ func TestStartTaskPausesAndResumeStartsSession(t *testing.T) {
 		t.Fatalf("unexpected paused run: %#v", run)
 	}
 	snapshot := store.Snapshot(tools.State())
-	if len(snapshot.ToolCalls) != 1 || snapshot.ToolCalls[0].ToolName != "preparation.get_confirmed_context" {
+	calls := toolNamesForRun(snapshot.ToolCalls, run.ID)
+	joinedCalls := strings.Join(calls, ",")
+	if joinedCalls != "preparation.get_confirmed_context,scenario.retrieve_knowledge" &&
+		joinedCalls != "scenario.retrieve_knowledge,preparation.get_confirmed_context" {
 		t.Fatalf("unexpected calls before confirmation: %#v", snapshot.ToolCalls)
 	}
 
@@ -162,6 +173,182 @@ func TestOralFreePracticeDuringPausedInterviewDoesNotConsumeTurn(t *testing.T) {
 		!strings.Contains(fmt.Sprint(oralCall.Arguments["context_summary"]), "interview_paused=true") {
 		t.Fatalf("unexpected paused oral call: %#v", oralCall)
 	}
+}
+
+func TestStartInterviewRoleUsesExplicitUserMessageOverPlannerRole(t *testing.T) {
+	store := assistant.NewMemoryConversationStore()
+	tools := assistant.NewDemoState()
+	service := assistant.NewService(assistant.Dependencies{
+		Planner: staticPlanner{plan: assistant.Plan{
+			Intent: "start_mock_interview",
+			Steps: []assistant.PlanStep{
+				{ToolName: "preparation.get_confirmed_context", Arguments: map[string]any{"scenario": "PROGRAMMER_INTERVIEW"}},
+				{ToolName: "practice.create_plan", Arguments: map[string]any{
+					"role": "Java Backend Engineer", "max_turns": 0, "duration_minutes": 15,
+				}},
+				{ToolName: "practice.start_session", Arguments: map[string]any{}},
+				{ToolName: "conversation.generate_next_question", Arguments: map[string]any{}},
+			},
+		}},
+		Tools:             demomodules.NewRegistry(tools, nil),
+		ConversationStore: store,
+		Runtime:           tools,
+		Attachments:       tools,
+		Resetter:          tools,
+	})
+	run, err := service.StartTask(context.Background(), assistant.StartTaskCommand{
+		ActorUserID:    assistant.DemoUserID,
+		ThreadID:       assistant.DemoThreadID,
+		UserMessage:    "我要 Go 后端面试",
+		IdempotencyKey: "role-override",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := store.GetPlan(context.Background(), run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if targetRoleFromTestPlan(plan) != "Go Backend Engineer" {
+		t.Fatalf("planner role was not corrected: %#v", plan)
+	}
+}
+
+func TestScenarioPracticeGoInterviewRetrievesKnowledgeBeforeSession(t *testing.T) {
+	store := assistant.NewMemoryConversationStore()
+	generator := &contextCaptureGenerator{}
+	tools := assistant.NewDemoStateWithGenerator(generator)
+	service := assistant.NewService(assistant.Dependencies{
+		Planner:           assistant.NewMockPlanner(tools),
+		Tools:             demomodules.NewRegistry(tools, generator),
+		ConversationStore: store,
+		Runtime:           tools,
+		Attachments:       tools,
+		Resetter:          tools,
+	})
+	ctx := context.Background()
+	run, err := service.StartTask(ctx, assistant.StartTaskCommand{
+		ActorUserID:    assistant.DemoUserID,
+		ThreadID:       assistant.DemoThreadID,
+		UserMessage:    "我要准备一场 Go 后端面试",
+		IdempotencyKey: "scenario-go-start",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Intent != "scenario_practice" || run.Status != assistant.TaskRunStatusAwaitingConfirm {
+		t.Fatalf("unexpected scenario run: %#v", run)
+	}
+	plan, err := store.GetPlan(ctx, run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Scenario != "interview" || plan.ScenarioVariant != "go_backend_interview" ||
+		strings.Join(plan.KnowledgeTags, ",") != "interview,go_backend" {
+		t.Fatalf("unexpected scenario plan: %#v", plan)
+	}
+	snapshot := store.Snapshot(tools.State())
+	calls := toolNamesForRun(snapshot.ToolCalls, run.ID)
+	joinedCalls := strings.Join(calls, ",")
+	if joinedCalls != "preparation.get_confirmed_context,scenario.retrieve_knowledge" &&
+		joinedCalls != "scenario.retrieve_knowledge,preparation.get_confirmed_context" {
+		t.Fatalf("unexpected pre-confirm calls: %#v", snapshot.ToolCalls)
+	}
+	if tools.State().CurrentSessionID != "" || tools.State().ActiveQuestion != "" {
+		t.Fatalf("knowledge retrieval started session: %#v", tools.State())
+	}
+
+	run, err = service.ResumeTask(ctx, assistant.ResumeTaskCommand{
+		ActorUserID: assistant.DemoUserID,
+		TaskRunID:   run.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Status != assistant.TaskRunStatusCompleted || tools.State().ActiveQuestion == "" {
+		t.Fatalf("resume did not start scenario interview: %#v %#v", run, tools.State())
+	}
+	if len(generator.questionInputs) != 1 ||
+		generator.questionInputs[0].ScenarioKnowledge.ScenarioVariant != "go_backend_interview" ||
+		!strings.Contains(strings.Join(generator.questionInputs[0].ScenarioKnowledge.CompetencyContext, " "), "Goroutines") {
+		t.Fatalf("question did not receive Go scenario knowledge: %#v", generator.questionInputs)
+	}
+}
+
+func TestScenarioPracticeFillsCreatePlanRoleFromScenarioCatalog(t *testing.T) {
+	store := assistant.NewMemoryConversationStore()
+	tools := assistant.NewDemoState()
+	service := assistant.NewService(assistant.Dependencies{
+		Planner: staticPlanner{plan: assistant.Plan{
+			Intent:          "scenario_practice",
+			Scenario:        "interview",
+			ScenarioVariant: "java_backend_interview",
+			Steps: []assistant.PlanStep{
+				{ToolName: "scenario.retrieve_knowledge", Arguments: map[string]any{}},
+				{ToolName: "preparation.get_confirmed_context", Arguments: map[string]any{"scenario": "PROGRAMMER_INTERVIEW"}},
+				{ToolName: "practice.create_plan", Arguments: map[string]any{"max_turns": 10}},
+				{ToolName: "practice.start_session", Arguments: map[string]any{}},
+				{ToolName: "conversation.generate_next_question", Arguments: map[string]any{}},
+			},
+		}},
+		Tools:             demomodules.NewRegistry(tools, nil),
+		ConversationStore: store,
+		Runtime:           tools,
+		Attachments:       tools,
+		Resetter:          tools,
+	})
+	run, err := service.StartTask(context.Background(), assistant.StartTaskCommand{
+		ActorUserID:    assistant.DemoUserID,
+		ThreadID:       assistant.DemoThreadID,
+		UserMessage:    "我要准备一场 Java 后端面试",
+		IdempotencyKey: "scenario-java-empty-role",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := store.GetPlan(context.Background(), run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if targetRoleFromTestPlan(plan) != "Java Backend Engineer" {
+		t.Fatalf("scenario role default was not applied: %#v", plan)
+	}
+	if got := maxTurnsFromTestPlan(plan); got != 0 {
+		t.Fatalf("planner-invented max_turns was not reset: got %d plan=%#v", got, plan)
+	}
+}
+
+func targetRoleFromTestPlan(plan assistant.Plan) string {
+	for _, step := range plan.Steps {
+		if step.ToolName == "practice.create_plan" {
+			return strings.TrimSpace(fmt.Sprint(step.Arguments["role"]))
+		}
+	}
+	return ""
+}
+
+func maxTurnsFromTestPlan(plan assistant.Plan) int {
+	for _, step := range plan.Steps {
+		if step.ToolName == "practice.create_plan" {
+			switch value := step.Arguments["max_turns"].(type) {
+			case int:
+				return value
+			case float64:
+				return int(value)
+			}
+		}
+	}
+	return -1
+}
+
+func toolNamesForRun(calls []assistant.ToolCall, runID string) []string {
+	names := []string{}
+	for _, call := range calls {
+		if call.TaskRunID == runID {
+			names = append(names, call.ToolName)
+		}
+	}
+	return names
 }
 
 type contextCaptureGenerator struct {
@@ -425,11 +612,11 @@ func TestMockPlannerInfersRequestedInterviewRole(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.Intent != "start_mock_interview" {
-		t.Fatalf("intent = %q, want start_mock_interview", plan.Intent)
+	if plan.Intent != "scenario_practice" || plan.ScenarioVariant != "product_manager_interview" {
+		t.Fatalf("unexpected scenario plan: %#v", plan)
 	}
-	if got := plan.Steps[1].Arguments["role"]; got != "Product Manager" {
-		t.Fatalf("role = %v, want Product Manager", got)
+	if strings.Join(plan.KnowledgeTags, ",") != "interview,product_manager" {
+		t.Fatalf("knowledge tags = %#v, want product manager interview tags", plan.KnowledgeTags)
 	}
 }
 
@@ -456,7 +643,7 @@ func TestMockPlannerClarifiesMissingInterviewRoleThenUsesAnswer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.Intent != "start_mock_interview" || plan.Steps[1].Arguments["role"] != "Go Backend Engineer" {
+	if plan.Intent != "scenario_practice" || plan.ScenarioVariant != "go_backend_interview" {
 		t.Fatalf("unexpected continuation plan: %#v", plan)
 	}
 }
