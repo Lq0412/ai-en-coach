@@ -41,6 +41,41 @@ function VoiceBubble({ label, duration }: { label: string; duration: string }) {
   );
 }
 
+function InterviewerQuestion({ question }: { question: string }) {
+  const [showTranslation, setShowTranslation] = useState(false);
+  const [showHint, setShowHint] = useState(false);
+
+  function replayQuestion() {
+    if (!("speechSynthesis" in window)) return;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance(question));
+  }
+
+  return (
+    <div className="demo-interviewer-turn">
+      <span className="demo-interviewer-avatar" aria-hidden="true">E</span>
+      <div>
+        <div className="demo-interviewer-name">
+          <strong>Ethan</strong>
+          <small>Engineering Manager</small>
+        </div>
+        <div className="demo-interviewer-bubble">
+          <p>{question}</p>
+          {showTranslation && <p className="demo-question-support">请介绍一个你设计过的后端系统，以及当时最困难的技术取舍。</p>}
+          {showHint && <p className="demo-question-support">提示：先交代系统规模，再说明约束、选择与结果。</p>}
+          <div className="demo-question-actions">
+            <button type="button" aria-pressed={showTranslation} onClick={() => setShowTranslation(!showTranslation)}>翻译</button>
+            <button className="demo-audio-action" type="button" aria-label="重播问题" onClick={replayQuestion}>
+              <span className="demo-speaker-icon" aria-hidden="true" />
+            </button>
+            <button type="button" aria-pressed={showHint} onClick={() => setShowHint(!showHint)}>提示</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CoachScreen({ children }: { children: ReactNode }) {
   return (
     <div className="demo-product-screen demo-coach-screen">
@@ -116,11 +151,7 @@ function DemoPanel({ kind, href }: { kind: DemoKind; href: string }) {
           <span>Noah</span>
         </div>
         <div className="demo-interview-body">
-          <div className="demo-interviewer">
-            <span aria-hidden="true">E</span>
-            <div><strong>Ethan</strong><small>Engineering Manager</small></div>
-          </div>
-          <p className="demo-interview-question">Tell me about a backend system you designed and the most difficult trade-off you made.</p>
+          <InterviewerQuestion question="Tell me about a backend system you designed and the most difficult trade-off you made." />
           <div className="demo-user-row"><VoiceBubble label="你的回答" duration="0:42" /></div>
           <div className="demo-follow-up">
             <strong>Ethan 继续追问</strong>

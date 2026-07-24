@@ -80,6 +80,10 @@ test("renders five interactive product states instead of cropped screenshots", a
   assert.match(source, /我下周有一场外企后端面试，好紧张/);
   assert.match(source, /进入模拟面试/);
   assert.match(source, /Why did you choose Kafka/);
+  assert.match(source, /demo-interviewer-bubble/);
+  assert.match(source, />翻译</);
+  assert.match(source, /aria-label="重播问题"/);
+  assert.match(source, />提示</);
   assert.match(source, /模拟面试已完成/);
   assert.match(source, /今天的面试怎么样/);
   const practicePanel = source.match(/if \(kind === "practice"\)[\s\S]*?if \(kind === "interview"\)/)?.[0] || "";
