@@ -2,6 +2,7 @@ import ComingSoonDialog from "./ComingSoonDialog";
 import InterviewDemo from "./InterviewDemo";
 
 const comingSoonHref = "#coming-soon";
+const prototypeHref = "/pages/prototype.html";
 
 const journeyStages = [
   {
@@ -102,7 +103,7 @@ export default function Home() {
           <a href="#use-cases">适用阶段</a>
           <a href="#memory">长期记忆</a>
         </div>
-        <a className="button button-small" href={comingSoonHref}>
+        <a className="button button-small" href={`${prototypeHref}#agent-chat`} target="_blank" rel="noreferrer">
           体验 SpeakUp
         </a>
       </nav>
@@ -119,8 +120,8 @@ export default function Home() {
             它会主动了解你的目标，先教、再陪你模拟，也会记住真实世界的结果，越用越懂你。
           </p>
           <div className="button-group">
-            <a className="button" href={comingSoonHref}>
-              告诉 SpeakUp 我要面对什么 <span aria-hidden="true">↗</span>
+            <a className="button" href={`${prototypeHref}#agent-chat`} target="_blank" rel="noreferrer">
+              先让 SpeakUp 了解我 <span aria-hidden="true">↗</span>
             </a>
             <a className="button button-secondary" href="#demo">
               看它怎么陪我
@@ -250,7 +251,7 @@ export default function Home() {
         <h2>告诉 SpeakUp，<br />接下来要面对什么。</h2>
         <p>可以是一场雅思口语考试、英文面试，也可以是海外生活和工作里马上要发生的关键沟通。</p>
         <div className="button-group">
-          <a className="button" href={comingSoonHref}>开始一次任务准备 ↗</a>
+          <a className="button" href={`${prototypeHref}#agent-chat`} target="_blank" rel="noreferrer">开始一次任务准备 ↗</a>
           <a className="button button-dark-secondary" href="#top">回到顶部</a>
         </div>
       </section>

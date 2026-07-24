@@ -28,7 +28,8 @@ test("presents SpeakUp as a long-term Agent teacher connected to real outcomes",
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /有记忆的 AI Agent 口语老师/);
-  assert.doesNotMatch(html, /href="\/pages\/prototype\.html/);
+  assert.match(html, /href="\/pages\/prototype\.html#agent-chat"/);
+  assert.match(html, /先让 SpeakUp 了解我/);
   assert.match(html, /敬请期待/);
   assert.match(html, /下一场重要的英文沟通/);
   assert.match(html, /越用越懂你/);
