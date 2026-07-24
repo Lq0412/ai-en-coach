@@ -130,7 +130,11 @@ func (r *Registry) Execute(ctx context.Context, invocation assistant.ToolInvocat
 		})
 		return output(map[string]any{"items": mistakeCardsOutput(items)}, err)
 	case "review.get_mistake_context":
-		value, err := r.review.GetMistakeContext(ctx, review.MistakeContextQuery{MistakeID: stringArgument(invocation.Arguments["mistake_id"])})
+		value, err := r.review.GetMistakeContext(ctx, review.MistakeContextQuery{
+			MistakeID:   stringArgument(invocation.Arguments["mistake_id"]),
+			QuestionRef: stringArgument(invocation.Arguments["question_ref"]),
+			SessionID:   stringArgument(invocation.Arguments["session_id"]),
+		})
 		return output(map[string]any{
 			"mistake": savedMistakeOutput(value.Mistake),
 			"session": map[string]any{
@@ -144,8 +148,10 @@ func (r *Registry) Execute(ctx context.Context, invocation assistant.ToolInvocat
 		}, err)
 	case "review.submit_mistake_repractice":
 		value, err := r.review.SubmitMistakeRepractice(ctx, review.SubmitMistakeRepracticeCommand{
-			MistakeID:  stringArgument(invocation.Arguments["mistake_id"]),
-			AnswerText: fmt.Sprint(invocation.Arguments["answer_text"]),
+			MistakeID:   stringArgument(invocation.Arguments["mistake_id"]),
+			QuestionRef: stringArgument(invocation.Arguments["question_ref"]),
+			SessionID:   stringArgument(invocation.Arguments["session_id"]),
+			AnswerText:  fmt.Sprint(invocation.Arguments["answer_text"]),
 		})
 		return output(map[string]any{"repractice": repracticeResultOutput(value), "summary": value.Summary}, err)
 	default:

@@ -35,12 +35,16 @@ type ListMistakesQuery struct {
 }
 
 type MistakeContextQuery struct {
-	MistakeID string
+	MistakeID   string
+	QuestionRef string
+	SessionID   string
 }
 
 type SubmitMistakeRepracticeCommand struct {
-	MistakeID  string
-	AnswerText string
+	MistakeID   string
+	QuestionRef string
+	SessionID   string
+	AnswerText  string
 }
 
 type Feedback struct {
@@ -276,9 +280,11 @@ type MistakeContext struct {
 
 func (s service) GetMistakeContext(_ context.Context, query MistakeContextQuery) (context MistakeContext, err error) {
 	_, err = s.state.Transact(func(state *assistant.RuntimeSnapshot, answers *[]string) (assistant.ToolResult, error) {
-		mistake, ok := savedMistakeByID(state.SavedMistakes, query.MistakeID)
-		if !ok {
-			return assistant.ToolResult{}, fmt.Errorf("review: saved mistake %q not found", query.MistakeID)
+		mistake, err := resolveMistakeReference(state.SavedMistakes, mistakeReference{
+			MistakeID: query.MistakeID, QuestionRef: query.QuestionRef, SessionID: query.SessionID,
+		})
+		if err != nil {
+			return assistant.ToolResult{}, err
 		}
 		session, ok := sessionByID(*state, *answers, mistake.SessionID)
 		if !ok {
@@ -297,21 +303,20 @@ func (s service) GetMistakeContext(_ context.Context, query MistakeContextQuery)
 
 func (s service) SubmitMistakeRepractice(_ context.Context, command SubmitMistakeRepracticeCommand) (result assistant.MistakeRepracticeResult, err error) {
 	_, err = s.state.Transact(func(state *assistant.RuntimeSnapshot, _ *[]string) (assistant.ToolResult, error) {
-		mistakeIndex := -1
-		for index := range state.SavedMistakes {
-			if state.SavedMistakes[index].ID == command.MistakeID {
-				mistakeIndex = index
-				break
-			}
-		}
-		if mistakeIndex < 0 {
-			return assistant.ToolResult{}, fmt.Errorf("review: saved mistake %q not found", command.MistakeID)
+		mistake, err := resolveMistakeReference(state.SavedMistakes, mistakeReference{
+			MistakeID: command.MistakeID, QuestionRef: command.QuestionRef, SessionID: command.SessionID,
+		})
+		if err != nil {
+			return assistant.ToolResult{}, err
 		}
 		answer := strings.TrimSpace(command.AnswerText)
 		if answer == "" {
 			return assistant.ToolResult{}, fmt.Errorf("review: repractice answer is required")
 		}
-		mistake := state.SavedMistakes[mistakeIndex]
+		mistakeIndex := savedMistakeIndexByID(state.SavedMistakes, mistake.ID)
+		if mistakeIndex < 0 {
+			return assistant.ToolResult{}, fmt.Errorf("review: saved mistake %q not found", mistake.ID)
+		}
 		now := time.Now().UTC()
 		note := repracticeNote(mistake, answer)
 		result = assistant.MistakeRepracticeResult{
@@ -381,6 +386,155 @@ func savedMistakeByID(mistakes []assistant.SavedMistake, id string) (assistant.S
 		}
 	}
 	return assistant.SavedMistake{}, false
+}
+
+func savedMistakeIndexByID(mistakes []assistant.SavedMistake, id string) int {
+	id = strings.TrimSpace(id)
+	for index, mistake := range mistakes {
+		if mistake.ID == id {
+			return index
+		}
+	}
+	return -1
+}
+
+type mistakeReference struct {
+	MistakeID   string
+	QuestionRef string
+	SessionID   string
+}
+
+func resolveMistakeReference(mistakes []assistant.SavedMistake, ref mistakeReference) (assistant.SavedMistake, error) {
+	if mistakeID := strings.TrimSpace(ref.MistakeID); mistakeID != "" {
+		if mistake, ok := savedMistakeByID(mistakes, mistakeID); ok {
+			return mistake, nil
+		}
+		if index, ok := questionIndexFromRef(mistakeID); ok {
+			return resolveMistakeByQuestionIndex(mistakes, index, ref.SessionID, mistakeID)
+		}
+		return assistant.SavedMistake{}, fmt.Errorf("review: saved mistake %q not found", mistakeID)
+	}
+	if questionRef := strings.TrimSpace(ref.QuestionRef); questionRef != "" {
+		if mistake, ok := savedMistakeByID(mistakes, questionRef); ok {
+			return mistake, nil
+		}
+		index, ok := questionIndexFromRef(questionRef)
+		if !ok {
+			return assistant.SavedMistake{}, fmt.Errorf("review: unsupported mistake reference %q; available references: %s", questionRef, availableMistakeReferences(mistakes))
+		}
+		return resolveMistakeByQuestionIndex(mistakes, index, ref.SessionID, questionRef)
+	}
+	return assistant.SavedMistake{}, fmt.Errorf("review: mistake_id or question_ref is required; available references: %s", availableMistakeReferences(mistakes))
+}
+
+func resolveMistakeByQuestionIndex(mistakes []assistant.SavedMistake, questionIndex int, sessionID, originalRef string) (assistant.SavedMistake, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	matches := make([]assistant.SavedMistake, 0)
+	for _, mistake := range mistakes {
+		if mistake.QuestionIndex != questionIndex {
+			continue
+		}
+		if sessionID != "" && mistake.SessionID != sessionID {
+			continue
+		}
+		matches = append(matches, mistake)
+	}
+	if len(matches) == 1 {
+		return matches[0], nil
+	}
+	if len(matches) == 0 {
+		return assistant.SavedMistake{}, fmt.Errorf("review: saved mistake reference %q not found; available references: %s", originalRef, availableMistakeReferences(mistakes))
+	}
+	return assistant.SavedMistake{}, fmt.Errorf("review: saved mistake reference %q is ambiguous; provide session_id or mistake_id. candidates: %s", originalRef, mistakeReferenceCandidates(matches))
+}
+
+func questionIndexFromRef(value string) (int, bool) {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`(?i)(?:^|[^a-z0-9])q\s*([0-9]+)(?:$|[^a-z0-9])`),
+		regexp.MustCompile(`(?i)(?:^|[^a-z0-9])question\s*([0-9]+)(?:$|[^a-z0-9])`),
+		regexp.MustCompile(`第\s*([0-9]+)\s*题`),
+	}
+	for _, pattern := range patterns {
+		matches := pattern.FindStringSubmatch(normalized)
+		if len(matches) != 2 {
+			continue
+		}
+		return oneBasedQuestionIndex(matches[1])
+	}
+	compact := strings.ReplaceAll(normalized, " ", "")
+	compact = strings.TrimPrefix(compact, "第")
+	compact = strings.TrimSuffix(compact, "题")
+	if index, ok := chineseQuestionIndex(compact); ok {
+		return index, true
+	}
+	if isAllDigits(compact) {
+		return oneBasedQuestionIndex(compact)
+	}
+	return 0, false
+}
+
+func oneBasedQuestionIndex(value string) (int, bool) {
+	index := 0
+	for _, r := range value {
+		if !unicode.IsDigit(r) {
+			return 0, false
+		}
+		index = index*10 + int(r-'0')
+	}
+	if index <= 0 {
+		return 0, false
+	}
+	return index - 1, true
+}
+
+func isAllDigits(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if !unicode.IsDigit(r) {
+			return false
+		}
+	}
+	return true
+}
+
+func chineseQuestionIndex(value string) (int, bool) {
+	values := map[string]int{
+		"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5,
+		"六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
+	}
+	for text, number := range values {
+		if value == text {
+			return number - 1, true
+		}
+	}
+	return 0, false
+}
+
+func availableMistakeReferences(mistakes []assistant.SavedMistake) string {
+	if len(mistakes) == 0 {
+		return "none"
+	}
+	limit := len(mistakes)
+	if limit > 5 {
+		limit = 5
+	}
+	items := make([]string, 0, limit)
+	for index := len(mistakes) - 1; index >= 0 && len(items) < limit; index-- {
+		mistake := mistakes[index]
+		items = append(items, fmt.Sprintf("Q%d=%s", mistake.QuestionIndex+1, mistake.ID))
+	}
+	return strings.Join(items, ", ")
+}
+
+func mistakeReferenceCandidates(mistakes []assistant.SavedMistake) string {
+	items := make([]string, 0, len(mistakes))
+	for _, mistake := range mistakes {
+		items = append(items, fmt.Sprintf("session_id=%s mistake_id=%s", mistake.SessionID, mistake.ID))
+	}
+	return strings.Join(items, "; ")
 }
 
 func repracticesForMistake(results []assistant.MistakeRepracticeResult, mistakeID string) []assistant.MistakeRepracticeResult {

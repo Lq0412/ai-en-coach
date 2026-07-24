@@ -1,6 +1,7 @@
 package assistant
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -375,19 +376,69 @@ type ConfirmationRequest struct {
 }
 
 type Plan struct {
-	Intent          string
-	Scenario        string   `json:"Scenario,omitempty"`
-	ScenarioVariant string   `json:"ScenarioVariant,omitempty"`
-	KnowledgeTags   []string `json:"KnowledgeTags,omitempty"`
-	Steps           []PlanStep
-	Confidence      float64  `json:"Confidence,omitempty"`
-	MissingSlots    []string `json:"MissingSlots,omitempty"`
-	Reason          string   `json:"Reason,omitempty"`
+	Intent             string
+	RouteType          string              `json:"RouteType,omitempty"`
+	Scenario           string              `json:"Scenario,omitempty"`
+	ScenarioVariant    string              `json:"ScenarioVariant,omitempty"`
+	KnowledgeTags      []string            `json:"KnowledgeTags,omitempty"`
+	Steps              []PlanStep          `json:"Steps,omitempty"`
+	MissingSlots       []MissingSlot       `json:"MissingSlots,omitempty"`
+	Ambiguity          *Ambiguity          `json:"Ambiguity,omitempty"`
+	UnsupportedRequest *UnsupportedRequest `json:"UnsupportedRequest,omitempty"`
+	Confidence         float64             `json:"Confidence,omitempty"`
+	Reason             string              `json:"Reason,omitempty"`
 }
 
 type PlanStep struct {
 	ToolName  string
 	Arguments map[string]any
+}
+
+type MissingSlot struct {
+	Name     string `json:"Name"`
+	Question string `json:"Question,omitempty"`
+}
+
+type Ambiguity struct {
+	Candidates []string `json:"Candidates"`
+	Question   string   `json:"Question"`
+}
+
+type UnsupportedRequest struct {
+	RequestedCapability string `json:"RequestedCapability"`
+	ClosestPackage      string `json:"ClosestPackage"`
+	Message             string `json:"Message"`
+}
+
+func (plan *Plan) UnmarshalJSON(data []byte) error {
+	type planAlias Plan
+	var raw struct {
+		planAlias
+		MissingSlots json.RawMessage `json:"MissingSlots"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*plan = Plan(raw.planAlias)
+	if len(raw.MissingSlots) == 0 || string(raw.MissingSlots) == "null" {
+		return nil
+	}
+	var objectSlots []MissingSlot
+	if err := json.Unmarshal(raw.MissingSlots, &objectSlots); err == nil {
+		plan.MissingSlots = objectSlots
+		return nil
+	}
+	var stringSlots []string
+	if err := json.Unmarshal(raw.MissingSlots, &stringSlots); err != nil {
+		return err
+	}
+	plan.MissingSlots = make([]MissingSlot, 0, len(stringSlots))
+	for _, slot := range stringSlots {
+		if name := strings.TrimSpace(slot); name != "" {
+			plan.MissingSlots = append(plan.MissingSlots, MissingSlot{Name: name})
+		}
+	}
+	return nil
 }
 
 type ToolResult struct {
