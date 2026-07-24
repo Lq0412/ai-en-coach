@@ -207,120 +207,98 @@ h2 {
 }
 
 .hero h1 {
-  font-size: clamp(58px, 7vw, 92px);
-  line-height: 0.94;
+  max-width: 960px;
+  margin: 0 auto;
+  font-size: clamp(52px, 5.8vw, 76px);
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .headline-muted {
-  color: rgba(26, 26, 26, 0.26);
+  color: rgba(26, 26, 26, 0.52);
 }
 
 .hero-subtitle {
   max-width: 720px;
-  margin: 32px auto 30px;
+  margin: 26px auto 28px;
   color: rgba(26, 26, 26, 0.78);
-  font-size: clamp(18px, 1.6vw, 22px);
+  font-size: clamp(17px, 1.45vw, 20px);
   font-weight: 450;
-  line-height: 1.6;
+  line-height: 1.55;
 }
 
 .scenario-flow {
-  margin: clamp(60px, 6vw, 80px) 0 clamp(68px, 7vw, 92px);
-}
-
-.scenario-flow-heading {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 18px;
-  font-size: 13px;
-  font-weight: 750;
-}
-
-.scenario-flow-heading small {
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.scenario-flow-viewport {
-  position: relative;
-  height: clamp(180px, 16vw, 214px);
-  display: flex;
-  align-items: center;
-  border: 2px solid var(--ink);
-  border-radius: 64px;
-  background: var(--ink);
-  color: var(--lumen);
+  margin: clamp(36px, 4vw, 54px) 0 clamp(52px, 6vw, 76px);
   overflow: hidden;
 }
 
-.scenario-flow-track {
-  display: flex;
-  width: max-content;
-  animation: scenario-flow 32s linear infinite;
-  will-change: transform;
+.scenario-flow-stage {
+  position: relative;
+  height: clamp(200px, 20vw, 240px);
 }
 
-.scenario-flow-group {
-  display: flex;
-  align-items: center;
-  gap: clamp(40px, 5vw, 72px);
-  padding-right: clamp(40px, 5vw, 72px);
+.scenario-flow-stage svg {
+  position: absolute;
+  inset: 0 50% auto auto;
+  width: max(100%, 1080px);
+  height: 100%;
+  overflow: visible;
+  transform: translateX(50%);
 }
 
-.scenario-flow-group > span {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 14px;
-  white-space: nowrap;
+.scenario-flow-copy {
   font-family: "Songti SC", STSong, Georgia, serif;
-  font-size: clamp(34px, 3.8vw, 52px);
-  letter-spacing: -0.045em;
+  font-size: 26px;
+  letter-spacing: -0.03em;
 }
 
-.scenario-flow-group i {
-  color: rgba(255, 255, 235, 0.46);
-  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
-  font-size: 11px;
-  font-style: normal;
-  font-weight: 750;
-  letter-spacing: 0.08em;
+.scenario-flow-copy-muted {
+  fill: rgba(26, 26, 26, 0.58);
+}
+
+.scenario-flow-copy-static {
+  display: none;
 }
 
 .scenario-flow-agent {
   position: absolute;
+  z-index: 2;
   inset: 50% auto auto 50%;
-  width: 112px;
-  height: 112px;
-  display: grid;
-  place-content: center;
-  gap: 4px;
-  border: 2px solid var(--ink);
-  border-radius: 50%;
-  background: var(--dawn);
   color: var(--ink);
-  text-align: center;
   transform: translate(-50%, -50%);
 }
 
-.scenario-flow-agent b {
-  font-family: Georgia, serif;
-  font-size: 34px;
-  font-style: italic;
-  font-weight: 400;
-  line-height: 1;
+.scenario-flow-listener {
+  width: 118px;
+  height: 58px;
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--ink);
+  border-radius: 999px;
+  background: var(--lumen);
 }
 
-.scenario-flow-agent small {
-  font-size: 11px;
-  font-weight: 750;
+.scenario-flow-wave {
+  height: 30px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
-@keyframes scenario-flow {
-  to { transform: translateX(-50%); }
+.scenario-flow-wave i {
+  width: 3px;
+  height: 10px;
+  border-radius: 99px;
+  background: var(--ink);
 }
+
+.scenario-flow-wave i:nth-child(2),
+.scenario-flow-wave i:nth-child(8) { height: 20px; }
+.scenario-flow-wave i:nth-child(3),
+.scenario-flow-wave i:nth-child(7) { height: 15px; }
+.scenario-flow-wave i:nth-child(4),
+.scenario-flow-wave i:nth-child(6) { height: 26px; }
+.scenario-flow-wave i:nth-child(5) { height: 18px; }
 
 .hero-scenario-links {
   display: flex;
@@ -855,7 +833,7 @@ h2 {
 }
 
 .journey-section {
-  margin: 0 var(--page-gutter);
+  margin: 0 var(--page-gutter) clamp(32px, 4vw, 56px);
   padding-top: clamp(96px, 8vw, 128px);
   padding-bottom: clamp(96px, 8vw, 128px);
   border: 2px solid var(--ink);
@@ -2313,61 +2291,39 @@ footer > span {
   }
 
   .hero h1 {
-    font-size: clamp(43px, 12vw, 56px);
-    line-height: 0.95;
+    font-size: clamp(26px, 8.2vw, 44px);
+    line-height: 1.03;
   }
 
   .hero-subtitle {
     color: rgba(26, 26, 26, 0.82);
-    font-size: 17px;
+    font-size: 16px;
     line-height: 1.6;
   }
 
   .scenario-flow {
-    margin: 48px 0 56px;
+    margin: 30px -18px 44px;
   }
 
-  .scenario-flow-heading {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 5px;
-    margin-bottom: 14px;
+  .scenario-flow-stage {
+    height: 170px;
   }
 
-  .scenario-flow-heading small {
-    font-size: 12px;
+  .scenario-flow-stage svg {
+    width: 760px;
   }
 
-  .scenario-flow-viewport {
-    height: 176px;
-    border-radius: 36px;
-  }
-
-  .scenario-flow-track {
-    animation-duration: 25s;
-  }
-
-  .scenario-flow-group {
-    gap: 34px;
-    padding-right: 34px;
-  }
-
-  .scenario-flow-group > span {
-    gap: 10px;
-    font-size: 28px;
+  .scenario-flow-copy {
+    font-size: 20px;
   }
 
   .scenario-flow-agent {
-    width: 84px;
-    height: 84px;
+    inset-block-start: 50%;
   }
 
-  .scenario-flow-agent b {
-    font-size: 27px;
-  }
-
-  .scenario-flow-agent small {
-    font-size: 10px;
+  .scenario-flow-listener {
+    width: 96px;
+    height: 50px;
   }
 
   .hero-scenario-links {
@@ -2496,7 +2452,7 @@ footer > span {
   }
 
   .journey-section {
-    margin: 0 12px;
+    margin: 0 12px 24px;
     padding-top: 76px;
     padding-bottom: 76px;
     border-radius: 36px;
@@ -2693,17 +2649,11 @@ footer > span {
     transition: none;
   }
 
-  .scenario-flow-viewport {
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-
-  .scenario-flow-viewport::-webkit-scrollbar {
+  .scenario-flow-copy-motion {
     display: none;
   }
 
-  .scenario-flow-track {
-    animation: none;
-    will-change: auto;
+  .scenario-flow-copy-static {
+    display: block;
   }
 }

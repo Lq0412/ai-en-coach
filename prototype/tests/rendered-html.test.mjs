@@ -27,15 +27,30 @@ test("presents SpeakUp as a long-term Agent teacher connected to real outcomes",
   const response = await render();
   assert.equal(response.status, 200);
   const html = await response.text();
-  assert.match(html, /有记忆的 AI Agent 口语老师/);
+  const flowMarkup = html.match(/<div class="scenario-flow"[\s\S]*?<div class="hero-product"/)?.[0] || "";
+  assert.match(html, /<h1><span class="headline-muted">下一场重要的英文沟通，<\/span><br\/>先和 SpeakUp 练一遍。<\/h1>/);
+  assert.match(html, /<p class="hero-subtitle">一个有记忆、越用越懂你的 AI 口语老师。<\/p>/);
+  assert.match(html, /告诉 SpeakUp，我要准备什么/);
+  assert.doesNotMatch(html, /<p class="eyebrow">有记忆的 AI Agent 口语老师<\/p>/);
   assert.match(html, /scenario-flow/);
-  assert.match(html, /我下周有一场英文面试……/);
-  assert.match(html, /明天要第一次独自去医院……/);
-  assert.match(html, /我要向海外客户汇报项目……/);
-  assert.match(html, /帮我准备 IELTS Part 2……/);
+  assert.match(html, /我下周有一场英文面试/);
+  assert.match(html, /明天要第一次独自去医院/);
+  assert.match(html, /我要向海外客户汇报项目/);
+  assert.match(html, /帮我准备 IELTS Part 2/);
+  assert.match(html, /我要参加第一次全英文会议/);
+  assert.match(html, /帮我和房东说明维修问题/);
+  assert.match(html, /下周要做一次英文产品演示/);
+  assert.match(html, /我要准备海外大学课堂发言/);
+  assert.doesNotMatch(html, /英文面试……|独自去医院……|汇报项目……|IELTS Part 2……/);
+  assert.match(html, /<textPath/);
+  assert.match(html, /scenario-flow-input-path/);
+  assert.match(flowMarkup, /M -180 190 C 140 252 350 190 570 118 C 820 38 1035 95 1380 58/);
+  assert.doesNotMatch(flowMarkup, /　·　/);
+  assert.doesNotMatch(html, /scenario-flow-output-path|scenario-flow-ribbon|scenario-flow-copy-bright/);
+  assert.doesNotMatch(flowMarkup, /<strong>SpeakUp<\/strong>|把下一件真实的事说给我听/);
+  assert.doesNotMatch(html, /scenario-flow-viewport/);
   assert.doesNotMatch(html, /href="\/pages\/prototype\.html/);
   assert.match(html, /href="#early-access"/);
-  assert.match(html, /先让 SpeakUp 了解我/);
   assert.match(html, /敬请期待/);
   assert.match(html, /下一场重要的英文沟通/);
   assert.match(html, /越用越懂你/);
@@ -104,9 +119,15 @@ test("renders five interactive product states instead of cropped screenshots", a
     styles.indexOf(".scenario-proof-section"),
   );
   assert.doesNotMatch(demoStyles, /gradient|glow/i);
-  assert.match(styles, /@keyframes scenario-flow/);
+  assert.doesNotMatch(styles, /@keyframes scenario-flow/);
+  assert.match(styles, /\.scenario-flow-stage/);
+  assert.doesNotMatch(styles, /\.scenario-flow-ribbon|\.scenario-flow-copy-bright/);
+  assert.match(styles, /\.scenario-flow-stage[\s\S]*?height:\s*clamp\(200px,\s*20vw,\s*240px\)/);
+  assert.match(styles, /\.hero h1[\s\S]*?font-size:\s*clamp\(52px,\s*5\.8vw,\s*76px\)/);
+  assert.match(styles, /\.headline-muted[\s\S]*?rgba\(26,\s*26,\s*26,\s*0\.52\)/);
   assert.match(styles, /--section-space:/);
-  assert.match(styles, /prefers-reduced-motion[\s\S]*\.scenario-flow-track/);
+  assert.match(styles, /prefers-reduced-motion[\s\S]*\.scenario-flow-copy-motion/);
+  assert.match(styles, /prefers-reduced-motion[\s\S]*\.scenario-flow-copy-static/);
 });
 
 test("opens the original information collection form from primary calls to action", async () => {

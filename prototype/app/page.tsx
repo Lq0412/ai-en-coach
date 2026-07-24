@@ -6,11 +6,17 @@ const comingSoonHref = "#coming-soon";
 const earlyAccessHref = "#early-access";
 
 const flowingTasks = [
-  "我下周有一场英文面试……",
-  "明天要第一次独自去医院……",
-  "我要向海外客户汇报项目……",
-  "帮我准备 IELTS Part 2……",
+  "我下周有一场英文面试",
+  "明天要第一次独自去医院",
+  "我要向海外客户汇报项目",
+  "帮我准备 IELTS Part 2",
+  "我要参加第一次全英文会议",
+  "帮我和房东说明维修问题",
+  "下周要做一次英文产品演示",
+  "我要准备海外大学课堂发言",
 ];
+
+const flowingTaskLoop = `${flowingTasks.join(" · ")} · ${flowingTasks.join(" · ")} · `;
 
 const journeyStages = [
   {
@@ -123,18 +129,17 @@ export default function Home() {
 
       <header className="hero" id="top">
         <div className="hero-copy">
-          <p className="eyebrow">有记忆的 AI Agent 口语老师</p>
           <h1>
             <span className="headline-muted">下一场重要的英文沟通，</span>
             <br />
             先和 SpeakUp 练一遍。
           </h1>
           <p className="hero-subtitle">
-            它会主动了解你的目标，先教、再陪你模拟，也会记住真实世界的结果，越用越懂你。
+            一个有记忆、越用越懂你的 AI 口语老师。
           </p>
           <div className="button-group">
             <a className="button" href={earlyAccessHref} data-scenario="英文面试">
-              先让 SpeakUp 了解我 <span aria-hidden="true">↗</span>
+              告诉 SpeakUp，我要准备什么 <span aria-hidden="true">↗</span>
             </a>
             <a className="button button-secondary" href="#demo">
               看它怎么陪我
@@ -147,27 +152,35 @@ export default function Home() {
           role="img"
           aria-label={`可以告诉 SpeakUp 的真实任务：${flowingTasks.join("；")}`}
         >
-          <div className="scenario-flow-heading" aria-hidden="true">
-            <span>把下一件真实的事，说给它听</span>
-            <small>场景会变，陪你的老师不变</small>
-          </div>
-          <div className="scenario-flow-viewport" aria-hidden="true">
-            <div className="scenario-flow-track">
-              {[0, 1].map((group) => (
-                <div className="scenario-flow-group" key={group}>
-                  {flowingTasks.map((task, index) => (
-                    <span key={`${group}-${task}`}>
-                      <i>{String(index + 1).padStart(2, "0")}</i>
-                      {task}
-                    </span>
-                  ))}
-                </div>
-              ))}
+          <div className="scenario-flow-stage" aria-hidden="true">
+            <svg viewBox="0 0 1200 240" preserveAspectRatio="xMidYMid meet">
+              <defs>
+                <path
+                  id="scenario-flow-input-path"
+                  d="M -180 190 C 140 252 350 190 570 118 C 820 38 1035 95 1380 58"
+                />
+              </defs>
+
+              <text className="scenario-flow-copy scenario-flow-copy-muted scenario-flow-copy-motion">
+                <textPath href="#scenario-flow-input-path" startOffset="-50%">
+                  {flowingTaskLoop}
+                  <animate attributeName="startOffset" from="-50%" to="0%" dur="50s" repeatCount="indefinite" />
+                </textPath>
+              </text>
+              <text className="scenario-flow-copy scenario-flow-copy-muted scenario-flow-copy-static">
+                <textPath href="#scenario-flow-input-path" startOffset="4%">
+                  {flowingTaskLoop}
+                </textPath>
+              </text>
+            </svg>
+
+            <div className="scenario-flow-agent">
+              <span className="scenario-flow-listener">
+                <span className="scenario-flow-wave">
+                  <i /><i /><i /><i /><i /><i /><i /><i /><i />
+                </span>
+              </span>
             </div>
-            <span className="scenario-flow-agent">
-              <b>S</b>
-              <small>正在听</small>
-            </span>
           </div>
         </div>
 
