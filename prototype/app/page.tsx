@@ -1,7 +1,7 @@
-import ComingSoonDialog from "./ComingSoonDialog";
+import EarlyAccessDialog from "./EarlyAccessDialog";
 import InterviewDemo from "./InterviewDemo";
 
-const comingSoonHref = "#coming-soon";
+const earlyAccessHref = "#early-access";
 
 const journeyStages = [
   {
@@ -10,7 +10,7 @@ const journeyStages = [
     type: "雅思口语",
     copy: "按 Part 1、2、3 的真实结构限时作答，从逐句证据回到同题复练。",
     action: "开始 Part 2 模拟",
-    href: comingSoonHref,
+    href: earlyAccessHref,
   },
   {
     index: "02",
@@ -18,7 +18,7 @@ const journeyStages = [
     type: "英文面试",
     copy: "结合 JD、简历和项目经历，生成多轮面试计划并持续压力追问。",
     action: "生成面试方案",
-    href: comingSoonHref,
+    href: earlyAccessHref,
   },
   {
     index: "03",
@@ -26,7 +26,7 @@ const journeyStages = [
     type: "海外日常",
     copy: "把下一件要办的事直接告诉 Agent。它会识别对方、目标和不能遗漏的信息，再接管角色追问。",
     action: "告诉 Agent 一件事",
-    href: comingSoonHref,
+    href: earlyAccessHref,
   },
   {
     index: "04",
@@ -34,7 +34,7 @@ const journeyStages = [
     type: "国际职场",
     copy: "先拿到能直接使用的表达，再排练客户、会议和绩效沟通中的追问。",
     action: "准备客户会议",
-    href: comingSoonHref,
+    href: earlyAccessHref,
   },
 ];
 
@@ -45,7 +45,7 @@ const scenarioProofs = [
     copy: "题卡、计时、转写和逐句建议在同一页完成，用户可以直接回到同一道题继续说。",
     image: "/assets/portal-shots/portal-ielts-part2.jpg",
     alt: "SpeakUp IELTS Part 2 限时作答与逐句反馈界面",
-    href: comingSoonHref,
+    href: earlyAccessHref,
     action: "查看雅思口语 Mock",
   },
   {
@@ -54,7 +54,7 @@ const scenarioProofs = [
     copy: "SpeakUp 会从自然语言里识别人物、目标和限制条件，先给出能直接使用的表达，再接管角色进行追问。",
     image: "/assets/portal-shots/portal-daily-doctor.jpg",
     alt: "SpeakUp 从自然语言中理解海外就医任务并给出可直接使用的表达",
-    href: comingSoonHref,
+    href: earlyAccessHref,
     action: "看看 Agent 如何接住就医任务",
   },
   {
@@ -63,7 +63,7 @@ const scenarioProofs = [
     copy: "结合项目背景、客户关注点和承诺边界，先准备表达，再模拟对方最可能提出的质疑。",
     image: "/assets/portal-shots/portal-workplace-client.jpg",
     alt: "SpeakUp 海外客户延期沟通准备与压力排练方案",
-    href: comingSoonHref,
+    href: earlyAccessHref,
     action: "查看工作沟通 Mock",
   },
 ];
@@ -76,7 +76,7 @@ const productFeatures = [
     image: "/assets/portal-shots/portal-interview-start.jpg",
     alt: "SpeakUp 根据后端开发工程师 JD 和简历生成四轮一对一面试计划",
     status: "提出任务",
-    href: comingSoonHref,
+    href: earlyAccessHref,
     action: "查看任务理解",
   },
   {
@@ -86,7 +86,7 @@ const productFeatures = [
     image: "/assets/portal-shots/portal-panel-practice.jpg",
     alt: "SpeakUp 多面试官模拟中三位面试官根据同一段回答连续追问",
     status: "单面 / 群面",
-    href: comingSoonHref,
+    href: earlyAccessHref,
     action: "体验多面试官模拟",
   },
   {
@@ -96,7 +96,7 @@ const productFeatures = [
     image: "/assets/portal-shots/portal-evidence-report.jpg",
     alt: "SpeakUp 在面试结束后给出一条优先级明确的精简建议",
     status: "即时建议",
-    href: comingSoonHref,
+    href: earlyAccessHref,
     action: "查看 Agent 建议",
   },
   {
@@ -106,7 +106,7 @@ const productFeatures = [
     image: "/assets/portal-shots/portal-memory-chat.jpg",
     alt: "SpeakUp Memory 在对话中使用长期目标、真实项目、重复卡点与能力变化",
     status: "Memory 驱动",
-    href: comingSoonHref,
+    href: earlyAccessHref,
     action: "查看 Memory 如何工作",
   },
 ];
@@ -133,10 +133,10 @@ export default function Home() {
   return (
     <main>
       <div className="announcement">
-        <span>SpeakUp 首批体验即将开放</span>
+        <span>SpeakUp 正在招募首批体验用户</span>
         <span className="announcement-separator" aria-hidden="true">·</span>
-        <a href={comingSoonHref}>
-          查看开放进度 <span aria-hidden="true">↗</span>
+        <a href={earlyAccessHref} data-scenario="英文面试">
+          申请首批体验 <span aria-hidden="true">↗</span>
         </a>
       </div>
 
@@ -150,8 +150,8 @@ export default function Home() {
           <a href="#demo">完整演示</a>
           <a href="#how-it-works">产品方式</a>
         </div>
-        <a className="button button-small" href={comingSoonHref}>
-          体验 SpeakUp
+        <a className="button button-small" href={earlyAccessHref} data-scenario="英文面试">
+          申请体验
         </a>
       </nav>
 
@@ -159,9 +159,8 @@ export default function Home() {
         <div className="hero-copy">
           <p className="eyebrow">面向真实任务的英语沟通 Agent</p>
           <h1>
-            <span className="headline-muted">下一场重要的英文沟通，</span>
-            <br />
-            先和 SpeakUp 练一遍。
+            <span className="title-line headline-muted"><span className="title-phrase">下一场重要的</span><span className="title-phrase">英文沟通，</span></span>
+            <span className="title-line"><span className="title-phrase">先和 SpeakUp</span><span className="title-phrase">练一遍。</span></span>
           </h1>
           <p className="hero-subtitle">
             说出你接下来要面对什么，SpeakUp 会结合目标、经历和过往练习，帮你准备、排练和复盘。
@@ -174,8 +173,8 @@ export default function Home() {
             ))}
           </div>
           <div className="button-group">
-            <a className="button" href={comingSoonHref}>
-              告诉 SpeakUp 我要面对什么 <span aria-hidden="true">↗</span>
+            <a className="button" href={earlyAccessHref} data-scenario="英文面试">
+              申请首批体验 <span aria-hidden="true">↗</span>
             </a>
             <a className="button button-secondary" href="#use-cases">
               查看四类任务
@@ -216,8 +215,8 @@ export default function Home() {
         <div className="section-intro dark-copy">
           <p className="eyebrow">从任何阶段开始</p>
           <h2>
-            <span className="journey-title-line">考出去、面进去，</span>
-            <span className="journey-title-line">适应好，再到真正发展好。</span>
+            <span className="title-line"><span className="title-phrase">考出去、</span><span className="title-phrase">面进去，</span></span>
+            <span className="title-line"><span className="title-phrase">适应好，</span><span className="title-phrase">再到真正</span><span className="title-phrase">发展好。</span></span>
           </h2>
           <p>四类任务共用同一个 SpeakUp：先理解下一件要发生的事，再准备、排练、复盘，并把结果带到下一次。</p>
         </div>
@@ -238,7 +237,10 @@ export default function Home() {
       <section className="features-section" id="demo">
         <div className="section-intro dark-copy">
           <p className="eyebrow">完整演示 · 后端开发工程师英文面试</p>
-          <h2>一次面试任务，<br />看见 Agent 的四种能力。</h2>
+          <h2>
+            <span className="title-line"><span className="title-phrase">一次面试任务，</span></span>
+            <span className="title-line"><span className="title-phrase">看见 Agent 的</span><span className="title-phrase">四种能力。</span></span>
+          </h2>
           <p>从理解任务到单面 / 多面试官模拟，再到即时建议和长期 Memory；四步共用同一位候选人与同一个目标岗位。</p>
         </div>
         <InterviewDemo features={productFeatures} />
@@ -247,7 +249,10 @@ export default function Home() {
       <section className="scenario-proof-section">
         <div className="section-intro dark-copy">
           <p className="eyebrow">不只是一场英文面试</p>
-          <h2>同一个 Agent，<br />接住不同的真实任务。</h2>
+          <h2>
+            <span className="title-line"><span className="title-phrase">同一个 Agent，</span></span>
+            <span className="title-line"><span className="title-phrase">接住不同的</span><span className="title-phrase">真实任务。</span></span>
+          </h2>
           <p>结构化考试可以进入专门训练；生活与工作不要求用户先创建场景，只需把事情说出来，SpeakUp 负责理解背景、整理表达并模拟对方。</p>
         </div>
         <div className="scenario-proof-list">
@@ -272,7 +277,10 @@ export default function Home() {
       <section className="principles-section" id="how-it-works">
         <div className="section-intro centered dark-copy">
           <p className="eyebrow">四类任务，共用同一个 SpeakUp</p>
-          <h2>围绕真实任务，<br />形成<em>长期进步</em>。</h2>
+          <h2>
+            <span className="title-line"><span className="title-phrase">围绕真实任务，</span></span>
+            <span className="title-line"><span className="title-phrase">形成</span><span className="title-phrase"><em>长期进步</em>。</span></span>
+          </h2>
           <p>一次练习的内容会继续服务下一次准备，而不是在对话关闭后消失。</p>
         </div>
         <div className="principle-grid">
@@ -288,15 +296,18 @@ export default function Home() {
 
       <section className="final-cta">
         <p className="eyebrow eyebrow-light">从下一件必须说清楚的事开始</p>
-        <h2>告诉 SpeakUp，<br />接下来要面对什么。</h2>
+        <h2>
+          <span className="title-line"><span className="title-phrase">告诉 SpeakUp，</span></span>
+          <span className="title-line"><span className="title-phrase">接下来要</span><span className="title-phrase">面对什么。</span></span>
+        </h2>
         <p>可以是一场雅思口语考试、英文面试，也可以是海外生活和工作里马上要发生的关键沟通。</p>
         <div className="button-group">
-          <a className="button" href={comingSoonHref}>开始一次任务准备 ↗</a>
+          <a className="button" href={earlyAccessHref} data-scenario="英文面试">申请首批体验 ↗</a>
           <a className="button button-dark-secondary" href="#top">回到顶部</a>
         </div>
       </section>
 
-      <ComingSoonDialog />
+      <EarlyAccessDialog />
 
       <footer>
         <a className="brand" href="#top"><span className="brand-mark" aria-hidden="true">S</span><span>SpeakUp</span></a>

@@ -23,14 +23,15 @@ async function readActivePrototype() {
   ]);
 }
 
-test("routes unfinished product actions to a coming-soon prompt", async () => {
+test("routes unfinished product actions to an honest early-access application", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   const html = await response.text();
+  const visibleText = html.replace(/<[^>]+>/g, "");
   assert.match(html, /面向真实任务的英语沟通 Agent/);
   assert.doesNotMatch(html, /href="\/pages\/prototype\.html/);
-  assert.match(html, /敬请期待/);
-  assert.match(html, /下一场重要的英文沟通/);
+  assert.match(html, /申请首批体验/);
+  assert.match(visibleText, /下一场重要的英文沟通/);
   assert.match(html, /portal-interview-start\.jpg/);
   assert.match(html, /portal-panel-practice\.jpg/);
   assert.match(html, /portal-evidence-report\.jpg/);
@@ -38,10 +39,10 @@ test("routes unfinished product actions to a coming-soon prompt", async () => {
   assert.match(html, /portal-ielts-part2\.jpg/);
   assert.match(html, /portal-daily-doctor\.jpg/);
   assert.match(html, /portal-workplace-client\.jpg/);
-  assert.match(html, /SpeakUp 首批体验即将开放/);
+  assert.match(html, /SpeakUp 正在招募首批体验用户/);
   assert.doesNotMatch(html, /SpeakUp 模拟面试现已开放/);
   assert.match(html, /结合目标、经历和过往练习/);
-  assert.match(html, /考出去、面进去，.*适应好/s);
+  assert.match(visibleText, /考出去、面进去，.*适应好/s);
   assert.match(html, /雅思口语/);
   assert.match(html, /海外日常/);
   assert.match(html, /国际职场/);
@@ -51,21 +52,91 @@ test("routes unfinished product actions to a coming-soon prompt", async () => {
   assert.match(html, /单面之外，也能应对多人连续追问/);
   assert.match(html, /英文面试完整演示步骤/);
   assert.doesNotMatch(html, /class="feature-card"/);
-  assert.match(html, /id="coming-soon"/);
+  assert.match(html, /id="early-access"/);
   assert.match(html, /<dialog/);
-  assert.match(html, /method="dialog"/);
-  assert.match(html, /href="#coming-soon"/);
+  assert.match(html, /href="#early-access"/);
+  assert.match(html, /产品仍在开发中/);
+  assert.match(html, /不会自动注册账号/);
   assert.doesNotMatch(html, /验证入口|方向验证|产品行为占位|待验证|产品验证门户|体验现有原型/);
   assert.doesNotMatch(html, /portal-task-intake\.jpg|portal-task-brief\.jpg/);
   assert.doesNotMatch(html, /portal-career-history\.jpg|portal-career-context\.jpg|portal-interview-plan\.jpg/);
   assert.doesNotMatch(html, /职业上下文|职业英语联系人|群面计划/);
 });
 
-test("uses native dialog behavior for the coming-soon prompt", async () => {
-  const source = await readFile(new URL("app/ComingSoonDialog.tsx", root), "utf8");
+test("uses native dialog behavior and records the early-access funnel", async () => {
+  const source = await readFile(new URL("app/EarlyAccessDialog.tsx", root), "utf8");
   assert.match(source, /dialog\.showModal\(\)/);
   assert.match(source, /document\.addEventListener\("click"/);
-  assert.match(source, /<form method="dialog">/);
+  assert.match(source, /trackPortalEvent\("page_view"\)/);
+  assert.match(source, /trackPortalEvent\("cta_click"/);
+  assert.match(source, /fetch\("\/api\/waitlist"/);
+  assert.match(source, /name="consent"/);
+});
+
+test("centers the application dialog and keeps the mobile demo fully visible", async () => {
+  const styles = await readFile(new URL("app/globals.css", root), "utf8");
+  assert.match(styles, /\.early-access-modal\s*\{[\s\S]*?inset:\s*50% auto auto 50%/);
+  assert.match(styles, /\.early-access-modal\[open\]\s*\{[\s\S]*?translate\(-50%, -50%\)/);
+
+  const mobileStyles = styles.slice(styles.indexOf("@media (max-width: 640px)"));
+  assert.match(mobileStyles, /\.demo-sequence\s*\{[\s\S]*?height:\s*auto/);
+  assert.match(mobileStyles, /\.demo-step-list\s*\{[\s\S]*?grid-template-columns:\s*repeat\(2/);
+  assert.match(mobileStyles, /\.demo-stage-frame\s*\{[\s\S]*?aspect-ratio:\s*4 \/ 5/);
+  assert.doesNotMatch(mobileStyles, /\.demo-step-list\s*\{[\s\S]*?overflow-x:\s*auto/);
+});
+
+test("balances marketing headlines without hard-coded line breaks", async () => {
+  const [source, styles] = await Promise.all([
+    readFile(new URL("app/page.tsx", root), "utf8"),
+    readFile(new URL("app/globals.css", root), "utf8"),
+  ]);
+
+  assert.doesNotMatch(source, /<br\s*\/?>/);
+  assert.doesNotMatch(source, /journey-title-line/);
+  assert.match(styles, /\.hero h1\s*\{[\s\S]*?text-wrap:\s*balance/);
+  assert.match(styles, /\.section-intro h2,[\s\S]*?\.final-cta h2\s*\{[\s\S]*?text-wrap:\s*balance/);
+  assert.match(styles, /\.section-intro\s*\{\s*max-width:\s*960px/);
+  assert.match(styles, /\.title-phrase\s*\{[\s\S]*?display:\s*inline-block[\s\S]*?white-space:\s*nowrap/);
+
+  const mobileStyles = styles.slice(styles.indexOf("@media (max-width: 640px)"));
+  assert.match(mobileStyles, /\.hero h1\s*\{[\s\S]*?font-size:\s*clamp\(36px, 9\.7vw, 44px\)/);
+  assert.match(mobileStyles, /\.section-intro h2,[\s\S]*?\.final-cta h2\s*\{[\s\S]*?font-size:\s*clamp\(38px, 10\.5vw, 42px\)/);
+  assert.match(mobileStyles, /\.title-line\s*\{[\s\S]*?display:\s*inline[\s\S]*?white-space:\s*normal/);
+});
+
+test("keeps contact data behind a password-protected admin API", async () => {
+  const [
+    summary,
+    exportRoute,
+    auth,
+    schema,
+    environment,
+    dashboard,
+    viteConfig,
+    nginxConfig,
+  ] = await Promise.all([
+    readFile(new URL("app/api/admin/summary/route.ts", root), "utf8"),
+    readFile(new URL("app/api/admin/export/route.ts", root), "utf8"),
+    readFile(new URL("lib/admin-auth.ts", root), "utf8"),
+    readFile(new URL("db/schema.ts", root), "utf8"),
+    readFile(new URL(".env.example", root), "utf8"),
+    readFile(new URL("app/admin/AdminDashboard.tsx", root), "utf8"),
+    readFile(new URL("vite.config.ts", root), "utf8"),
+    readFile(new URL("deploy/xe3-speakup-portal.conf", root), "utf8"),
+  ]);
+  assert.match(summary, /isAdminRequest/);
+  assert.match(exportRoute, /isAdminRequest/);
+  assert.match(auth, /PORTAL_ADMIN_PASSWORD/);
+  assert.match(auth, /SHA-256/);
+  assert.match(environment, /^PORTAL_ADMIN_PASSWORD=\s*$/m);
+  assert.match(dashboard, /function lockDashboard\(\)[\s\S]*?setPassword\(""\)/);
+  assert.doesNotMatch(viteConfig, /PORTAL_ADMIN_PASSWORD/);
+  assert.match(nginxConfig, /limit_req zone=speakup_portal_waitlist/);
+  assert.match(nginxConfig, /limit_req zone=speakup_portal_admin/);
+  assert.match(nginxConfig, /client_max_body_size/);
+  assert.match(schema, /portal_events/);
+  assert.match(schema, /portal_waitlist/);
+  assert.doesNotMatch(schema, /ip_address|user_agent/);
 });
 
 test("loads only the current prototype extension assets", async () => {
