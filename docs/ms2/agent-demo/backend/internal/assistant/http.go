@@ -62,6 +62,7 @@ func NewHTTPHandler(
 func (h *HTTPHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /health", h.health)
 	mux.HandleFunc("GET /v1/assistant/threads/{thread_id}", h.getThread)
+	mux.HandleFunc("GET /v1/assistant/threads/{thread_id}/realtime-context", h.getRealtimeContext)
 	mux.HandleFunc("POST /v1/assistant/threads/{thread_id}/tasks", h.startTask)
 	mux.HandleFunc("POST /v1/assistant/threads/{thread_id}/tasks/stream", h.streamTask)
 	mux.HandleFunc("POST /v1/assistant/threads/{thread_id}/live-sessions", h.startLiveSession)
@@ -107,15 +108,17 @@ func (h *HTTPHandler) Register(mux *http.ServeMux) {
 type liveSessionRequest struct {
 	ActorUserID    string `json:"actor_user_id"`
 	IdempotencyKey string `json:"idempotency_key,omitempty"`
+	Voice          string `json:"voice,omitempty"`
 }
 
 type omniLiveTurnRequest struct {
-	ActorUserID         string `json:"actor_user_id"`
-	ThreadID            string `json:"thread_id"`
-	TurnID              string `json:"turn_id"`
-	ClientMessageID     string `json:"client_message_id"`
-	UserTranscript      string `json:"user_transcript"`
-	AssistantTranscript string `json:"assistant_transcript"`
+	ActorUserID         string              `json:"actor_user_id"`
+	ThreadID            string              `json:"thread_id"`
+	TurnID              string              `json:"turn_id"`
+	ClientMessageID     string              `json:"client_message_id"`
+	UserTranscript      string              `json:"user_transcript"`
+	AssistantTranscript string              `json:"assistant_transcript"`
+	InterviewSetup      *InterviewSetupCard `json:"interview_setup,omitempty"`
 }
 
 func (h *HTTPHandler) commitOmniLiveTurn(w http.ResponseWriter, r *http.Request) {
@@ -129,6 +132,7 @@ func (h *HTTPHandler) commitOmniLiveTurn(w http.ResponseWriter, r *http.Request)
 		LiveSessionID: r.PathValue("live_session_id"), TurnID: request.TurnID,
 		ClientMessageID: request.ClientMessageID, UserTranscript: request.UserTranscript,
 		AssistantTranscript: request.AssistantTranscript,
+		InterviewSetup:      request.InterviewSetup,
 	})
 	if err != nil {
 		h.writeError(w, err)
@@ -145,7 +149,7 @@ func (h *HTTPHandler) startLiveSession(w http.ResponseWriter, r *http.Request) {
 	}
 	credentials, err := h.service.StartLiveSession(r.Context(), StartLiveSessionCommand{
 		ActorUserID: request.ActorUserID, ThreadID: r.PathValue("thread_id"),
-		IdempotencyKey: request.IdempotencyKey,
+		IdempotencyKey: request.IdempotencyKey, Voice: request.Voice,
 	})
 	if err != nil {
 		h.writeError(w, err)
@@ -815,6 +819,23 @@ func (h *HTTPHandler) getThread(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.store.Snapshot(h.tools.State()))
 }
 
+func (h *HTTPHandler) getRealtimeContext(w http.ResponseWriter, r *http.Request) {
+	actor := strings.TrimSpace(r.URL.Query().Get("actor_user_id"))
+	if actor == "" {
+		actor = DemoUserID
+	}
+	result, err := h.service.BuildRealtimeContext(
+		r.Context(),
+		actor,
+		r.PathValue("thread_id"),
+	)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
 func (h *HTTPHandler) startTask(w http.ResponseWriter, r *http.Request) {
 	var request startTaskRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
@@ -1266,6 +1287,8 @@ func (h *HTTPHandler) writeError(w http.ResponseWriter, err error) {
 	} else if errors.Is(err, ErrActiveInterview) {
 		status = http.StatusConflict
 	} else if errors.Is(err, ErrNoActiveQuestion) {
+		status = http.StatusBadRequest
+	} else if errors.Is(err, ErrUnsupportedRealtimeVoice) {
 		status = http.StatusBadRequest
 	}
 	payload := map[string]any{"error": err.Error()}

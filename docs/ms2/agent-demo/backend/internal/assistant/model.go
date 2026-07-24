@@ -64,6 +64,7 @@ type LiveSession struct {
 	ThreadID            string            `json:"thread_id"`
 	RoomName            string            `json:"room_name"`
 	ParticipantIdentity string            `json:"participant_identity"`
+	Voice               string            `json:"voice"`
 	Mode                ConversationMode  `json:"mode"`
 	Status              LiveSessionStatus `json:"status"`
 	PartialTurnID       string            `json:"partial_turn_id,omitempty"`
@@ -406,9 +407,16 @@ type AssistantMessage struct {
 	Report             *InterviewReportCard   `json:"report,omitempty"`
 	History            *InterviewHistoryCards `json:"history,omitempty"`
 	Mistakes           *MistakeCards          `json:"mistakes,omitempty"`
+	InterviewSetup     *InterviewSetupCard    `json:"interview_setup,omitempty"`
 	Attachments        []AttachmentReference  `json:"attachments,omitempty"`
 	LearningAssessment *LearningAssessment    `json:"learning_assessment,omitempty"`
 	CreatedAt          time.Time
+}
+
+type InterviewSetupCard struct {
+	Title      string `json:"title"`
+	TargetRole string `json:"target_role"`
+	Goal       string `json:"goal"`
 }
 
 type LearningAssessment struct {

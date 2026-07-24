@@ -20,6 +20,20 @@ test("accepts only known, bounded iframe commands", () => {
     payload: { actor_user_id: "demo-user", thread_id: "thread-demo-001" },
   };
   assert.equal(isIframeBridgeMessage(valid), true);
+  assert.equal(
+    isIframeBridgeMessage({
+      ...valid,
+      payload: { ...valid.payload, voice: "Jennifer" },
+    }),
+    true,
+  );
+  assert.equal(
+    isIframeBridgeMessage({
+      ...valid,
+      payload: { ...valid.payload, voice: "unsupported" },
+    }),
+    false,
+  );
   assert.equal(isIframeBridgeMessage({ ...valid, type: "live.intent.destroy" }), false);
   assert.equal(isIframeBridgeMessage({ ...valid, extra: true }), false);
   assert.equal(
@@ -138,10 +152,20 @@ test("iframe bridge reconciles live roles and reuses existing message tools", as
   );
   assert.match(bridge, /streamingText \+= event\.delta/);
   assert.match(bridge, /turn\.assistant_committed[\s\S]*streamingText = ""/);
+  assert.match(bridge, /message\.kind === "interview_setup_card"/);
+  assert.match(
+    bridge,
+    /open-interview-setup-card[\s\S]*state\.interviewDraft\.jobName = targetRole[\s\S]*go\("create-job"\)/,
+  );
   assert.match(bridge, /userRecordingControlHTML/);
   assert.match(bridge, /aria-label="录音处理中"/);
   assert.match(bridge, /toggle-translation/);
   assert.match(bridge, /toggle-correction/);
   assert.match(bridge, /play-user-recording/);
   assert.match(bridge, /scoreBarHTML/);
+  assert.match(bridge, /STANDARD_TTS_VOICE_BY_REALTIME_VOICE/);
+  assert.match(
+    bridge,
+    /JSON\.stringify\(\{ text, voice: selectedStandardTTSVoice\(\) \}\)/,
+  );
 });

@@ -50,7 +50,7 @@ func LoadDashScopeConfig() (DashScopeConfig, error) {
 		DocumentModel:     envOrDefault("DASHSCOPE_DOCUMENT_MODEL", "qwen-long"),
 		ASRModel:          envOrDefault("DASHSCOPE_ASR_MODEL", "qwen3-asr-flash-realtime"),
 		TTSModel:          envOrDefault("DASHSCOPE_TTS_MODEL", "qwen-audio-3.0-tts-flash"),
-		TTSVoice:          envOrDefault("DASHSCOPE_TTS_VOICE", "longanlingxi"),
+		TTSVoice:          envOrDefault("DASHSCOPE_TTS_VOICE", "longanhuan_v3.6"),
 	}
 	if config.APIKey == "" {
 		return DashScopeConfig{}, errors.New("DASHSCOPE_API_KEY is required")

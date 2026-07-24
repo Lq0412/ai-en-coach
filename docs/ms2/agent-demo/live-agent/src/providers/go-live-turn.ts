@@ -9,6 +9,12 @@ export type CommittedOmniTurn = {
   assistantMessage: CanonicalAssistantMessage;
 };
 
+export type InterviewSetupCard = {
+  title: string;
+  target_role: string;
+  goal: string;
+};
+
 export class GoLiveTurnRecorder {
   #baseURL: string;
   #fetch: typeof globalThis.fetch;
@@ -18,7 +24,11 @@ export class GoLiveTurnRecorder {
     this.#fetch = fetchImpl;
   }
 
-  async commit(turn: TurnContext, assistantTranscript: string): Promise<CommittedOmniTurn> {
+  async commit(
+    turn: TurnContext,
+    assistantTranscript: string,
+    interviewSetup?: InterviewSetupCard,
+  ): Promise<CommittedOmniTurn> {
     const response = await this.#fetch(
       `${this.#baseURL}/v1/assistant/live-sessions/${encodeURIComponent(turn.liveSessionID)}/turns`,
       {
@@ -31,6 +41,7 @@ export class GoLiveTurnRecorder {
           client_message_id: turn.clientMessageID,
           user_transcript: turn.transcript,
           assistant_transcript: assistantTranscript,
+          ...(interviewSetup ? { interview_setup: interviewSetup } : {}),
         }),
       },
     );

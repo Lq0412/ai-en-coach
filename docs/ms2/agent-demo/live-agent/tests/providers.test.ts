@@ -170,11 +170,13 @@ test("turn committer bounds completed idempotency entries", async () => {
 test("Go TTS requests fixed PCM24K and frames split PCM16 samples correctly", async () => {
   const tts = new GoTTS({
     baseURL: "http://go.test",
+    voice: "loongjohn",
     fetch: async (_input, init) => {
       assert.deepEqual(JSON.parse(String(init?.body)), {
         text: "Hello",
         format: "pcm",
         sample_rate: 24000,
+        voice: "loongjohn",
       });
       return new Response(new Uint8Array([1, 0, 2, 0, 3, 0]), {
         status: 200,

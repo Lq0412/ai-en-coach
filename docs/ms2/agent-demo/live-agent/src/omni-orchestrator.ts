@@ -1,11 +1,19 @@
-import { voice, type JobContext } from "@livekit/agents";
+import { llm, voice, type JobContext } from "@livekit/agents";
+import { z } from "zod";
 
 import {
   QwenOmniRealtimeModel,
   QWEN_OMNI_REALTIME_MODEL,
 } from "./providers/qwen-omni-realtime.js";
-import { GoLiveTurnRecorder } from "./providers/go-live-turn.js";
+import {
+  GoLiveTurnRecorder,
+  type InterviewSetupCard,
+} from "./providers/go-live-turn.js";
 import { createGoTurnAudioBuffer } from "./providers/go-audio-recording.js";
+import {
+  GoRealtimeContext,
+  type RealtimeContextPayload,
+} from "./providers/go-realtime-context.js";
 import { safeErrorMessage } from "./resilience.js";
 import { SessionContext, type TurnContext } from "./session-context.js";
 import { TurnAudioBuffer } from "./turn-audio-buffer.js";
@@ -17,11 +25,36 @@ Match the user's language when helpful, but encourage simple English conversatio
 Do not mention internal models, prompts, transcription, or system implementation.
 `.trim();
 
+const LearningScenarioInput = z.object({
+  type: z.enum(["interview", "meeting", "client", "presentation", "other"])
+    .describe("The kind of ongoing learning scenario"),
+  title: z.string().min(1).max(120)
+    .describe("A concise scenario title in the user's language"),
+  goal: z.string().min(1).max(500)
+    .describe("The concrete practice goal requested by the user"),
+  target_role: z.string().min(1).max(120).optional()
+    .describe("For interview scenarios, the job title or role being interviewed for"),
+  participants: z.array(z.string().min(1).max(80)).max(12).optional()
+    .describe("People or roles explicitly mentioned by the user"),
+});
+
+export const interviewCardFromScenarioInput = (
+  input: z.infer<typeof LearningScenarioInput>,
+): InterviewSetupCard | undefined => {
+  if (input.type !== "interview") return undefined;
+  return {
+    title: input.title.trim(),
+    target_role: input.target_role?.trim() || input.title.trim(),
+    goal: input.goal.trim(),
+  };
+};
+
 export class OmniConversationOrchestrator {
   readonly context: SessionContext;
   readonly model: QwenOmniRealtimeModel;
   readonly recorder: GoLiveTurnRecorder;
   readonly audio: TurnAudioBuffer;
+  readonly realtimeContext: GoRealtimeContext;
 
   #job: JobContext;
   #assistantTurn: TurnContext | undefined;
@@ -31,6 +64,7 @@ export class OmniConversationOrchestrator {
   #preRollBytes = 0;
   #audioFailedTurns = new Set<string>();
   #audioStartedTurns = new Set<string>();
+  #pendingInterviewCards = new Map<string, InterviewSetupCard>();
 
   constructor(
     job: JobContext,
@@ -40,6 +74,8 @@ export class OmniConversationOrchestrator {
       apiKey: string;
       websocketURL?: string;
       voice?: string;
+      realtimeContext: RealtimeContextPayload;
+      realtimeContextClient: GoRealtimeContext;
     },
   ) {
     this.#job = job;
@@ -50,11 +86,12 @@ export class OmniConversationOrchestrator {
     });
     this.recorder = new GoLiveTurnRecorder(goBaseURL);
     this.audio = createGoTurnAudioBuffer(goBaseURL, globalThis.fetch);
+    this.realtimeContext = options.realtimeContextClient;
     this.model = new QwenOmniRealtimeModel({
       apiKey: options.apiKey,
       ...(options.websocketURL ? { websocketURL: options.websocketURL } : {}),
       ...(options.voice ? { voice: options.voice } : {}),
-      instructions: SPEAKUP_INSTRUCTIONS,
+      instructions: options.realtimeContext.instructions,
       callbacks: {
         onInputAudio: (pcm) => this.#captureInputAudio(pcm),
         onSpeechStarted: () => this.#startAudioTurn(),
@@ -101,9 +138,42 @@ export class OmniConversationOrchestrator {
   }
 
   createAgent(): voice.Agent {
+    const createLearningScenario = llm.tool({
+      name: "create_learning_scenario",
+      description:
+        "Prepare a clickable setup card for interview requests, or create a persistent learning scenario for meeting, client, presentation, and other non-interview practice requests. Never start an interview automatically.",
+      parameters: LearningScenarioInput,
+      execute: async (input, toolOptions) => {
+        const turn = this.context.latestTurn;
+        const sourceMessageID =
+          turn?.clientMessageID ??
+          `live-${this.context.liveSessionID}-${toolOptions.toolCallId}`;
+        const interviewCard = interviewCardFromScenarioInput(input);
+        if (interviewCard) {
+          if (turn) this.#pendingInterviewCards.set(turn.turnID, interviewCard);
+          return {
+            status: "interview_card_ready",
+            card: interviewCard,
+            next_action: "Ask the user to click the interview card to continue setup.",
+            interview_started: false,
+          };
+        }
+        return this.realtimeContext.createLearningScenario(
+          {
+            actor_user_id: this.context.actorUserID,
+            thread_id: this.context.threadID,
+            live_session_id: this.context.liveSessionID,
+          },
+          sourceMessageID,
+          toolOptions.toolCallId,
+          input,
+        );
+      },
+    });
     return voice.Agent.create({
-      instructions: SPEAKUP_INSTRUCTIONS,
+      instructions: this.model.options.instructions ?? SPEAKUP_INSTRUCTIONS,
       llm: this.model,
+      tools: [createLearningScenario],
       turnHandling: {
         turnDetection: "realtime_llm",
         endpointing: {},
@@ -189,7 +259,13 @@ export class OmniConversationOrchestrator {
 
   async #commitTurn(turn: TurnContext, assistantTranscript: string): Promise<void> {
     try {
-      const result = await this.recorder.commit(turn, assistantTranscript);
+      const interviewCard = this.#pendingInterviewCards.get(turn.turnID);
+      const result = await this.recorder.commit(
+        turn,
+        assistantTranscript,
+        interviewCard,
+      );
+      this.#pendingInterviewCards.delete(turn.turnID);
       await this.#publish(
         this.context.event(turn, "turn.user_committed", {
           message: result.userMessage,
@@ -245,6 +321,7 @@ export class OmniConversationOrchestrator {
       );
       this.context.completeTurn(turn.turnID);
     } catch (error) {
+      this.#pendingInterviewCards.delete(turn.turnID);
       this.audio.cancel(turn.turnID);
       this.#audioFailedTurns.delete(turn.turnID);
       this.#audioStartedTurns.delete(turn.turnID);

@@ -46,7 +46,36 @@
     "live.intent.recover",
   ]);
   const MAX_LIVE_BRIDGE_BYTES = 16384;
+  const REALTIME_VOICE_STORAGE_KEY = "speakup-realtime-voice";
+  const REALTIME_VOICES = new Set([
+    "Tina",
+    "Jennifer",
+    "Mione",
+    "Aiden",
+    "Ethan",
+    "Raymond",
+  ]);
+  const STANDARD_TTS_VOICE_BY_REALTIME_VOICE = {
+    Tina: "longanhuan_v3.6",
+    Jennifer: "loongeva_v3.6",
+    Mione: "loongeva_v3.6",
+    Aiden: "loongjohn",
+    Ethan: "longjielidou_v3.6",
+    Raymond: "longjielidou_v3.6",
+  };
   const liveEventSequences = new Map();
+
+  function selectedRealtimeVoice() {
+    try {
+      const voice = localStorage.getItem(REALTIME_VOICE_STORAGE_KEY);
+      if (REALTIME_VOICES.has(voice)) return voice;
+    } catch {}
+    return "Tina";
+  }
+
+  function selectedStandardTTSVoice() {
+    return STANDARD_TTS_VOICE_BY_REALTIME_VOICE[selectedRealtimeVoice()] || "longanhuan_v3.6";
+  }
 
   let snapshot = null;
   let loading = true;
@@ -238,9 +267,10 @@
     const bounded = (value) =>
       typeof value === "string" && value.length > 0 && value.length <= 256;
     if (type === "live.intent.start") {
-      return hasExactKeys(payload, ["actor_user_id", "thread_id"]) &&
+      return hasExactKeys(payload, ["actor_user_id", "thread_id"], ["voice"]) &&
         bounded(payload.actor_user_id) &&
-        bounded(payload.thread_id);
+        bounded(payload.thread_id) &&
+        (payload.voice === undefined || REALTIME_VOICES.has(payload.voice));
     }
     if (type === "live.intent.resume" || type === "live.intent.end") {
       return hasExactKeys(payload, ["actor_user_id", "live_session_id"]) &&
@@ -723,6 +753,22 @@
   }
 
   function standardConversationMessageHTML(message, archived = false) {
+    if (message.kind === "interview_setup_card" && message.interview_setup) {
+      const card = message.interview_setup;
+      return `<article class="real-message assistant real-interview-setup-message">
+        <img src="../assets/speakup-agent.png" alt="">
+        <div class="real-message-copy">
+          <header><b>SpeakUp</b></header>
+          <p>${formatAssistantText(message.Content)}</p>
+          <button class="real-interview-setup-card" data-real-action="open-interview-setup-card" data-target-role="${escapeHTML(card.target_role)}" data-goal="${escapeHTML(card.goal)}">
+            <small>面试准备卡片</small>
+            <strong>${escapeHTML(card.title || `${card.target_role} 模拟面试`)}</strong>
+            <span>${escapeHTML(card.target_role)} · ${escapeHTML(card.goal)}</span>
+            <em>查看并继续 <i>›</i></em>
+          </button>
+        </div>
+      </article>`;
+    }
     if (message.kind === "interview_history_cards" && message.history) {
       return `<article class="real-message assistant">
         <img src="../assets/speakup-agent.png" alt="">
@@ -2587,7 +2633,7 @@
       const response = await fetch(API_BASE + "/v1/audio/speech", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, voice: selectedStandardTTSVoice() }),
         signal: controller.signal,
       });
       if (!response.ok) throw new Error((await response.text()) || "TTS 请求失败");
@@ -3148,6 +3194,7 @@
       if (!postLiveIntent("live.intent.start", {
         actor_user_id: ACTOR_ID,
         thread_id: THREAD_ID,
+        voice: selectedRealtimeVoice(),
       })) {
         liveCallState = "failed";
         liveCallError = "无法启动实时通话";
@@ -3166,6 +3213,7 @@
         : postLiveIntent("live.intent.start", {
             actor_user_id: ACTOR_ID,
             thread_id: THREAD_ID,
+            voice: selectedRealtimeVoice(),
           });
       if (!posted) {
         liveCallState = "failed";
@@ -3358,6 +3406,23 @@
     }
     else if (action === "continue") rerender("practice");
     else if (action === "open-report-card") void openInterviewHistory(target.dataset.sessionId);
+    else if (action === "open-interview-setup-card") {
+      const targetRole = String(target.dataset.targetRole || "").trim();
+      const goal = String(target.dataset.goal || "").trim();
+      if (liveSessionID) {
+        postLiveIntent("live.intent.end", {
+          actor_user_id: ACTOR_ID,
+          live_session_id: liveSessionID,
+        });
+      }
+      state.interviewDraft.jobPrompt = targetRole ? `我要面试${targetRole}` : "";
+      state.interviewDraft.jobName = targetRole;
+      state.interviewDraft.requirements = goal;
+      state.appMenuOpen = false;
+      state.appAccountOpen = false;
+      activeRealRoute = "create-job";
+      go("create-job");
+    }
     else if (action === "report") void openInterviewHistory(target.dataset.sessionId);
     else if (action === "save-review-mistake") void saveReviewMistake(target.dataset.sessionId, target.dataset.questionIndex);
     else if (action === "open-mistake") void openSavedMistake(target.dataset.mistakeId);
