@@ -97,6 +97,8 @@ test("prototype bridges the original interaction to the Go assistant", async () 
   assert.match(bridge, /views\["home"\]\s*=\s*realHistoryView/);
   assert.match(bridge, /completedQuestionCount/);
   assert.match(bridge, /snapshot\?\.targetRole/);
+  assert.match(bridge, /interviewContext\(confirmation\.TaskRunID\)/);
+  assert.match(bridge, /createStep\?\.Arguments\?\.role\s*\|\|[\s\S]*!\s*pending\s*\?\s*snapshot\?\.targetRole/);
   assert.match(bridge, /recentConversationHTML/);
   assert.match(bridge, /\/v1\/assistant\/conversations/);
   assert.match(bridge, /realConversationArchiveView/);
@@ -164,6 +166,11 @@ test("prototype bridges the original interaction to the Go assistant", async () 
   assert.doesNotMatch(bridge, /⭐|★|☆/);
   assert.match(bridge, /data-attachment-input/);
   assert.match(bridge, /accept="application\/pdf,image\/png,image\/jpeg,image\/webp"/);
+  assert.match(bridge, /发消息或粘贴图片/);
+  assert.match(bridge, /real-image-grid/);
+  assert.match(bridge, /real-image-lightbox/);
+  assert.match(bridge, /window\.addEventListener\("paste"/);
+  assert.match(bridge, /window\.addEventListener\("drop"/);
   assert.match(bridge, /\/v1\/assistant\/attachments/);
   assert.match(bridge, /attachment_ids/);
   assert.match(bridge, /interaction_mode:\s*activeRealRoute === "practice" \? "interview" : "conversation"/);

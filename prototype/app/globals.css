@@ -1303,6 +1303,61 @@ h2 {
   color: var(--lumen);
 }
 
+.coming-soon-modal {
+  width: min(460px, calc(100% - 40px));
+  max-width: none;
+  max-height: calc(100% - 40px);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.coming-soon-modal[open] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.coming-soon-modal::backdrop {
+  background: rgba(20, 20, 18, 0.72);
+}
+
+.coming-soon-panel {
+  width: 100%;
+  padding: 42px;
+  border: 2px solid var(--ink);
+  border-radius: 32px;
+  background: var(--lumen);
+  color: var(--ink);
+  text-align: left;
+}
+
+.coming-soon-panel h2 {
+  margin-top: 22px;
+  font-size: clamp(48px, 7vw, 72px);
+  line-height: 1;
+}
+
+.coming-soon-panel > p:not(.eyebrow) {
+  margin: 22px 0 30px;
+  color: var(--muted);
+  font-size: 16px;
+  line-height: 1.65;
+}
+
+.coming-soon-panel .button {
+  width: 100%;
+  font: inherit;
+  cursor: pointer;
+}
+
+body:has(.coming-soon-modal[open]) {
+  overflow: hidden;
+}
+
 footer {
   display: grid;
   grid-template-columns: 1fr auto 1fr;

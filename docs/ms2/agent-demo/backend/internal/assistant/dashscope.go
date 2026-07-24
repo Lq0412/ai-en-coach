@@ -90,6 +90,7 @@ const (
 	feedbackMaxTokens       = 240
 	answerCoachMaxTokens    = 600
 	languageAssistMaxTokens = 800
+	repracticeMaxTokens     = 500
 	profileMaxTokens        = 600
 	attachmentMaxTokens     = 5000
 )
@@ -113,39 +114,32 @@ func (p *DashScopeProvider) Plan(ctx context.Context, request PlanRequest) (Plan
 	}
 	system := `You are the planner for SpeakUp, an English interview practice application.
 Return one JSON object only, without markdown:
-{"Intent":"intent_name","Steps":[{"ToolName":"tool.name","Arguments":{}}]}
+{"Intent":"intent_name","Scenario":"scenario_name","ScenarioVariant":"scenario_variant","KnowledgeTags":[],"Steps":[{"ToolName":"tool.name","Arguments":{}}],"Confidence":0.0,"MissingSlots":[],"Reason":"brief routing reason"}
 
-	Allowed plans:
-	1. Normal free conversation (default whenever the user is not explicitly asking to start an interview, and no interview session is active):
-	{"Intent":"free_conversation","Steps":[
-	{"ToolName":"conversation.generate_reply","Arguments":{}}
-	]}
-	2. If the user asks for an interview but the complete conversation does not contain a specific target role, ask for it first:
-{"Intent":"clarify_interview_requirements","Steps":[
-{"ToolName":"conversation.generate_reply","Arguments":{}}
-]}
-If operational state contains interview_requirement=pending_target_role, treat the user's next role or job-direction answer as continuation of the interview request, even when that message does not repeat the word interview.
-	3. Start interview only after a specific target role is present in the current message or earlier conversation:
-{"Intent":"start_mock_interview","Steps":[
-{"ToolName":"preparation.get_confirmed_context","Arguments":{"scenario":"PROGRAMMER_INTERVIEW"}},
-{"ToolName":"practice.create_plan","Arguments":{"role":"infer the target role from the user message; default to Software Engineer","max_turns":10,"duration_minutes":15}},
-{"ToolName":"practice.start_session","Arguments":{}},
-{"ToolName":"conversation.generate_next_question","Arguments":{}}
-]}
-Use max_turns=10 and duration_minutes=15 by default. If the user explicitly requests limits, copy them within 3-20 turns and 5-60 minutes. Never use a generic default role when the role is missing; use clarify_interview_requirements instead.
-	4. Submit an answer while session_in_progress=true:
-{"Intent":"submit_interview_answer","Steps":[
-{"ToolName":"conversation.submit_turn","Arguments":{"answer_text":"copy the user message exactly","interaction_mode":"TEXT"}},
-{"ToolName":"practice.apply_turn_outcome","Arguments":{"answer_validity":"VALID"}},
-{"ToolName":"conversation.generate_next_question","Arguments":{}}
-]}
-The server enforces the time and turn limits and may replace the last step with review.generate_feedback.
-	5. View history: Intent view_practice_history, one review.list_history step.
-	6. Review: Intent review_latest_practice, one review.generate_feedback step.
-	The role argument must reflect the user's requested job, for example Product Manager, Frontend Engineer, or Go Backend Engineer. Do not force every interview to Go backend.
-	Interaction mode is an authoritative UI signal. When interaction_mode=conversation, never use submit_interview_answer even if an unfinished interview exists. When interaction_mode=interview and a session is active, use submit_interview_answer.
-	Greetings, questions, English practice, technical discussion, and all other messages use free_conversation.
-	Never invent tools.`
+You are an intent router. You may only choose an Intent from the Intent Catalog below, and every tool sequence must exactly match one AllowedPlanShapes entry for that intent.
+Intent Catalog:
+` + RenderPlannerPromptCatalog() + `
+
+Scenario Catalog:
+` + RenderPlannerScenarioCatalog() + `
+
+Argument rules:
+- If the user asks to practice a concrete scenario such as Go interview, Java interview, restaurant ordering, or apartment rental, prefer Intent scenario_practice with a ScenarioVariant from the Scenario Catalog.
+- For scenario_practice, never invent a ScenarioVariant. Use go_backend_interview for Go/Golang backend interview and java_backend_interview for Java backend interview.
+- Planner may return KnowledgeTags for explanation, but backend Scenario Catalog is authoritative.
+- For start_mock_interview, set preparation.get_confirmed_context scenario to "PROGRAMMER_INTERVIEW".
+- For start_mock_interview, set practice.create_plan role to the user's requested target role. Use max_turns=0 and duration_minutes=15 by default.
+- max_turns=0 means no fixed question count; the session ends when time expires or the user asks to stop.
+- If the user explicitly requests a hard question cap, copy it within 1-100 turns; duration remains within 5-60 minutes.
+- Never use a generic default role when the role is missing; use clarify_interview_requirements and MissingSlots ["target_role"].
+- For submit_interview_answer, copy the user message exactly into answer_text and set interaction_mode to "TEXT".
+- If the user explicitly asks to end or stop an active interview, use end_interview with reason "user_requested_stop".
+- For oral_free_practice, use conversation.generate_reply and do not create a PracticeSession.
+- If operational state contains interview_requirement=pending_target_role, treat the user's next role or job-direction answer as continuation of the interview request.
+- Interaction mode is an authoritative UI signal. When interaction_mode=conversation, never use submit_interview_answer even if an unfinished interview exists.
+- When interaction_mode=interview and a session is active, use submit_interview_answer unless the user clearly asks to stop.
+- Greetings, ordinary chat, English questions, and technical discussion use free_conversation unless the user asks for casual speaking practice.
+- Never invent tools or combine tools from different intents.`
 	content, err := p.chat(ctx, system, fmt.Sprintf(
 		"Operational state:\n%s\nInteraction mode: %s\n\nComplete ordered thread messages (JSON):\n%s\n\nThe final user message to plan:\n%s",
 		request.ContextSummary,
@@ -174,14 +168,22 @@ func (p *DashScopeProvider) GenerateQuestion(ctx context.Context, input Intervie
 	answers, _ := json.Marshal(input.Answers)
 	questions, _ := json.Marshal(input.PreviousQuestions)
 	profile, _ := json.Marshal(candidateProfilePrompt(input.CandidateProfile))
+	roleGuidance := ScenarioKnowledgePrompt(input.ScenarioKnowledge)
+	if strings.TrimSpace(roleGuidance) == "" {
+		roleGuidance = interviewRoleGuidance(role)
+	}
 	return p.chat(ctx,
-		fmt.Sprintf("You are a senior hiring manager conducting a realistic continuous English interview for a %s. Ask exactly one concise question in English. Follow up naturally on the candidate's latest answer when useful, otherwise advance to another relevant competency. Never use a fixed question bank, repeat a previous question, add commentary, or add numbering.", role),
-		fmt.Sprintf("Target role: %s\nUpcoming answer turn: %d of at most %d\nSession duration: %d minutes\nConfirmed candidate and JD background: %s\nPrevious questions: %s\nCandidate answers in matching order: %s\nAsk the single best next interview question based on this dialogue and the confirmed background. Never invent resume facts.",
+		fmt.Sprintf("You are a senior hiring manager conducting a realistic continuous English interview for a %s. Ask exactly one concise question in English. There is no fixed question count: adapt the interview until the time limit or the user's explicit stop. Use the candidate's latest answer to choose the next move. Balance the candidate's resume evidence with retrieved scenario knowledge. If the answer is vague, clarify; if it contains a concrete decision, probe trade-offs or impact; if it is complete, move to an uncovered competency for the target role. Never use a fixed question bank, repeat a previous question, add commentary, or add numbering.", role),
+		fmt.Sprintf("Target role: %s\nRetrieved scenario knowledge: %s\nCompleted answers: %d\nSession duration: %d minutes\nElapsed minutes: %d\nRemaining minutes: %d\nConfirmed candidate and JD background: %s\nPrevious question: %s\nLatest candidate answer: %s\nPrevious questions: %s\nCandidate answers in matching order: %s\nAsk the single best next interview question based on the target role, retrieved scenario knowledge, latest answer, uncovered competencies, and confirmed background. Do not mention turn counts or invent resume facts.",
 			role,
-			input.CompletedQuestionCount+1,
-			input.MaxTurns,
+			roleGuidance,
+			input.CompletedQuestionCount,
 			input.DurationMinutes,
+			input.ElapsedMinutes,
+			input.RemainingMinutes,
 			profile,
+			input.PreviousQuestion,
+			input.LatestAnswer,
 			questions,
 			answers,
 		),
@@ -195,8 +197,8 @@ func (p *DashScopeProvider) GenerateFeedback(ctx context.Context, input Intervie
 	answers, _ := json.Marshal(input.Answers)
 	profile, _ := json.Marshal(candidateProfilePrompt(input.CandidateProfile))
 	return p.chat(ctx,
-		"You are an English interview coach. Give concise Chinese feedback grounded in the supplied English answers. Mention one strength, two improvements, and one example improved sentence. Do not invent evidence.",
-		fmt.Sprintf("Target role: %s\nCompleted turns: %d of at most %d\nSession duration: %d minutes\nConfirmed candidate and JD background: %s\nAnswers: %s", input.TargetRole, input.CompletedQuestionCount, input.MaxTurns, input.DurationMinutes, profile, answers),
+		"You are an English interview coach. Give concise Chinese feedback grounded in the supplied English answers. Mention one strength, two improvements, and one example improved sentence. Do not invent evidence. Do not judge the candidate by a fixed number of questions.",
+		fmt.Sprintf("Target role: %s\nCompleted turns: %d\nSession duration: %d minutes\nConfirmed candidate and JD background: %s\nAnswers: %s", input.TargetRole, input.CompletedQuestionCount, input.DurationMinutes, profile, answers),
 		true,
 		true,
 		feedbackMaxTokens,
@@ -217,6 +219,71 @@ func (p *DashScopeProvider) GenerateAnswerCoach(ctx context.Context, input Answe
 		true,
 		answerCoachMaxTokens,
 	)
+}
+
+func (p *DashScopeProvider) GenerateRepracticeFeedback(ctx context.Context, input RepracticeFeedbackInput) (ReviewNote, error) {
+	answer := strings.TrimSpace(input.NewAnswer)
+	if answer == "" {
+		return ReviewNote{}, errors.New("repractice answer is required")
+	}
+	type turn struct {
+		Index    int    `json:"index"`
+		Question string `json:"question"`
+		Answer   string `json:"answer"`
+	}
+	turns := make([]turn, 0, len(input.Session.Questions))
+	limit := input.QuestionIndex + 1
+	if limit <= 0 || limit > len(input.Session.Questions) {
+		limit = len(input.Session.Questions)
+	}
+	for index := 0; index < limit; index++ {
+		item := turn{Index: index + 1, Question: strings.TrimSpace(input.Session.Questions[index])}
+		if index < len(input.Session.Answers) {
+			item.Answer = strings.TrimSpace(input.Session.Answers[index])
+		}
+		turns = append(turns, item)
+	}
+	turnsJSON, _ := json.Marshal(turns)
+	payload := map[string]string{
+		"targetRole":     strings.TrimSpace(input.Session.TargetRole),
+		"focusQuestion":  strings.TrimSpace(input.Mistake.QuestionText),
+		"originalAnswer": strings.TrimSpace(input.Mistake.OriginalAnswer),
+		"newAnswer":      answer,
+	}
+	focusJSON, _ := json.Marshal(payload)
+	content, err := p.chat(ctx,
+		`You are an English interview repractice coach. Evaluate the candidate's new answer using the saved mistake and prior interview context. Return exactly one JSON object without markdown:
+{"type":"improvement|still_weak|evidence_gap","message":"","evidence":"","suggestion":""}
+Rules:
+- Write message and suggestion in concise Chinese.
+- Ground feedback only in the supplied questions and answers.
+- If the new answer is too short, mostly Chinese, or not relevant, use type evidence_gap.
+- If it improves but still lacks concrete result, metric, scope, tradeoff, or follow-up detail, use type still_weak.
+- If it clearly answers the question with background, action, and result, use type improvement.
+- evidence should quote or paraphrase the most relevant short part of the new answer, under 80 Chinese characters.`,
+		fmt.Sprintf("Prior interview turns up to this mistake: %s\nSaved mistake and new repractice answer: %s", turnsJSON, focusJSON),
+		false,
+		false,
+		repracticeMaxTokens,
+	)
+	if err != nil {
+		return ReviewNote{}, err
+	}
+	var note ReviewNote
+	if err := json.Unmarshal([]byte(stripJSONFence(content)), &note); err != nil {
+		return ReviewNote{}, fmt.Errorf("decode repractice feedback JSON: %w", err)
+	}
+	note.Type = normalizeReviewNoteType(note.Type)
+	note.Message = strings.TrimSpace(note.Message)
+	note.Evidence = strings.TrimSpace(note.Evidence)
+	note.Suggestion = strings.TrimSpace(note.Suggestion)
+	if note.Message == "" || note.Suggestion == "" {
+		return ReviewNote{}, errors.New("DashScope repractice feedback is incomplete")
+	}
+	if note.Evidence == "" {
+		note.Evidence = compactText(answer, 180)
+	}
+	return note, nil
 }
 
 func (p *DashScopeProvider) AnalyzeCandidateProfile(ctx context.Context, input CandidateProfileInput) (CandidateProfile, error) {
@@ -527,6 +594,7 @@ Respond naturally to the final user message. You MUST use the same language as t
 You may discuss general topics, English learning, and software engineering.
 Do not claim that an interview has started unless the orchestration layer has entered an interview session.
 When operational state says interview_paused=true, answer only as a normal conversation partner. Do not continue the interview question, ask the user to answer it, or mention that the user should return to the interview.
+When operational state says 自由口语陪练中, act as a casual speaking practice partner: mostly English with light Chinese support, brief, encouraging, and ask one follow-up so the user keeps speaking. If the user's expression has an obvious mistake, respond naturally first, then give one short correction.
 Keep the response concise: at most 3 short sentences, no more than 120 Chinese characters for Chinese replies or 80 words for English replies. Do not add an unsolicited follow-up section.`
 	authoritative := make([]string, 0, 2)
 	dialogue := make([]any, 0, len(input.Messages)+1)
@@ -1236,69 +1304,7 @@ func (p *DashScopeProvider) postJSON(ctx context.Context, endpoint string, paylo
 }
 
 func validatePlan(plan Plan) error {
-	allowed := map[string]bool{
-		"preparation.get_confirmed_context":   true,
-		"practice.create_plan":                true,
-		"practice.start_session":              true,
-		"conversation.generate_next_question": true,
-		"conversation.submit_turn":            true,
-		"conversation.generate_reply":         true,
-		"practice.apply_turn_outcome":         true,
-		"review.generate_feedback":            true,
-		"review.list_history":                 true,
-	}
-	if plan.Intent == "" || len(plan.Steps) == 0 {
-		return errors.New("planner returned an empty plan")
-	}
-	for _, step := range plan.Steps {
-		if !allowed[step.ToolName] {
-			return fmt.Errorf("planner returned unregistered tool %q", step.ToolName)
-		}
-	}
-	expected := map[string][][]string{
-		"free_conversation":              {{"conversation.generate_reply"}},
-		"clarify_interview_requirements": {{"conversation.generate_reply"}},
-		"start_mock_interview": {{
-			"preparation.get_confirmed_context",
-			"practice.create_plan",
-			"practice.start_session",
-			"conversation.generate_next_question",
-		}},
-		"submit_interview_answer": {
-			{
-				"conversation.submit_turn",
-				"practice.apply_turn_outcome",
-				"conversation.generate_next_question",
-			},
-			{
-				"conversation.submit_turn",
-				"practice.apply_turn_outcome",
-				"review.generate_feedback",
-			},
-		},
-		"view_practice_history":  {{"review.list_history"}},
-		"review_latest_practice": {{"review.generate_feedback"}},
-	}
-	shapes, ok := expected[plan.Intent]
-	if !ok {
-		return fmt.Errorf("planner returned unsupported intent %q", plan.Intent)
-	}
-	for _, shape := range shapes {
-		if len(shape) != len(plan.Steps) {
-			continue
-		}
-		matches := true
-		for index := range shape {
-			if shape[index] != plan.Steps[index].ToolName {
-				matches = false
-				break
-			}
-		}
-		if matches {
-			return nil
-		}
-	}
-	return fmt.Errorf("planner returned invalid step sequence for %q", plan.Intent)
+	return ValidatePlanAgainstCatalog(plan)
 }
 
 func stripJSONFence(value string) string {
@@ -1307,6 +1313,15 @@ func stripJSONFence(value string) string {
 	value = strings.TrimPrefix(value, "```")
 	value = strings.TrimSuffix(value, "```")
 	return strings.TrimSpace(value)
+}
+
+func normalizeReviewNoteType(value string) string {
+	switch strings.TrimSpace(value) {
+	case "improvement", "still_weak", "evidence_gap":
+		return strings.TrimSpace(value)
+	default:
+		return "still_weak"
+	}
 }
 
 func envOrDefault(name, fallback string) string {

@@ -184,16 +184,11 @@ func (s *Service) startTask(ctx context.Context, command StartTaskCommand) (Task
 	if s.dependencies.Runtime != nil {
 		state = s.dependencies.Runtime.State()
 	}
-	// The UI route is authoritative. An active interview may be paused while the
-	// user returns to normal chat; those messages must never consume a turn.
-	if interactionMode == "conversation" && plan.Intent == "submit_interview_answer" {
-		plan = freeConversationPlan()
-	}
-	// Conversely, a message submitted from the practice composer is always the
-	// answer to the active question, even if the wording resembles small talk.
-	if interactionMode == "interview" && state.ActiveQuestion != "" && plan.Intent != "submit_interview_answer" {
-		plan = interviewAnswerPlan(state.ShouldCompleteAfterNextTurn(time.Now()))
-	}
+	plan = s.enforceStateGuards(plan, StartTaskCommand{
+		UserMessage:     visibleMessage,
+		InteractionMode: interactionMode,
+	}, state)
+	NormalizeScenarioPlan(&plan, visibleMessage)
 	if plan.Intent == "submit_interview_answer" {
 		for index := range plan.Steps {
 			if plan.Steps[index].ToolName == "conversation.submit_turn" {
@@ -207,6 +202,14 @@ func (s *Service) startTask(ctx context.Context, command StartTaskCommand) (Task
 	}
 	if plan.Intent == "start_mock_interview" {
 		normalizeInterviewPlan(&plan)
+		applyUserRequestedRole(&plan, visibleMessage)
+		NormalizeScenarioPlan(&plan, visibleMessage)
+	}
+	if plan.Intent == "scenario_practice" && plan.Scenario == "interview" {
+		normalizeInterviewPlan(&plan)
+		applyUserRequestedRole(&plan, visibleMessage)
+		NormalizeScenarioPlan(&plan, visibleMessage)
+		ensureScenarioInterviewCreatePlan(&plan, visibleMessage)
 	}
 	if plan.Intent == "clarify_interview_requirements" {
 		for index := range plan.Steps {
@@ -217,15 +220,28 @@ func (s *Service) startTask(ctx context.Context, command StartTaskCommand) (Task
 			}
 		}
 	}
-	if plan.Intent == "free_conversation" {
+	if plan.Intent == "free_conversation" || plan.Intent == "oral_free_practice" {
 		conversationSummary := thread.ContextSummary
 		if interactionMode == "conversation" && state.ActiveQuestion != "" {
 			conversationSummary = "自由对话中；interview_paused=true；当前消息不是面试回答，不得继续提问、催促回答或计入 Turn"
+		}
+		if plan.Intent == "oral_free_practice" {
+			conversationSummary = oralPracticeContextSummary(conversationSummary, interactionMode == "conversation" && state.ActiveQuestion != "")
 		}
 		for index := range plan.Steps {
 			if plan.Steps[index].ToolName == "conversation.generate_reply" {
 				plan.Steps[index].Arguments["user_message"] = contextContent
 				plan.Steps[index].Arguments["context_summary"] = conversationSummary
+				plan.Steps[index].Arguments["conversation_messages"] = messages
+			}
+		}
+	}
+	if plan.Intent == "scenario_practice" && plan.Scenario != "interview" {
+		contextSummary := scenarioPracticeContextSummary(plan, thread.ContextSummary)
+		for index := range plan.Steps {
+			if plan.Steps[index].ToolName == "conversation.generate_reply" {
+				plan.Steps[index].Arguments["user_message"] = contextContent
+				plan.Steps[index].Arguments["context_summary"] = contextSummary
 				plan.Steps[index].Arguments["conversation_messages"] = messages
 			}
 		}
@@ -266,18 +282,20 @@ func (s *Service) startTask(ctx context.Context, command StartTaskCommand) (Task
 		return TaskRun{}, err
 	}
 
-	if plan.Intent == "start_mock_interview" {
+	if plan.Intent == "start_mock_interview" || (plan.Intent == "scenario_practice" && plan.Scenario == "interview") {
 		targetRole := targetRoleFromPlan(plan)
 		maxTurns, durationMinutes := interviewLimitsFromPlan(plan)
-		if _, err := s.executeSteps(ctx, command.ActorUserID, run, plan.Steps[:1]); err != nil {
+		preConfirmSteps := preConfirmationSteps(plan)
+		if _, err := s.executeSteps(ctx, command.ActorUserID, run, preConfirmSteps); err != nil {
 			return TaskRun{}, err
 		}
+		scope := interviewScopeDescription(maxTurns, durationMinutes)
 		confirmation := ConfirmationRequest{
 			ID:        nextID("confirmation"),
 			TaskRunID: run.ID,
 			Action:    "practice.create_plan",
 			RiskLevel: "user_visible_change",
-			Summary:   fmt.Sprintf("使用已确认背景创建 %s 真实模拟面试，限制 %d 分钟、最多 %d 轮回答，并启动新的 PracticeSession。", targetRole, durationMinutes, maxTurns),
+			Summary:   fmt.Sprintf("使用已确认背景创建 %s 真实模拟面试，%s，并启动新的 PracticeSession。", targetRole, scope),
 			Status:    ConfirmationStatusPending,
 			ExpiresAt: time.Now().UTC().Add(15 * time.Minute),
 		}
@@ -290,7 +308,7 @@ func (s *Service) startTask(ctx context.Context, command StartTaskCommand) (Task
 		if err := s.dependencies.ConversationStore.SaveTaskRun(ctx, run); err != nil {
 			return TaskRun{}, err
 		}
-		if err := s.appendCorrelatedMessage(ctx, "assistant", fmt.Sprintf("背景快照已读取。创建 %s 真实模拟面试（%d 分钟、最多 %d 轮回答）会产生新的练习记录，请确认后继续。", targetRole, durationMinutes, maxTurns), command); err != nil {
+		if err := s.appendCorrelatedMessage(ctx, "assistant", fmt.Sprintf("背景快照已读取。创建 %s 真实模拟面试（%s）会产生新的练习记录，请确认后继续。", targetRole, scope), command); err != nil {
 			return TaskRun{}, err
 		}
 		return run, nil
@@ -299,9 +317,89 @@ func (s *Service) startTask(ctx context.Context, command StartTaskCommand) (Task
 	return s.completeRun(ctx, command.ActorUserID, run, plan.Steps, command)
 }
 
+func preConfirmationSteps(plan Plan) []PlanStep {
+	if plan.Intent == "scenario_practice" && plan.Scenario == "interview" {
+		limit := 0
+		for index, step := range plan.Steps {
+			if step.ToolName == "practice.create_plan" {
+				limit = index
+				break
+			}
+		}
+		if limit > 0 {
+			return plan.Steps[:limit]
+		}
+	}
+	if len(plan.Steps) == 0 {
+		return nil
+	}
+	return plan.Steps[:1]
+}
+
+func confirmationResumeIndex(plan Plan) int {
+	if plan.Intent == "scenario_practice" && plan.Scenario == "interview" {
+		for index, step := range plan.Steps {
+			if step.ToolName == "practice.create_plan" {
+				return index
+			}
+		}
+	}
+	if len(plan.Steps) > 1 {
+		return 1
+	}
+	return 0
+}
+
+func (s *Service) enforceStateGuards(plan Plan, command StartTaskCommand, state RuntimeSnapshot) Plan {
+	interactionMode := strings.ToLower(strings.TrimSpace(command.InteractionMode))
+	visibleMessage := strings.TrimSpace(command.UserMessage)
+	lowerMessage := strings.ToLower(visibleMessage)
+
+	// The UI route is authoritative. An active interview may be paused while the
+	// user returns to normal chat; those messages must never consume a turn.
+	if interactionMode == "conversation" && plan.Intent == "submit_interview_answer" {
+		if isOralFreePracticeRequest(lowerMessage) {
+			return oralFreePracticePlan()
+		}
+		return freeConversationPlan()
+	}
+	if plan.Intent == "submit_interview_answer" && state.ActiveQuestion == "" {
+		if isOralFreePracticeRequest(lowerMessage) {
+			return oralFreePracticePlan()
+		}
+		return freeConversationPlan()
+	}
+	// An explicit stop from the practice UI is control input, never an answer.
+	if interactionMode == "interview" && state.ActiveQuestion != "" && isInterviewStopRequest(lowerMessage) {
+		return endInterviewPlan("user_requested_stop")
+	}
+	// Conversely, a message submitted from the practice composer is always the
+	// answer to the active question, even if the wording resembles small talk.
+	if interactionMode == "interview" && state.ActiveQuestion != "" && plan.Intent != "submit_interview_answer" && plan.Intent != "end_interview" {
+		return interviewAnswerPlan(state.ShouldCompleteAfterNextTurn(time.Now()))
+	}
+	if plan.Intent == "start_mock_interview" && strings.TrimSpace(targetRoleFromPlan(plan)) == "目标岗位" {
+		return interviewRequirementQuestionPlan()
+	}
+	if isOralFreePracticeRequest(lowerMessage) && plan.Intent == "free_conversation" {
+		return oralFreePracticePlan()
+	}
+	return plan
+}
+
 func freeConversationPlan() Plan {
 	return Plan{
 		Intent: "free_conversation",
+		Steps: []PlanStep{{
+			ToolName:  "conversation.generate_reply",
+			Arguments: map[string]any{},
+		}},
+	}
+}
+
+func oralFreePracticePlan() Plan {
+	return Plan{
+		Intent: "oral_free_practice",
 		Steps: []PlanStep{{
 			ToolName:  "conversation.generate_reply",
 			Arguments: map[string]any{},
@@ -322,6 +420,45 @@ func interviewAnswerPlan(last bool) Plan {
 			{ToolName: lastTool, Arguments: map[string]any{}},
 		},
 	}
+}
+
+func endInterviewPlan(reason string) Plan {
+	return Plan{
+		Intent: "end_interview",
+		Steps:  []PlanStep{{ToolName: "review.generate_feedback", Arguments: map[string]any{"reason": reason}}},
+	}
+}
+
+func interviewScopeDescription(maxTurns, durationMinutes int) string {
+	if maxTurns > 0 {
+		return fmt.Sprintf("限制 %d 分钟、动态追问且最多 %d 个有效回答", durationMinutes, maxTurns)
+	}
+	return fmt.Sprintf("限制 %d 分钟、根据岗位与回答动态追问且不固定题数", durationMinutes)
+}
+
+func oralPracticeContextSummary(previous string, interviewPaused bool) string {
+	parts := []string{
+		"自由口语陪练中；英文为主，中文辅助；回复短一点，适合开口练；多追问，让用户继续说；用户表达明显错误时，先自然回应，再给一个简短 correction；不进入面试流程；不生成正式评分报告",
+	}
+	if strings.TrimSpace(previous) != "" {
+		parts = append(parts, "上一轮上下文："+strings.TrimSpace(previous))
+	}
+	if interviewPaused {
+		parts = append(parts, "interview_paused=true；当前消息不是面试回答，不得继续提问、催促回答或计入 Turn")
+	}
+	return strings.Join(parts, "；")
+}
+
+func scenarioPracticeContextSummary(plan Plan, previous string) string {
+	knowledge := RetrieveScenarioKnowledge(plan.ScenarioVariant, plan.KnowledgeTags)
+	parts := []string{
+		"场景练习中；不要进入面试流程；回复短一点，适合用户开口练习",
+		ScenarioKnowledgePrompt(knowledge),
+	}
+	if strings.TrimSpace(previous) != "" {
+		parts = append(parts, "上一轮上下文："+strings.TrimSpace(previous))
+	}
+	return strings.Join(parts, "；")
 }
 
 func (s *Service) ResumeTask(ctx context.Context, command ResumeTaskCommand) (TaskRun, error) {
@@ -353,13 +490,14 @@ func (s *Service) ResumeTask(ctx context.Context, command ResumeTaskCommand) (Ta
 	if err != nil {
 		return TaskRun{}, err
 	}
+	resumeIndex := confirmationResumeIndex(plan)
 	run.Status = TaskRunStatusRunning
-	run.CurrentStep = plan.Steps[1].ToolName
+	run.CurrentStep = plan.Steps[resumeIndex].ToolName
 	run.UpdatedAt = time.Now().UTC()
 	if err := s.dependencies.ConversationStore.SaveTaskRun(ctx, run); err != nil {
 		return TaskRun{}, err
 	}
-	return s.completeRun(ctx, command.ActorUserID, run, plan.Steps[1:], StartTaskCommand{})
+	return s.completeRun(ctx, command.ActorUserID, run, plan.Steps[resumeIndex:], StartTaskCommand{})
 }
 
 func (s *Service) EndInterview(ctx context.Context, command EndInterviewCommand) (TaskRun, error) {
@@ -496,7 +634,16 @@ func (s *Service) completeRun(
 		if err := s.appendReportCard(ctx, *report); err != nil {
 			return TaskRun{}, err
 		}
-	} else if run.Intent != "submit_interview_answer" && run.Intent != "start_mock_interview" {
+	} else if history := historyCardsFromResult(run.Intent, result); history != nil {
+		if err := s.appendHistoryCards(ctx, *history); err != nil {
+			return TaskRun{}, err
+		}
+	} else if mistakes := mistakeCardsFromResult(run.Intent, result); mistakes != nil {
+		if err := s.appendMistakeCards(ctx, *mistakes); err != nil {
+			return TaskRun{}, err
+		}
+	} else if run.Intent != "submit_interview_answer" && run.Intent != "start_mock_interview" &&
+		!(run.Intent == "scenario_practice" && result["summary"] == nil) {
 		if err := s.appendCorrelatedMessage(ctx, "assistant", composeResponse(run.Intent, result), correlation); err != nil {
 			return TaskRun{}, err
 		}
@@ -600,14 +747,26 @@ func (s *Service) updateThreadSummary(ctx context.Context, run TaskRun) error {
 	}
 	if run.Intent == "clarify_interview_requirements" {
 		thread.ContextSummary = "面试需求收集中；interview_requirement=pending_target_role；session_in_progress=false"
-	} else if run.Intent == "free_conversation" {
+	} else if run.Intent == "free_conversation" || run.Intent == "oral_free_practice" ||
+		(run.Intent == "scenario_practice" && !active) {
+		prefix := "自由对话中"
+		if run.Intent == "oral_free_practice" {
+			prefix = "自由口语陪练中"
+		} else if run.Intent == "scenario_practice" {
+			prefix = "场景练习中"
+		}
 		thread.ContextSummary = fmt.Sprintf(
-			"自由对话中；最近用户消息：%s；最近助手回复：%s；session_in_progress=false",
+			"%s；最近用户消息：%s；最近助手回复：%s；session_in_progress=false",
+			prefix,
 			compactText(fmt.Sprint(run.Result["user_message"]), 120),
 			compactText(fmt.Sprint(run.Result["summary"]), 180),
 		)
 	} else {
-		thread.ContextSummary = fmt.Sprintf("%s 已完成；session_in_progress=%t；有效回答 %d/%d；时长限制 %d 分钟", run.Intent, active, completed, maxTurns, durationMinutes)
+		turnSummary := fmt.Sprintf("有效回答 %d 个；题目动态生成", completed)
+		if maxTurns > 0 {
+			turnSummary = fmt.Sprintf("有效回答 %d/%d", completed, maxTurns)
+		}
+		thread.ContextSummary = fmt.Sprintf("%s 已完成；session_in_progress=%t；%s；时长限制 %d 分钟", run.Intent, active, turnSummary, durationMinutes)
 	}
 	thread.UpdatedAt = time.Now().UTC()
 	return s.dependencies.ConversationStore.SaveThread(ctx, thread)
@@ -667,6 +826,20 @@ func (s *Service) appendReportCard(ctx context.Context, report InterviewReportCa
 	})
 }
 
+func (s *Service) appendHistoryCards(ctx context.Context, history InterviewHistoryCards) error {
+	return s.dependencies.ConversationStore.AppendMessage(ctx, AssistantMessage{
+		ID: nextID("message"), Role: "assistant", Kind: "interview_history_cards",
+		Content: "最近的模拟面试", History: &history, CreatedAt: time.Now().UTC(),
+	})
+}
+
+func (s *Service) appendMistakeCards(ctx context.Context, mistakes MistakeCards) error {
+	return s.dependencies.ConversationStore.AppendMessage(ctx, AssistantMessage{
+		ID: nextID("message"), Role: "assistant", Kind: "mistake_cards",
+		Content: "最近的错题", Mistakes: &mistakes, CreatedAt: time.Now().UTC(),
+	})
+}
+
 func reportCardFromResult(intent string, result map[string]any) *InterviewReportCard {
 	if intent != "submit_interview_answer" && intent != "end_interview" {
 		return nil
@@ -684,9 +857,72 @@ func reportCardFromResult(intent string, result map[string]any) *InterviewReport
 	return &InterviewReportCard{
 		SessionID: sessionID, TargetRole: strings.TrimSpace(fmt.Sprint(result["target_role"])),
 		CompletedTurns: boundedIntArgument(result["completed_turns"], 0, 0, 100),
-		MaxTurns:       boundedIntArgument(result["max_turns"], DefaultInterviewMaxTurns, 1, 100),
+		MaxTurns:       boundedIntArgument(result["max_turns"], DefaultInterviewMaxTurns, 0, 100),
 		Summary:        compactReportSummary(summary),
 	}
+}
+
+func historyCardsFromResult(intent string, result map[string]any) *InterviewHistoryCards {
+	if intent != "view_practice_history" {
+		return nil
+	}
+	items, _ := result["items"].([]map[string]any)
+	if len(items) == 0 {
+		return nil
+	}
+	cards := make([]InterviewHistoryCard, 0, len(items))
+	for _, item := range items {
+		sessionID := strings.TrimSpace(fmt.Sprint(item["practice_session_id"]))
+		if sessionID == "" {
+			continue
+		}
+		cards = append(cards, InterviewHistoryCard{
+			SessionID:      sessionID,
+			TargetRole:     strings.TrimSpace(fmt.Sprint(item["scenario"])),
+			CompletedTurns: boundedIntArgument(item["completed_turns"], 0, 0, 100),
+			MaxTurns:       DefaultInterviewMaxTurns,
+			Status:         strings.TrimSpace(fmt.Sprint(item["status"])),
+			Summary:        compactReportSummary(fmt.Sprint(item["feedback"])),
+			StartedAt:      timeArgument(item["started_at"]),
+			EndedAt:        optionalTimeArgument(item["ended_at"]),
+		})
+	}
+	if len(cards) == 0 {
+		return nil
+	}
+	return &InterviewHistoryCards{Items: cards}
+}
+
+func mistakeCardsFromResult(intent string, result map[string]any) *MistakeCards {
+	if intent != "view_saved_mistakes" {
+		return nil
+	}
+	items, _ := result["items"].([]map[string]any)
+	if len(items) == 0 {
+		return nil
+	}
+	cards := make([]MistakeCard, 0, len(items))
+	for _, item := range items {
+		mistakeID := strings.TrimSpace(fmt.Sprint(item["mistake_id"]))
+		if mistakeID == "" {
+			continue
+		}
+		cards = append(cards, MistakeCard{
+			MistakeID:      mistakeID,
+			SessionID:      strings.TrimSpace(fmt.Sprint(item["practice_session_id"])),
+			QuestionIndex:  boundedIntArgument(item["question_index"], 0, 0, 100),
+			TargetRole:     strings.TrimSpace(fmt.Sprint(item["target_role"])),
+			QuestionText:   strings.TrimSpace(fmt.Sprint(item["question_text"])),
+			OriginalAnswer: strings.TrimSpace(fmt.Sprint(item["original_answer"])),
+			Status:         strings.TrimSpace(fmt.Sprint(item["status"])),
+			CreatedAt:      timeArgument(item["created_at"]),
+			LatestSummary:  strings.TrimSpace(fmt.Sprint(item["latest_summary"])),
+		})
+	}
+	if len(cards) == 0 {
+		return nil
+	}
+	return &MistakeCards{Items: cards}
 }
 
 func compactReportSummary(summary string) string {
@@ -762,7 +998,7 @@ func attachmentContext(message string, attachments []Attachment) string {
 
 func composeResponse(intent string, result map[string]any) string {
 	switch intent {
-	case "free_conversation", "clarify_interview_requirements":
+	case "free_conversation", "oral_free_practice", "scenario_practice", "clarify_interview_requirements":
 		return fmt.Sprint(result["summary"])
 	case "start_mock_interview":
 		return fmt.Sprintf("面试开始。%v", result["content"])
@@ -791,6 +1027,12 @@ func composeResponse(intent string, result map[string]any) string {
 			))
 		}
 		return "最近的模拟面试：\n" + strings.Join(lines, "\n")
+	case "view_saved_mistakes":
+		items, _ := result["items"].([]map[string]any)
+		if len(items) == 0 {
+			return "错题本里还没有保存的题目。你可以先在面试报告里把想复练的题加入错题。"
+		}
+		return fmt.Sprintf("已找到 %d 道最近错题。", len(items))
 	default:
 		return fmt.Sprint(result["summary"])
 	}
@@ -817,7 +1059,7 @@ func normalizeInterviewPlan(plan *Plan) {
 		if plan.Steps[index].Arguments == nil {
 			plan.Steps[index].Arguments = map[string]any{}
 		}
-		maxTurns := boundedIntArgument(plan.Steps[index].Arguments["max_turns"], DefaultInterviewMaxTurns, 3, 20)
+		maxTurns := boundedIntArgument(plan.Steps[index].Arguments["max_turns"], DefaultInterviewMaxTurns, 0, 100)
 		durationMinutes := boundedIntArgument(plan.Steps[index].Arguments["duration_minutes"], DefaultInterviewDurationMinutes, 5, 60)
 		plan.Steps[index].Arguments["max_turns"] = maxTurns
 		plan.Steps[index].Arguments["duration_minutes"] = durationMinutes
@@ -825,10 +1067,86 @@ func normalizeInterviewPlan(plan *Plan) {
 	}
 }
 
+func applyUserRequestedRole(plan *Plan, userMessage string) {
+	role := detectTargetRole(userMessage)
+	if role == "" {
+		return
+	}
+	for index := range plan.Steps {
+		if plan.Steps[index].ToolName != "practice.create_plan" {
+			continue
+		}
+		if plan.Steps[index].Arguments == nil {
+			plan.Steps[index].Arguments = map[string]any{}
+		}
+		plan.Steps[index].Arguments["role"] = role
+		return
+	}
+}
+
+func ensureScenarioInterviewCreatePlan(plan *Plan, userMessage string) {
+	if plan == nil || plan.Intent != "scenario_practice" || plan.Scenario != "interview" {
+		return
+	}
+	spec, ok := FindScenarioSpec(plan.ScenarioVariant)
+	if !ok {
+		return
+	}
+	for index := range plan.Steps {
+		if plan.Steps[index].ToolName != "practice.create_plan" {
+			continue
+		}
+		if plan.Steps[index].Arguments == nil {
+			plan.Steps[index].Arguments = map[string]any{}
+		}
+		plan.Steps[index].Arguments["scenario_id"] = spec.ID
+		for key, value := range spec.DefaultArguments {
+			if strings.TrimSpace(fmt.Sprint(plan.Steps[index].Arguments[key])) == "" ||
+				strings.TrimSpace(fmt.Sprint(plan.Steps[index].Arguments[key])) == "<nil>" {
+				plan.Steps[index].Arguments[key] = value
+			}
+		}
+		if !hasExplicitTurnLimit(userMessage) {
+			plan.Steps[index].Arguments["max_turns"] = DefaultInterviewMaxTurns
+		}
+		return
+	}
+}
+
+func hasExplicitTurnLimit(message string) bool {
+	text := strings.ToLower(strings.TrimSpace(message))
+	if text == "" {
+		return false
+	}
+	limitWords := []string{"最多", "不超过", "限制", "题", "问题", "回答", "turn", "turns", "question", "questions", "answer", "answers"}
+	hasLimitWord := false
+	for _, word := range limitWords {
+		if strings.Contains(text, word) {
+			hasLimitWord = true
+			break
+		}
+	}
+	if !hasLimitWord {
+		return false
+	}
+	for _, r := range text {
+		if r >= '0' && r <= '9' {
+			return true
+		}
+	}
+	chineseNumbers := []string{"一", "二", "三", "四", "五", "六", "七", "八", "九", "十"}
+	for _, number := range chineseNumbers {
+		if strings.Contains(text, number) {
+			return true
+		}
+	}
+	return false
+}
+
 func interviewLimitsFromPlan(plan Plan) (int, int) {
 	for _, step := range plan.Steps {
 		if step.ToolName == "practice.create_plan" {
-			return boundedIntArgument(step.Arguments["max_turns"], DefaultInterviewMaxTurns, 3, 20),
+			return boundedIntArgument(step.Arguments["max_turns"], DefaultInterviewMaxTurns, 0, 100),
 				boundedIntArgument(step.Arguments["duration_minutes"], DefaultInterviewDurationMinutes, 5, 60)
 		}
 	}
@@ -851,6 +1169,30 @@ func compactText(value string, limit int) string {
 		return value
 	}
 	return string([]rune(value)[:limit]) + "…"
+}
+
+func timeArgument(value any) time.Time {
+	if typed, ok := value.(time.Time); ok {
+		return typed
+	}
+	if parsed, err := time.Parse(time.RFC3339, strings.TrimSpace(fmt.Sprint(value))); err == nil {
+		return parsed
+	}
+	return time.Time{}
+}
+
+func optionalTimeArgument(value any) *time.Time {
+	if value == nil {
+		return nil
+	}
+	if typed, ok := value.(*time.Time); ok {
+		return typed
+	}
+	parsed := timeArgument(value)
+	if parsed.IsZero() {
+		return nil
+	}
+	return &parsed
 }
 
 func firstToolName(steps []PlanStep) string {

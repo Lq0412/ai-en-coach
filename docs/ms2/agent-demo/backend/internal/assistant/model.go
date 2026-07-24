@@ -374,8 +374,14 @@ type ConfirmationRequest struct {
 }
 
 type Plan struct {
-	Intent string
-	Steps  []PlanStep
+	Intent          string
+	Scenario        string   `json:"Scenario,omitempty"`
+	ScenarioVariant string   `json:"ScenarioVariant,omitempty"`
+	KnowledgeTags   []string `json:"KnowledgeTags,omitempty"`
+	Steps           []PlanStep
+	Confidence      float64  `json:"Confidence,omitempty"`
+	MissingSlots    []string `json:"MissingSlots,omitempty"`
+	Reason          string   `json:"Reason,omitempty"`
 }
 
 type PlanStep struct {
@@ -392,13 +398,15 @@ type AssistantMessage struct {
 	ID              string
 	Role            string
 	Content         string
-	ClientMessageID string                `json:"client_message_id,omitempty"`
-	LiveSessionID   string                `json:"live_session_id,omitempty"`
-	TurnID          string                `json:"turn_id,omitempty"`
-	Mode            ConversationMode      `json:"mode,omitempty"`
-	Kind            string                `json:"kind,omitempty"`
-	Report          *InterviewReportCard  `json:"report,omitempty"`
-	Attachments     []AttachmentReference `json:"attachments,omitempty"`
+	ClientMessageID string                 `json:"client_message_id,omitempty"`
+	LiveSessionID   string                 `json:"live_session_id,omitempty"`
+	TurnID          string                 `json:"turn_id,omitempty"`
+	Mode            ConversationMode       `json:"mode,omitempty"`
+	Kind            string                 `json:"kind,omitempty"`
+	Report          *InterviewReportCard   `json:"report,omitempty"`
+	History         *InterviewHistoryCards `json:"history,omitempty"`
+	Mistakes        *MistakeCards          `json:"mistakes,omitempty"`
+	Attachments     []AttachmentReference  `json:"attachments,omitempty"`
 	CreatedAt       time.Time
 }
 
@@ -408,6 +416,38 @@ type InterviewReportCard struct {
 	CompletedTurns int    `json:"completedTurns"`
 	MaxTurns       int    `json:"maxTurns"`
 	Summary        string `json:"summary"`
+}
+
+type InterviewHistoryCards struct {
+	Items []InterviewHistoryCard `json:"items"`
+}
+
+type InterviewHistoryCard struct {
+	SessionID      string     `json:"sessionId"`
+	TargetRole     string     `json:"targetRole"`
+	Interviewer    string     `json:"interviewer"`
+	CompletedTurns int        `json:"completedTurns"`
+	MaxTurns       int        `json:"maxTurns"`
+	Status         string     `json:"status"`
+	StartedAt      time.Time  `json:"startedAt"`
+	EndedAt        *time.Time `json:"endedAt,omitempty"`
+	Summary        string     `json:"summary"`
+}
+
+type MistakeCards struct {
+	Items []MistakeCard `json:"items"`
+}
+
+type MistakeCard struct {
+	MistakeID      string    `json:"mistakeId"`
+	SessionID      string    `json:"sessionId"`
+	QuestionIndex  int       `json:"questionIndex"`
+	TargetRole     string    `json:"targetRole"`
+	QuestionText   string    `json:"questionText"`
+	OriginalAnswer string    `json:"originalAnswer"`
+	Status         string    `json:"status"`
+	CreatedAt      time.Time `json:"createdAt"`
+	LatestSummary  string    `json:"latestSummary,omitempty"`
 }
 
 type ConversationArchive struct {
@@ -445,28 +485,30 @@ type Attachment struct {
 }
 
 type DemoSnapshot struct {
-	Thread                 AssistantThread       `json:"thread"`
-	TaskRuns               []TaskRun             `json:"taskRuns"`
-	Plans                  map[string]Plan       `json:"plans"`
-	ToolCalls              []ToolCall            `json:"toolCalls"`
-	Confirmations          []ConfirmationRequest `json:"confirmations"`
-	Messages               []AssistantMessage    `json:"messages"`
-	ActiveQuestion         *string               `json:"activeQuestion,omitempty"`
-	CompletedQuestionCount int                   `json:"completedQuestionCount"`
-	TargetRole             string                `json:"targetRole,omitempty"`
-	Interviewer            string                `json:"interviewer,omitempty"`
-	ContextTokenCount      int                   `json:"contextTokenCount"`
-	ContextTokenLimit      int                   `json:"contextTokenLimit"`
-	RequiresNewThread      bool                  `json:"requiresNewThread"`
-	MaxInterviewTurns      int                   `json:"maxInterviewTurns,omitempty"`
-	InterviewDurationMin   int                   `json:"interviewDurationMinutes,omitempty"`
-	InterviewStartedAt     *time.Time            `json:"interviewStartedAt,omitempty"`
-	InterviewDeadline      *time.Time            `json:"interviewDeadline,omitempty"`
-	InterviewSessions      []InterviewSession    `json:"interviewSessions,omitempty"`
-	CandidateProfile       CandidateProfile      `json:"candidateProfile,omitempty"`
-	Attachments            []AttachmentReference `json:"attachments,omitempty"`
-	Resumes                []ResumeDocumentView  `json:"resumes,omitempty"`
-	ActiveResumeID         string                `json:"activeResumeId,omitempty"`
+	Thread                 AssistantThread           `json:"thread"`
+	TaskRuns               []TaskRun                 `json:"taskRuns"`
+	Plans                  map[string]Plan           `json:"plans"`
+	ToolCalls              []ToolCall                `json:"toolCalls"`
+	Confirmations          []ConfirmationRequest     `json:"confirmations"`
+	Messages               []AssistantMessage        `json:"messages"`
+	ActiveQuestion         *string                   `json:"activeQuestion,omitempty"`
+	CompletedQuestionCount int                       `json:"completedQuestionCount"`
+	TargetRole             string                    `json:"targetRole,omitempty"`
+	Interviewer            string                    `json:"interviewer,omitempty"`
+	ContextTokenCount      int                       `json:"contextTokenCount"`
+	ContextTokenLimit      int                       `json:"contextTokenLimit"`
+	RequiresNewThread      bool                      `json:"requiresNewThread"`
+	MaxInterviewTurns      int                       `json:"maxInterviewTurns,omitempty"`
+	InterviewDurationMin   int                       `json:"interviewDurationMinutes,omitempty"`
+	InterviewStartedAt     *time.Time                `json:"interviewStartedAt,omitempty"`
+	InterviewDeadline      *time.Time                `json:"interviewDeadline,omitempty"`
+	InterviewSessions      []InterviewSession        `json:"interviewSessions,omitempty"`
+	SavedMistakes          []SavedMistake            `json:"savedMistakes,omitempty"`
+	RepracticeResults      []MistakeRepracticeResult `json:"repracticeResults,omitempty"`
+	CandidateProfile       CandidateProfile          `json:"candidateProfile,omitempty"`
+	Attachments            []AttachmentReference     `json:"attachments,omitempty"`
+	Resumes                []ResumeDocumentView      `json:"resumes,omitempty"`
+	ActiveResumeID         string                    `json:"activeResumeId,omitempty"`
 }
 
 type InterviewSession struct {
@@ -482,6 +524,54 @@ type InterviewSession struct {
 	Questions       []string   `json:"questions"`
 	Answers         []string   `json:"answers"`
 	Feedback        string     `json:"feedback,omitempty"`
+}
+
+type ScenarioKnowledge struct {
+	ScenarioVariant   string   `json:"scenarioVariant"`
+	KnowledgeTags     []string `json:"knowledgeTags"`
+	CompetencyContext []string `json:"competencyContext"`
+	QuestionGuidance  string   `json:"questionGuidance"`
+}
+
+type SavedMistake struct {
+	ID                 string    `json:"id"`
+	SessionID          string    `json:"sessionId"`
+	QuestionIndex      int       `json:"questionIndex"`
+	TargetRole         string    `json:"targetRole"`
+	QuestionText       string    `json:"questionText"`
+	OriginalAnswer     string    `json:"originalAnswer"`
+	SourceReviewID     string    `json:"sourceReviewId,omitempty"`
+	Status             string    `json:"status"`
+	LatestRepracticeID string    `json:"latestRepracticeId,omitempty"`
+	CreatedAt          time.Time `json:"createdAt"`
+	UpdatedAt          time.Time `json:"updatedAt"`
+}
+
+type MistakeRepracticeResult struct {
+	ID             string     `json:"id"`
+	MistakeID      string     `json:"mistakeId"`
+	SessionID      string     `json:"sessionId"`
+	QuestionIndex  int        `json:"questionIndex"`
+	QuestionText   string     `json:"questionText"`
+	OriginalAnswer string     `json:"originalAnswer"`
+	NewAnswer      string     `json:"newAnswer"`
+	Feedback       ReviewNote `json:"feedback"`
+	Summary        string     `json:"summary"`
+	CreatedAt      time.Time  `json:"createdAt"`
+}
+
+type SavedMistakeContext struct {
+	Mistake       SavedMistake              `json:"mistake"`
+	Session       InterviewSession          `json:"session"`
+	Repractices   []MistakeRepracticeResult `json:"repractices"`
+	QuestionIndex int                       `json:"questionIndex"`
+}
+
+type ReviewNote struct {
+	Type       string `json:"type"`
+	Message    string `json:"message"`
+	Evidence   string `json:"evidence"`
+	Suggestion string `json:"suggestion"`
 }
 
 type InterviewSessionSummary struct {

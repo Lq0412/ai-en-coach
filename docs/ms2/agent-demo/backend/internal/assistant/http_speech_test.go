@@ -38,7 +38,7 @@ func TestSpeechEndpointStreamsPCM24K(t *testing.T) {
 	handler := NewHTTPHandler(
 		log.New(io.Discard, "", 0),
 		nil, NewMemoryConversationStore(), nil, nil,
-		nil, nil, nil, synthesizer, nil,
+		nil, nil, nil, nil, synthesizer, nil,
 	)
 	mux := http.NewServeMux()
 	handler.Register(mux)
@@ -68,7 +68,7 @@ func TestSpeechEndpointRejectsUnsupportedFormatsAndSampleRates(t *testing.T) {
 	handler := NewHTTPHandler(
 		log.New(io.Discard, "", 0),
 		nil, NewMemoryConversationStore(), nil, nil,
-		nil, nil, nil, &configurableSpeechSynthesizer{}, nil,
+		nil, nil, nil, nil, &configurableSpeechSynthesizer{}, nil,
 	)
 	mux := http.NewServeMux()
 	handler.Register(mux)

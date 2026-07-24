@@ -41,7 +41,7 @@ func TestTaskStreamCommitsCanonicalUserBeforeAssistantDeltaAndLinksAttachment(t 
 	})
 	handler := NewHTTPHandler(
 		log.New(io.Discard, "", 0), service, store, tools, tools,
-		nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil,
 	)
 	mux := http.NewServeMux()
 	handler.Register(mux)

@@ -24,7 +24,7 @@ func TestLiveSessionHTTPEndpointsUseTokenSourceSchema(t *testing.T) {
 	})
 	handler := NewHTTPHandler(
 		log.New(io.Discard, "", 0), service, store, tools, tools,
-		nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil,
 	)
 	mux := http.NewServeMux()
 	handler.Register(mux)
@@ -102,7 +102,7 @@ func TestLiveSessionHTTPUnavailableAndUnknownThread(t *testing.T) {
 			store := NewMemoryConversationStore()
 			handler := NewHTTPHandler(
 				log.New(io.Discard, "", 0), service, store, NewDemoState(), NewDemoState(),
-				nil, nil, nil, nil, nil,
+				nil, nil, nil, nil, nil, nil,
 			)
 			mux := http.NewServeMux()
 			handler.Register(mux)
@@ -148,6 +148,7 @@ func TestRealtimeTranscriptionHidesProviderNetworkDetails(t *testing.T) {
 		store,
 		NewDemoState(),
 		NewDemoState(),
+		nil,
 		nil,
 		nil,
 		failingRealtimeTranscriber{},

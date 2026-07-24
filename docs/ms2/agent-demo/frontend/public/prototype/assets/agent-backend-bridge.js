@@ -89,7 +89,11 @@
   let selectedHistorySessionID = "";
   let preparationProfile = null;
   let pendingAttachments = [];
+  let uploadingAttachments = [];
   let attachmentUploading = false;
+  let attachmentDragActive = false;
+  let attachmentDragDepth = 0;
+  let attachmentLightbox = null;
   let managedResumes = [];
   let managedResumeLimit = 3;
   let resumeLoading = false;
@@ -105,6 +109,11 @@
   let interviewHistorySessions = [];
   let selectedInterviewSessionDetail = null;
   let interviewHistoryDeleteConfirm = false;
+  let savedMistakeCards = [];
+  let selectedMistakeContext = null;
+  let mistakeAnswerDraft = "";
+  let mistakeSubmitting = false;
+  let mistakeTextInputVisible = false;
   let practiceTranscriptVisible = false;
   let practiceTextInputVisible = false;
   let practiceCoachVisible = false;
@@ -444,11 +453,15 @@
     return Boolean(recordingStream);
   }
 
+  function voiceAnswerRouteActive() {
+    return activeRealRoute === "practice" || activeRealRoute === "mistake-practice";
+  }
+
   function conversationVoiceState() {
     if (isRecording()) return { key: "listening", label: "正在听你说话" };
     if (speaking) return { key: "speaking", label: "正在说话" };
     if (loading) return { key: "thinking", label: streamingText ? "正在组织表达" : "正在理解" };
-    return { key: "ready", label: activeRealRoute === "practice" ? "等待你的回答" : "随时可以开始说话" };
+    return { key: "ready", label: voiceAnswerRouteActive() ? "等待你的回答" : "随时可以开始说话" };
   }
 
   function taskRuns(intent) {
@@ -456,26 +469,30 @@
   }
 
   function hasInterview() {
-    return taskRuns("start_mock_interview").length > 0;
+    return taskRuns("start_mock_interview").length > 0 || taskRuns("scenario_practice").some((item) => snapshot?.plans?.[item.ID]?.Scenario === "interview");
   }
 
-  function interviewContext() {
-    const start = taskRuns("start_mock_interview")[0];
-    const plan = start ? snapshot?.plans?.[start.ID] : null;
+  function interviewContext(taskID = "") {
+    const explicitPlan = taskID ? snapshot?.plans?.[taskID] : null;
+    const start =
+      (taskID ? null : taskRuns("start_mock_interview")[0]) ||
+      (taskID ? null : taskRuns("scenario_practice").find((item) => snapshot?.plans?.[item.ID]?.Scenario === "interview"));
+    const plan = explicitPlan || (start ? snapshot?.plans?.[start.ID] : null);
     const createStep = plan?.Steps?.find((item) => item.ToolName === "practice.create_plan");
+    const pending = Boolean(taskID && plan);
     return {
       targetRole:
-        snapshot?.targetRole ||
         createStep?.Arguments?.role ||
+        (!pending ? snapshot?.targetRole : "") ||
         "Software Engineer",
-      interviewer: snapshot?.interviewer || "Senior Hiring Manager",
+      interviewer: (!pending ? snapshot?.interviewer : "") || "Senior Hiring Manager",
       maxTurns:
-        snapshot?.maxInterviewTurns ||
-        createStep?.Arguments?.max_turns ||
-        10,
+        createStep?.Arguments?.max_turns ??
+        (!pending ? snapshot?.maxInterviewTurns : undefined) ??
+        0,
       durationMinutes:
-        snapshot?.interviewDurationMinutes ||
-        createStep?.Arguments?.duration_minutes ||
+        createStep?.Arguments?.duration_minutes ??
+        (!pending ? snapshot?.interviewDurationMinutes : undefined) ??
         15,
     };
   }
@@ -505,7 +522,7 @@
     return hasInterview() &&
       !snapshot?.activeQuestion &&
       (hasFeedback ||
-        (snapshot?.completedQuestionCount || 0) >= maxTurns ||
+        (maxTurns > 0 && (snapshot?.completedQuestionCount || 0) >= maxTurns) ||
         interviewTiming().expired);
   }
 
@@ -569,29 +586,43 @@
     </section>`;
   }
 
+  function attachmentSource(attachment) {
+    if (attachment.previewURL) return attachment.previewURL;
+    return `${API_BASE}/v1/assistant/attachments/${encodeURIComponent(attachment.id)}/content`;
+  }
+
   function attachmentCardsHTML(attachments, removable = false) {
     const visibleAttachments = (attachments || []).filter(
       (attachment) => !String(attachment.mediaType || "").startsWith("audio/"),
     );
     if (!visibleAttachments.length) return "";
-    return `<div class="real-attachments ${removable ? "pending" : ""}">
-      ${visibleAttachments.map((attachment) => {
-        const isRenderableImage = attachment.mediaType?.startsWith("image/") && attachment.contentAvailable;
-        if (isRenderableImage) {
-          const source = `${API_BASE}/v1/assistant/attachments/${encodeURIComponent(attachment.id)}/content`;
-          return `<figure class="real-image-attachment">
-            <button class="real-image-open" type="button" data-real-action="view-attachment" data-attachment-id="${escapeHTML(attachment.id)}" aria-label="查看图片 ${escapeHTML(attachment.name)}"><img src="${escapeHTML(source)}" alt="${escapeHTML(attachment.name)}" ${removable ? "" : "loading=\"lazy\""}></button>
-            <figcaption><b>${escapeHTML(attachment.name)}</b><small>${escapeHTML(attachment.summary || "图片已解析")}</small></figcaption>
-            ${removable ? `<button class="real-image-remove" type="button" data-real-action="remove-attachment" data-attachment-id="${escapeHTML(attachment.id)}" aria-label="移除图片">×</button>` : ""}
-          </figure>`;
-        }
-        return `<span class="real-attachment-card">
-          <i>${attachment.mediaType === "application/pdf" ? "PDF" : "IMG"}</i>
-          <span><b>${escapeHTML(attachment.name)}</b><small>${escapeHTML(attachment.summary || (attachmentUploading ? "正在由模型理解…" : "附件已解析"))}</small></span>
-          ${removable ? `<button type="button" data-real-action="remove-attachment" data-attachment-id="${escapeHTML(attachment.id)}" aria-label="移除附件">×</button>` : ""}
-        </span>`;
-      }).join("")}
+    const images = visibleAttachments.filter((attachment) => attachment.mediaType?.startsWith("image/") && (attachment.contentAvailable || attachment.previewURL));
+    const files = visibleAttachments.filter((attachment) => !images.includes(attachment));
+    return `<div class="real-attachments ${removable ? "pending" : "committed"}">
+      ${images.length ? `<div class="real-image-grid count-${Math.min(images.length, 4)}">${images.map((attachment) => {
+        const source = attachmentSource(attachment);
+        const action = attachment.uploading ? "" : `data-real-action="view-attachment" data-attachment-id="${escapeHTML(attachment.id)}" data-attachment-name="${escapeHTML(attachment.name)}"`;
+        return `<figure class="real-image-attachment ${attachment.uploading ? "uploading" : ""}">
+          <button class="real-image-open" type="button" ${action} aria-label="${attachment.uploading ? "图片正在上传" : `查看图片 ${escapeHTML(attachment.name)}`}" ${attachment.uploading ? "disabled" : ""}><img src="${escapeHTML(source)}" alt="${escapeHTML(attachment.name)}" ${removable ? "" : "loading=\"lazy\""}></button>
+          ${attachment.uploading ? `<span class="real-image-upload-state"><i></i>正在理解</span>` : ""}
+          ${removable && !attachment.uploading ? `<button class="real-image-remove" type="button" data-real-action="remove-attachment" data-attachment-id="${escapeHTML(attachment.id)}" aria-label="移除图片 ${escapeHTML(attachment.name)}">×</button>` : ""}
+        </figure>`;
+      }).join("")}</div>` : ""}
+      ${files.map((attachment) => `<span class="real-attachment-card ${attachment.uploading ? "uploading" : ""}">
+        <i>${attachment.mediaType === "application/pdf" ? "PDF" : "IMG"}</i>
+        <span><b>${escapeHTML(attachment.name)}</b><small>${escapeHTML(attachment.uploading ? "正在上传并理解…" : attachment.summary || "附件已解析")}</small></span>
+        ${removable && !attachment.uploading ? `<button type="button" data-real-action="remove-attachment" data-attachment-id="${escapeHTML(attachment.id)}" aria-label="移除附件 ${escapeHTML(attachment.name)}">×</button>` : ""}
+      </span>`).join("")}
     </div>`;
+  }
+
+  function attachmentLightboxHTML() {
+    if (!attachmentLightbox) return "";
+    return `<section class="real-image-lightbox" role="dialog" aria-modal="true" aria-label="图片预览">
+      <button class="real-image-lightbox-backdrop" data-real-action="close-attachment-preview" aria-label="关闭图片预览"></button>
+      <figure><img src="${escapeHTML(attachmentLightbox.source)}" alt="${escapeHTML(attachmentLightbox.name)}"><figcaption>${escapeHTML(attachmentLightbox.name)}</figcaption></figure>
+      <button class="real-image-lightbox-close" data-real-action="close-attachment-preview" aria-label="关闭图片预览">×</button>
+    </section>`;
   }
 
   const languageAssistanceKey = (messageID, operation) =>
@@ -704,6 +735,26 @@
   }
 
   function standardConversationMessageHTML(message, archived = false) {
+    if (message.kind === "interview_history_cards" && message.history) {
+      return `<article class="real-message assistant">
+        <img src="../assets/speakup-agent.png" alt="">
+        <div class="real-message-copy">
+          <header><b>SpeakUp</b></header>
+          <p>${escapeHTML(message.Content || "最近的模拟面试")}</p>
+          <div class="real-chat-card-list">${(message.history.items || []).map(interviewHistoryMessageCardHTML).join("")}</div>
+        </div>
+      </article>`;
+    }
+    if (message.kind === "mistake_cards" && message.mistakes) {
+      return `<article class="real-message assistant">
+        <img src="../assets/speakup-agent.png" alt="">
+        <div class="real-message-copy">
+          <header><b>SpeakUp</b></header>
+          <p>${escapeHTML(message.Content || "最近的错题")}</p>
+          <div class="real-chat-card-list">${(message.mistakes.items || []).map(mistakeMessageCardHTML).join("")}</div>
+        </div>
+      </article>`;
+    }
     if (message.Role === "user") {
       const optimisticStatus = message.optimisticStatus || "";
       const optimisticLabel = {
@@ -795,12 +846,35 @@
         <h2>${escapeHTML(report.targetRole || "模拟面试")}</h2>
         <p>${escapeHTML(report.summary || "本次面试报告已生成。")}</p>
         <footer>
-          <span>${escapeHTML(report.completedTurns || 0)} / ${escapeHTML(report.maxTurns || 0)} 个有效回答</span>
+          <span>${escapeHTML(report.completedTurns || 0)} 个有效回答</span>
           <button data-real-action="open-report-card" data-session-id="${escapeHTML(report.sessionId)}">查看详细报告</button>
         </footer>
       </article>`;
     }
     return standardConversationMessageHTML(message);
+  }
+
+  function interviewHistoryMessageCardHTML(item) {
+    return `<button class="history-card interview real-chat-history-card" data-real-action="report" data-session-id="${escapeHTML(item.sessionId)}">
+      <span class="history-art interview-icon">◎</span>
+      <span class="history-copy">
+        <small>${escapeHTML(formatHistoryDate(item.startedAt, true))}</small>
+        <strong>${escapeHTML(item.targetRole || "模拟面试")}</strong>
+        <em><span>${escapeHTML(item.status || "completed")}</span><span>${escapeHTML(item.completedTurns || 0)} 个有效回答</span></em>
+      </span>
+      <span class="history-open">详情</span>
+    </button>`;
+  }
+
+  function mistakeMessageCardHTML(item) {
+    return `<button class="mistake-recent-row latest-mistake-source real-chat-mistake-card" data-real-action="open-mistake" data-mistake-id="${escapeHTML(item.mistakeId)}">
+      <span>
+        <small>${escapeHTML(item.targetRole || "模拟面试")} · Q${Number(item.questionIndex || 0) + 1}</small>
+        <strong>${escapeHTML(item.questionText || "已保存的复练题")}</strong>
+        <em>${escapeHTML(item.latestSummary || item.status || "待复练")}</em>
+      </span>
+      <i>›</i>
+    </button>`;
   }
 
   function mainConversationMessages(messages) {
@@ -835,7 +909,7 @@
 
   function confirmationHTML(confirmation) {
     if (!confirmation) return "";
-    const { targetRole, interviewer, maxTurns, durationMinutes } = interviewContext();
+    const { targetRole, interviewer, maxTurns, durationMinutes } = interviewContext(confirmation.TaskRunID);
     const profile = snapshot?.candidateProfile || {};
     const background = profile.resumeName || profile.headline || "本次对话中已确认的信息";
     return `<section class="real-confirmation">
@@ -843,7 +917,7 @@
       <h2>${escapeHTML(targetRole)} 模拟面试</h2>
       <div class="real-interview-card-grid">
         <span><small>面试官</small><b>${escapeHTML(interviewer)}</b></span>
-        <span><small>练习规模</small><b>${escapeHTML(maxTurns)} 轮 · ${escapeHTML(durationMinutes)} 分钟</b></span>
+        <span><small>练习规模</small><b>${maxTurns > 0 ? `动态追问 · 最多 ${escapeHTML(maxTurns)} 个回答` : `动态追问 · ${escapeHTML(durationMinutes)} 分钟`}</b></span>
         <span><small>候选人信息</small><b>${escapeHTML(background)}</b></span>
         <span><small>开始方式</small><b>确认后立即开始</b></span>
       </div>
@@ -889,6 +963,7 @@
     if (LIVE_FEATURE_ENABLED && liveCallState !== "idle") {
       return liveCallComposerHTML();
     }
+    const composerAttachments = [...pendingAttachments, ...uploadingAttachments];
     const hasPending = pendingAttachments.length > 0;
     if (isRecording()) {
       return `<footer class="real-agent-composer recording">
@@ -910,16 +985,19 @@
         <button class="real-mic processing" aria-label="录音处理中" disabled><i></i></button>
       </footer>`;
     }
-    return `${attachmentCardsHTML(pendingAttachments, true)}
+    return `<section class="real-composer-shell ${attachmentDragActive ? "drag-active" : ""}">
+    ${attachmentCardsHTML(composerAttachments, true)}
+    ${attachmentDragActive ? `<div class="real-attachment-drop-hint"><b>松开即可添加图片</b><small>支持 PNG、JPEG 和 WebP</small></div>` : ""}
     ${attachmentUploading ? `<div class="real-attachment-uploading"><i></i><span>正在上传并由真实模型理解附件…</span></div>` : ""}
     ${failedVoiceRecordingBlob ? `<div class="real-voice-send-retry"><span><b>${failedVoiceMessageID ? "文字已发送，录音尚未补充" : "录音尚未发送"}</b><small>本次录音已保留，可以直接重试。</small></span><button data-real-action="discard-voice-recording">删除</button><button class="primary" data-real-action="retry-voice-send">${failedVoiceMessageID ? "重试上传" : "重试发送"}</button></div>` : ""}
     <footer class="real-agent-composer">
       <input data-attachment-input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" multiple hidden>
-      <button class="real-add" data-real-action="more" aria-label="上传图片或 PDF" ${attachmentUploading ? "disabled" : ""}>＋</button>
-      <textarea data-real-input rows="1" placeholder="点击麦克风说话，或输入文字">${escapeHTML(inputValue)}</textarea>
+      <button class="real-add" data-real-action="more" aria-label="添加照片和文件" ${attachmentUploading || pendingAttachments.length >= 4 ? "disabled" : ""}>＋</button>
+      <textarea data-real-input rows="1" placeholder="发消息或粘贴图片">${escapeHTML(inputValue)}</textarea>
       <button class="real-mic" data-real-action="record" aria-label="开始录音"><i></i></button>
       <button class="real-send" data-real-action="send" aria-label="发送" ${loading || attachmentUploading || (!inputValue.trim() && !hasPending) || currentConfirmation() || contextLimitExceeded || snapshot?.requiresNewThread ? "disabled" : ""}>↑</button>
-    </footer>`;
+    </footer>
+    </section>`;
   }
 
   function formatRecordingTime(seconds) {
@@ -928,6 +1006,7 @@
 
   function realAgentView() {
     const messages = mainConversationMessages(snapshot?.messages || []);
+    const hasComposerAttachments = pendingAttachments.length > 0 || uploadingAttachments.length > 0;
     const hasConversation =
       messages.length > 1 ||
       currentConfirmation() ||
@@ -955,10 +1034,14 @@
         ${thinkingHTML()}`;
     const liveLayoutClass =
       LIVE_FEATURE_ENABLED && liveCallState !== "idle" ? " live-call-active" : "";
-    return `<div class="agent-page real-agent-page${liveLayoutClass}">
+    const attachmentLayoutClass = hasComposerAttachments
+      ? " has-composer-attachments"
+      : "";
+    return `<div class="agent-page real-agent-page${liveLayoutClass}${attachmentLayoutClass}">
       <section class="real-agent-thread">${content}</section>
       ${composerHTML()}
       ${correctionDetailSheetHTML()}
+      ${attachmentLightboxHTML()}
     </div>`;
   }
 
@@ -1027,14 +1110,14 @@
   function realPracticeView() {
     const completed = snapshot?.completedQuestionCount || 0;
     const question = streamingText || snapshot?.activeQuestion || "正在准备下一题…";
-    const { targetRole, interviewer, maxTurns, durationMinutes } = interviewContext();
+    const { targetRole, interviewer, durationMinutes } = interviewContext();
     const timing = interviewTiming();
-    const currentTurn = Math.min(completed + 1, maxTurns);
+    const currentQuestion = completed + 1;
     return `<div class="practice real-practice-page voice-first">
       <header class="real-practice-header">
         <button class="real-practice-icon-button back" data-real-action="back-chat" aria-label="返回对话" title="返回对话">←</button>
         <h1>${escapeHTML(targetRole)}</h1>
-        <span class="real-practice-progress" aria-label="面试进度 ${currentTurn} / ${maxTurns}">${currentTurn} / ${maxTurns}</span>
+        <span class="real-practice-progress" aria-label="动态追问，已完成 ${completed} 个有效回答">动态追问 · 已完成 ${completed}</span>
       </header>
       <section class="real-interviewer-stage">
         <img src="../assets/speakup-agent.png" alt="${escapeHTML(interviewer)}">
@@ -1046,7 +1129,7 @@
         <button class="real-audio-wave" data-real-action="speak-text" data-text="${escapeHTML(question)}" aria-label="播放当前问题" title="播放当前问题"><i></i><i></i><i></i><i></i><i></i><i></i></button>
         <span>${speaking ? "播放中" : "播放问题"}</span>
       </section>
-      ${practiceTranscriptVisible ? `<section class="real-question-transcript"><small>第 ${currentTurn} 轮问题</small><p>${escapeHTML(question)}</p></section>` : ""}
+      ${practiceTranscriptVisible ? `<section class="real-question-transcript"><small>动态问题 ${currentQuestion}</small><p>${escapeHTML(question)}</p></section>` : ""}
       ${practiceCoachVisible ? answerCoachHTML(question) : ""}
       ${realErrorHTML()}
       ${contextLimitHTML()}
@@ -1067,7 +1150,6 @@
     const completed = session?.completedTurns ?? snapshot?.completedQuestionCount ?? 0;
     const current = interviewContext();
     const targetRole = session?.targetRole || current.targetRole;
-    const maxTurns = session?.maxTurns || current.maxTurns;
     const durationMinutes = session?.durationMinutes || current.durationMinutes;
     const questions = session?.questions || [];
     const answers = session?.answers || [];
@@ -1082,12 +1164,12 @@
         <img src="../assets/speakup-agent.png" alt="">
         <small>PROJECT DEEP DIVE</small>
         <h1>${escapeHTML(targetRole)}</h1>
-        <p>本次完成 ${completed} 轮真实对话 · 限时 ${durationMinutes} 分钟</p>
+        <p>本次完成 ${completed} 个有效回答 · 限时 ${durationMinutes} 分钟</p>
       </header>
       <section class="real-report-metrics">
-        <div><small>轮次使用率</small><b>${Math.round((completed / maxTurns) * 100)}%</b></div>
         <div><small>有效回答</small><b>${completed}</b></div>
-        <div><small>轮次上限</small><b>${maxTurns}</b></div>
+        <div><small>限时时长</small><b>${durationMinutes} 分钟</b></div>
+        <div><small>提问方式</small><b>动态追问</b></div>
       </section>
       <section class="real-report-feedback">
         <small>AI 证据反馈</small>
@@ -1096,7 +1178,7 @@
         <button data-real-action="speak-text" data-text="${escapeHTML(feedback)}">▶ 朗读反馈</button>
       </section>
       ${session?.startedAt ? `<section class="real-history-metadata"><span><small>开始时间</small><b>${escapeHTML(formatHistoryDate(session.startedAt, true))}</b></span><span><small>结束时间</small><b>${escapeHTML(session.endedAt ? formatHistoryDate(session.endedAt, true) : "尚未结束")}</b></span></section>` : ""}
-      ${questions.length ? `<section class="real-history-transcript"><div class="real-history-section-head"><small>真实问答记录</small><b>${answers.length} 个有效回答</b></div>${questions.map((question, index) => `<article><header><span>Q${index + 1}</span><b>${escapeHTML(question)}</b></header>${answers[index] ? `<div><span>A${index + 1}</span><p>${escapeHTML(answers[index])}</p></div>` : `<div class="unanswered"><span>—</span><p>本题未回答，不计入有效 Turn</p></div>`}</article>`).join("")}</section>` : ""}
+      ${questions.length ? `<section class="real-history-transcript"><div class="real-history-section-head"><small>真实问答记录</small><b>${answers.length} 个有效回答</b></div>${questions.map((question, index) => reportQuestionHTML(session, question, answers[index], index)).join("")}</section>` : ""}
       ${realErrorHTML()}
       ${interviewHistoryDeleteConfirm && session ? `<section class="real-history-delete-confirm"><b>删除这场面试历史？</b><p>问题、回答和反馈将永久删除，且无法恢复。</p><div><button class="secondary" data-real-action="cancel-delete-interview-history">取消</button><button class="danger" data-real-action="confirm-delete-interview-history" data-session-id="${escapeHTML(session.id)}">确认删除</button></div></section>` : ""}
       <div class="real-report-actions">
@@ -1104,6 +1186,17 @@
         ${!isActive && session?.id ? `<button class="danger" data-real-action="request-delete-interview-history">删除记录</button>` : ""}
       </div>
     </div>`;
+  }
+
+  function reportQuestionHTML(session, question, answer, index) {
+    const saved = savedMistakeCards.some((item) => item.sessionId === session?.id && Number(item.questionIndex) === index);
+    const button = session?.id && answer
+      ? `<button class="secondary real-save-mistake-btn" data-real-action="save-review-mistake" data-session-id="${escapeHTML(session.id)}" data-question-index="${index}" ${saved ? "disabled" : ""}>${saved ? "已加入错题" : "加入错题"}</button>`
+      : "";
+    return `<article class="${saved ? "real-saved-mistake-source" : ""}">
+      <header><span>Q${index + 1}</span><b>${escapeHTML(question)}</b>${button}</header>
+      ${answer ? `<div><span>A${index + 1}</span><p>${escapeHTML(answer)}</p></div>` : `<div class="unanswered"><span>—</span><p>本题未回答，不计入有效 Turn</p></div>`}
+    </article>`;
   }
 
   function realHistoryView() {
@@ -1125,10 +1218,9 @@
         ? `<section class="history-list">
             ${cards.map((session) => {
               const progress = session.completedTurns || 0;
-              const maxTurns = session.maxTurns || 10;
               const active = session.status === "in_progress" && Boolean(snapshot?.activeQuestion);
               const status = active
-                ? `第 ${Math.min(progress + 1, maxTurns)} 轮 · ${interviewTiming().label}`
+                ? `动态追问 · 已完成 ${progress} · ${interviewTiming().label}`
                 : `${formatHistoryDate(session.endedAt || session.startedAt)} · ${progress} 个有效回答`;
               return `<button class="history-card interview" data-real-action="${active ? "continue" : "report"}" data-session-id="${escapeHTML(session.id)}">
                 <span class="history-art interview-icon">◎</span>
@@ -1136,7 +1228,6 @@
                   <small>真实 Agent 面试 · ${formatHistoryDate(session.startedAt, true)}</small>
                   <strong>${escapeHTML(session.targetRole || "Software Engineer")}</strong>
                   <em><span>${escapeHTML(session.interviewer || "Senior Hiring Manager")}</span><span>${escapeHTML(status)}</span></em>
-                  <span class="history-progress"><i style="width:${Math.min((progress / maxTurns) * 100, 100)}%"></i></span>
                 </span>
                 <span class="history-open">${active ? "继续" : "详情"}</span>
               </button>`;
@@ -1145,6 +1236,114 @@
         : `<div class="empty-state"><b>还没有真实面试计划</b><p>在自由对话中告诉 SpeakUp 你想进行模拟面试。</p><button class="primary btn-wide" data-real-action="back-chat">去找 SpeakUp</button></div>`}
       ${realErrorHTML()}
     </div>`;
+  }
+
+  function realMistakesView() {
+    return `<div class="mistake-redesign">
+      ${topbar("错题", "agent-chat", `<span class="chip">${savedMistakeCards.length} 道</span>`)}
+      <div class="mistake-page-scroll">
+        <section class="mistake-intro">
+          <h1>待复练题目</h1>
+          <p>这里收集你从真实面试报告里手动加入的题目。</p>
+          <button class="mistake-start" data-real-action="back-chat">回到对话</button>
+        </section>
+        <section class="mistake-section">
+          <div class="mistake-section-head"><h2>全部错题</h2><small>${savedMistakeCards.length} 道题</small></div>
+          ${savedMistakeCards.length ? `<div class="mistake-source-list">${savedMistakeCards.map(mistakeListItemHTML).join("")}</div>` : `<p class="mistake-context-note"><b>暂无错题。</b>先完成一次面试，然后在报告页把想复练的问题加入错题。</p>`}
+        </section>
+        ${realErrorHTML()}
+      </div>
+    </div>`;
+  }
+
+  function mistakeListItemHTML(item) {
+    return `<button data-real-action="open-mistake" data-mistake-id="${escapeHTML(item.mistakeId)}">
+      <p><b>${escapeHTML(item.targetRole || "模拟面试")} · Q${Number(item.questionIndex || 0) + 1}</b><small>${escapeHTML(item.questionText || "已保存的题目")}</small></p>
+      <em>${escapeHTML(item.status === "practiced" ? "已复练" : "待复练")}</em>
+      <i>›</i>
+    </button>`;
+  }
+
+  function realMistakeDetailView() {
+    const context = selectedMistakeContext;
+    const mistake = context?.mistake || {};
+    const session = context?.session || {};
+    const questions = session.questions || [];
+    const answers = session.answers || [];
+    const focusIndex = Number(context?.questionIndex ?? mistake.questionIndex ?? 0);
+    return `<div class="mistake-redesign">
+      ${topbar("面试上下文", "mistakes", `<span class="chip">Q${focusIndex + 1}</span>`)}
+      <div class="mistake-page-scroll">
+        <section class="mistake-intro">
+          <h1>${escapeHTML(mistake.targetRole || session.targetRole || "模拟面试")}</h1>
+          <p>先看完整面试上下文。被标记的错题已经高亮，点击它进入同题复练。</p>
+          <button class="mistake-start" data-real-action="practice-saved-mistake">练习标记题</button>
+        </section>
+        ${questions.length ? `<section class="real-history-transcript"><div class="real-history-section-head"><small>整场面试题目</small><b>${answers.length} 个有效回答</b></div>${questions.map((question, index) => mistakeContextQuestionHTML(question, answers[index], index, focusIndex)).join("")}</section>` : `<p class="mistake-context-note">没有找到这场面试的题目记录。</p>`}
+        ${realErrorHTML()}
+      </div>
+    </div>`;
+  }
+
+  function mistakeContextQuestionHTML(question, answer, index, focusIndex) {
+    const active = index === focusIndex;
+    const action = active ? ' data-real-action="practice-saved-mistake"' : "";
+    return `<article class="${active ? "real-saved-mistake-source" : ""}"${action}>
+      <header><span>Q${index + 1}</span><b>${escapeHTML(question)}</b>${active ? "<em>已标记错题</em>" : ""}</header>
+      ${answer ? `<div><span>A${index + 1}</span><p>${escapeHTML(answer)}</p></div>` : `<div class="unanswered"><span>—</span><p>本题未回答</p></div>`}
+    </article>`;
+  }
+
+  function realMistakePracticeView() {
+    const context = selectedMistakeContext;
+    const mistake = context?.mistake || {};
+    const session = context?.session || {};
+    const questions = session.questions || [];
+    const answers = session.answers || [];
+    const focusIndex = Number(context?.questionIndex ?? mistake.questionIndex ?? 0);
+    const latest = [...(context?.repractices || [])].pop();
+    return `<div class="mistake-practice-page">
+      ${topbar("重新回答", "mistake-detail", `<span class="chip">Q${focusIndex + 1}</span>`)}
+      <div class="mistake-practice-scroll">
+        <section class="mistake-voice-question">
+          <small class="mistake-voice-meta">${escapeHTML(mistake.targetRole || session.targetRole || "模拟面试")}</small>
+          <h1>${escapeHTML(mistake.questionText || questions[focusIndex] || "已保存的复练题")}</h1>
+          <p>${escapeHTML(mistake.originalAnswer || answers[focusIndex] || "")}</p>
+        </section>
+        ${mistakePracticeComposerHTML()}
+        ${latest ? `<section class="mistake-voice-feedback"><small>最近一次点评</small><h2>${escapeHTML(latest.summary)}</h2><p>${escapeHTML(latest.feedback?.suggestion || "")}</p></section>` : ""}
+        ${realErrorHTML()}
+      </div>
+      <div class="mistake-practice-actions">
+        <button class="real-practice-secondary ${mistakeTextInputVisible ? "active" : ""}" data-real-action="toggle-mistake-input" aria-label="${mistakeTextInputVisible ? "收起文字输入" : "打开文字输入"}" title="${mistakeTextInputVisible ? "收起文字输入" : "打开文字输入"}"><span aria-hidden="true">⌨</span></button>
+        <button class="mistake-record-action ${isRecording() ? "recording" : ""}" data-real-action="record" aria-label="${isRecording() ? "结束语音回答" : "开始语音回答"}">${isRecording() ? '<span class="mistake-stop-icon"></span>结束回答' : '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10"/><path d="M8 9v1a4 4 0 0 0 8 0V9"/><path d="M19 10a7 7 0 0 1-14 0"/><path d="M12 17v4"/><path d="M8 21h8"/></svg>语音回答'}</button>
+      </div>
+    </div>`;
+  }
+
+  function mistakePracticeComposerHTML() {
+    if (isRecording()) {
+      return `<section class="real-practice-recording">
+        <span><i></i><b>${formatRecordingTime(recordingElapsedSeconds)}</b></span>
+        <p>${escapeHTML(liveTranscript || recordingStatus)}</p>
+        <button data-real-action="cancel-record">取消</button>
+      </section>`;
+    }
+    if (!mistakeTextInputVisible) {
+      return `<section class="mistake-voice-prompt">
+        <div class="mistake-voice-wave idle"><i></i><i></i><i></i><i></i><i></i></div>
+        <h2>说出你的新答案</h2>
+        <p>点击底部麦克风开始语音回答，结束后会自动生成本题点评。</p>
+      </section>`;
+    }
+    return `<section class="mistake-spoken-answer">
+      <small>文字输入</small>
+      <textarea class="field" data-mistake-answer placeholder="Type your improved answer here">${escapeHTML(mistakeAnswerDraft)}</textarea>
+      <div class="real-practice-actions">
+        <button class="secondary" data-real-action="toggle-mistake-input">收起</button>
+        <button class="primary" data-real-action="submit-mistake-repractice" data-mistake-id="${escapeHTML(selectedMistakeContext?.mistake?.id)}" ${mistakeSubmitting || !mistakeAnswerDraft.trim() ? "disabled" : ""}>${mistakeSubmitting ? "点评中…" : "提交复练"}</button>
+      </div>
+    </section>`;
   }
 
   function formatFileSize(size) {
@@ -1274,12 +1473,16 @@
   function recentConversationHTML() {
     const firstUserMessage = (snapshot?.messages || []).find((item) => item.Role === "user");
     if (!firstUserMessage && !conversationArchives.length) {
-      return '<section class="app-drawer-recent"><small>最近对话</small><p class="real-drawer-empty">暂无对话</p></section>';
+      return `<section class="app-drawer-recent"><small>学习入口</small>
+        <button data-real-action="open-mistakes">错题本<em>${savedMistakeCards.length} 道</em></button>
+      </section><section class="app-drawer-recent"><small>最近对话</small><p class="real-drawer-empty">暂无对话</p></section>`;
     }
     const currentTitle = firstUserMessage
       ? String(firstUserMessage.Content).replace(/\s+/g, " ").slice(0, 18)
       : "";
-    return `<section class="app-drawer-recent"><small>最近对话</small>
+    return `<section class="app-drawer-recent"><small>学习入口</small>
+      <button data-real-action="open-mistakes">错题本<em>${savedMistakeCards.length} 道</em></button>
+    </section><section class="app-drawer-recent"><small>最近对话</small>
       ${firstUserMessage ? `<button class="${selectedConversationArchive ? "" : "active"}" data-real-action="back-chat">${escapeHTML(currentTitle)}${firstUserMessage.Content.length > 18 ? "…" : ""}<em>当前</em></button>` : ""}
       ${conversationArchives.slice(0, 8).map((archive) => `<button class="${selectedConversationArchive?.id === archive.id ? "active" : ""}" data-real-action="open-conversation-history" data-conversation-id="${escapeHTML(archive.id)}">${escapeHTML(archive.title)}<em>${archive.messageCount} 条</em></button>`).join("")}
     </section>`;
@@ -1300,6 +1503,7 @@
       <section class="real-archive-thread">${(archive.messages || []).map(archivedMessageHTML).join("")}</section>
       ${archiveDeleteConfirm ? `<section class="real-archive-delete-confirm"><b>删除这次历史对话？</b><p>删除后无法恢复，当前对话和简历不会受影响。</p><div><button data-real-action="cancel-delete-conversation">取消</button><button class="danger" data-real-action="confirm-delete-conversation" data-conversation-id="${escapeHTML(archive.id)}">确认删除</button></div></section>` : `<div class="real-archive-actions"><button class="secondary" data-real-action="back-chat">返回当前对话</button><button class="danger" data-real-action="request-delete-conversation">删除历史</button></div>`}
       ${correctionDetailSheetHTML()}
+      ${attachmentLightboxHTML()}
     </div>`;
   }
 
@@ -1362,6 +1566,9 @@
   views["resumes"] = realResumeView;
   views["conversation-history"] = realConversationArchiveView;
   views["memory"] = realMemoryView;
+  views["mistakes"] = realMistakesView;
+  views["mistake-detail"] = realMistakeDetailView;
+  views["mistake-practice"] = realMistakePracticeView;
 
   async function loadMemory() {
     memoryLoading = true;
@@ -1538,17 +1745,19 @@
     bridgeError = "";
     rerender();
     try {
-      const [threadSnapshot, resumes, conversations, interviewHistory] = await Promise.all([
+      const [threadSnapshot, resumes, conversations, interviewHistory, mistakes] = await Promise.all([
         request(`/v1/assistant/threads/${THREAD_ID}?actor_user_id=${ACTOR_ID}`),
         request("/v1/preparation/resumes"),
         request("/v1/assistant/conversations"),
         request("/v1/practice/sessions"),
+        request("/v1/review/mistakes"),
       ]);
       snapshot = threadSnapshot;
       managedResumes = resumes.items || [];
       managedResumeLimit = resumes.limit || 3;
       conversationArchives = conversations.items || [];
       interviewHistorySessions = interviewHistory.items || [];
+      savedMistakeCards = mistakes.items || [];
       syncManagedResumeState();
       contextLimitExceeded = Boolean(snapshot?.requiresNewThread);
     } catch (error) {
@@ -1567,6 +1776,83 @@
   async function reloadInterviewHistory() {
     const response = await request("/v1/practice/sessions");
     interviewHistorySessions = response.items || [];
+  }
+
+  async function reloadSavedMistakes() {
+    const response = await request("/v1/review/mistakes");
+    savedMistakeCards = response.items || [];
+  }
+
+  async function saveReviewMistake(sessionID, questionIndex) {
+    if (!sessionID) return;
+    bridgeError = "";
+    try {
+      await request("/v1/review/mistakes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ practice_session_id: sessionID, question_index: Number(questionIndex || 0) }),
+      });
+      await reloadSavedMistakes();
+      toast("已加入错题");
+      rerender("report");
+    } catch (error) {
+      bridgeError = error.message || "加入错题失败";
+      rerender("report");
+    }
+  }
+
+  async function openSavedMistake(id) {
+    if (!id) return;
+    loading = true;
+    bridgeError = "";
+    selectedMistakeContext = null;
+    mistakeAnswerDraft = "";
+    mistakeTextInputVisible = false;
+    rerender("mistakes");
+    try {
+      selectedMistakeContext = await request(`/v1/review/mistakes/${encodeURIComponent(id)}`);
+      rerender("mistake-detail");
+    } catch (error) {
+      bridgeError = error.message || "读取错题失败";
+      rerender("mistakes");
+    } finally {
+      loading = false;
+      rerender(activeRealRoute);
+    }
+  }
+
+  async function submitMistakeRepractice(id, answerOverride = "") {
+    if (!id || mistakeSubmitting) return;
+    const input = document.querySelector("[data-mistake-answer]");
+    mistakeAnswerDraft = String(answerOverride || input?.value || mistakeAnswerDraft || "").trim();
+    if (!mistakeAnswerDraft) {
+      bridgeError = "请先完成一次回答，再生成本题点评。";
+      liveTranscript = mistakeAnswerDraft;
+      rerender("mistake-practice");
+      return;
+    }
+    mistakeSubmitting = true;
+    bridgeError = "";
+    rerender("mistake-practice");
+    try {
+      await request(`/v1/review/mistakes/${encodeURIComponent(id)}/repractice`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answer_text: mistakeAnswerDraft }),
+      });
+      selectedMistakeContext = await request(`/v1/review/mistakes/${encodeURIComponent(id)}`);
+      await reloadSavedMistakes();
+      mistakeAnswerDraft = "";
+      mistakeTextInputVisible = false;
+      toast("复练点评已生成");
+    } catch (error) {
+      bridgeError = /required/i.test(error.message || "")
+        ? "请先完成一次回答，再生成本题点评。"
+        : error.message || "复练点评失败";
+    } finally {
+      mistakeSubmitting = false;
+      rerender("mistake-practice");
+    }
   }
 
   async function openInterviewHistory(id) {
@@ -1872,7 +2158,7 @@
   function submitRecognizedVoiceAnswer(text) {
     const answer = String(text || "").trim();
     if (
-      activeRealRoute !== "practice" ||
+      !voiceAnswerRouteActive() ||
       !pendingVoiceAnswerSubmit ||
       voiceAnswerSubmitting ||
       !answer
@@ -1881,8 +2167,12 @@
     voiceAnswerSubmitting = true;
     inputValue = "";
     liveTranscript = "";
-    void sendMessage(answer).finally(() => {
+    const submission = activeRealRoute === "mistake-practice"
+      ? submitMistakeRepractice(selectedMistakeContext?.mistake?.id, answer)
+      : sendMessage(answer);
+    void submission.finally(() => {
       voiceAnswerSubmitting = false;
+      pendingVoiceAnswerSubmit = false;
     });
   }
 
@@ -2091,6 +2381,7 @@
       });
       await reloadConversationArchives();
       await reloadInterviewHistory();
+      await reloadSavedMistakes();
       selectedConversationArchive = null;
     } catch (error) {
       bridgeError = error.message || "无法开始新对话";
@@ -2101,31 +2392,62 @@
   }
 
   async function uploadAttachments(files) {
-    const selected = [...files].slice(0, 4 - pendingAttachments.length);
+    const capacity = 4 - pendingAttachments.length - uploadingAttachments.length;
+    const selected = [...files]
+      .filter((file) => ["application/pdf", "image/png", "image/jpeg", "image/webp"].includes(file.type))
+      .slice(0, capacity);
     if (!selected.length || attachmentUploading) return;
+    uploadingAttachments = selected.map((file, index) => ({
+      id: `uploading-${Date.now()}-${index}`,
+      name: file.name || `粘贴的图片-${index + 1}.png`,
+      mediaType: file.type,
+      previewURL: file.type.startsWith("image/") ? URL.createObjectURL(file) : "",
+      uploading: true,
+    }));
     attachmentUploading = true;
     bridgeError = "";
     rerender();
     try {
-      for (const file of selected) {
+      for (let index = 0; index < selected.length; index++) {
+        const file = selected[index];
         const form = new FormData();
-        form.append("file", file, file.name);
+        form.append("file", file, file.name || uploadingAttachments[index]?.name || "pasted-image.png");
         const response = await request("/v1/assistant/attachments", {
           method: "POST",
           body: form,
         });
         pendingAttachments.push(response.attachment);
+        const finished = uploadingAttachments.shift();
+        if (finished?.previewURL) URL.revokeObjectURL(finished.previewURL);
         if (response.candidate_profile?.id) {
           preparationProfile = response.candidate_profile;
         }
+        rerender();
       }
       await reloadManagedResumes();
     } catch (error) {
       bridgeError = error.message || "附件上传或模型解析失败";
     } finally {
+      for (const attachment of uploadingAttachments) {
+        if (attachment.previewURL) URL.revokeObjectURL(attachment.previewURL);
+      }
+      uploadingAttachments = [];
       attachmentUploading = false;
       rerender();
     }
+  }
+
+  function openAttachmentPreview(id, name) {
+    attachmentLightbox = {
+      source: `${API_BASE}/v1/assistant/attachments/${encodeURIComponent(id)}/content`,
+      name: name || "图片预览",
+    };
+    rerender(activeRealRoute);
+  }
+
+  function closeAttachmentPreview() {
+    attachmentLightbox = null;
+    rerender(activeRealRoute);
   }
 
   async function uploadVoiceRecording(blob) {
@@ -2403,7 +2725,7 @@
     rerender();
     try {
       const transcript = await requestTranscription(blob);
-      if (activeRealRoute === "practice" && pendingVoiceAnswerSubmit) {
+      if (voiceAnswerRouteActive() && pendingVoiceAnswerSubmit) {
         submitRecognizedVoiceAnswer(transcript);
       } else {
         liveTranscript = transcript;
@@ -2447,22 +2769,22 @@
   function handleASREvent(event) {
     if (event.type === "transcript.delta") {
       liveTranscript += event.text || "";
-      if (activeRealRoute !== "practice") {
+      if (!voiceAnswerRouteActive()) {
         inputValue = mergeVoiceInput(recordingInputBase, liveTranscript);
       }
       rerender(activeRealRoute);
     } else if (event.type === "transcript.completed" || event.type === "transcription.done") {
       liveTranscript = event.text || liveTranscript;
       voiceTranscriptFinal = true;
-      if (activeRealRoute !== "practice") {
+      if (!voiceAnswerRouteActive()) {
         inputValue = mergeVoiceInput(recordingInputBase, liveTranscript);
       }
-      recordingStatus = activeRealRoute === "practice" ? "识别完成，正在提交" : "识别完成，可编辑后发送";
+      recordingStatus = voiceAnswerRouteActive() ? "识别完成，正在提交" : "识别完成，可编辑后发送";
       if (event.type === "transcription.done") {
         asrSocket?.close();
         asrSocket = null;
       }
-      if (activeRealRoute === "practice" && pendingVoiceAnswerSubmit) {
+      if (voiceAnswerRouteActive() && pendingVoiceAnswerSubmit) {
         submitRecognizedVoiceAnswer(liveTranscript);
       } else {
         rerender(activeRealRoute);
@@ -2563,10 +2885,10 @@
   async function stopLiveRecording(cancel = false) {
     if (!recordingStream) return;
     discardRecording = cancel;
-    pendingVoiceAnswerSubmit = !cancel;
-    voiceSubmissionInProgress = !cancel;
-    fallbackTranscriptionStarted = !cancel;
-    recordingStatus = cancel ? "已取消" : "正在识别并发送…";
+    pendingVoiceAnswerSubmit = !cancel && voiceAnswerRouteActive();
+    voiceSubmissionInProgress = !cancel && voiceAnswerRouteActive();
+    fallbackTranscriptionStarted = !cancel && voiceAnswerRouteActive();
+    recordingStatus = cancel ? "已取消" : voiceAnswerRouteActive() ? "正在识别并发送…" : "识别完成，可编辑后发送";
     clearInterval(recordingTimer);
     recordingTimer = null;
     asrProcessor?.disconnect();
@@ -2734,6 +3056,10 @@
       resumeEditDraft.experiences[Number(event.target.dataset.resumeEditExperience)] = event.target.value;
       return;
     }
+    if (event.target.matches("[data-mistake-answer]")) {
+      mistakeAnswerDraft = event.target.value;
+      return;
+    }
     if (!event.target.matches("[data-real-input]")) return;
     inputValue = event.target.value;
     const action = activeRealRoute === "practice" ? "submit-answer" : "send";
@@ -2757,7 +3083,54 @@
     }
   });
 
+  window.addEventListener("paste", (event) => {
+    if (activeRealRoute !== "agent-chat" || loading || attachmentUploading) return;
+    const images = [...(event.clipboardData?.files || [])].filter((file) => file.type.startsWith("image/"));
+    if (!images.length) return;
+    event.preventDefault();
+    void uploadAttachments(images);
+  });
+
+  window.addEventListener("dragenter", (event) => {
+    if (activeRealRoute !== "agent-chat" || !event.dataTransfer?.types?.includes("Files")) return;
+    event.preventDefault();
+    attachmentDragDepth++;
+    if (!attachmentDragActive) {
+      attachmentDragActive = true;
+      rerender("agent-chat");
+    }
+  });
+
+  window.addEventListener("dragover", (event) => {
+    if (activeRealRoute === "agent-chat" && event.dataTransfer?.types?.includes("Files")) event.preventDefault();
+  });
+
+  window.addEventListener("dragleave", (event) => {
+    if (!attachmentDragActive) return;
+    event.preventDefault();
+    attachmentDragDepth = Math.max(0, attachmentDragDepth - 1);
+    if (attachmentDragDepth === 0) {
+      attachmentDragActive = false;
+      rerender("agent-chat");
+    }
+  });
+
+  window.addEventListener("drop", (event) => {
+    if (!attachmentDragActive) return;
+    event.preventDefault();
+    attachmentDragDepth = 0;
+    attachmentDragActive = false;
+    const files = [...(event.dataTransfer?.files || [])];
+    rerender("agent-chat");
+    if (files.length) void uploadAttachments(files);
+  });
+
   window.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && attachmentLightbox) {
+      event.preventDefault();
+      closeAttachmentPreview();
+      return;
+    }
     if (event.key === "Escape" && correctionDetailMessageID) {
       correctionDetailMessageID = "";
       rerender(activeRealRoute, { preserveThread: true });
@@ -2777,9 +3150,10 @@
     const target = event.target.closest("[data-real-action]");
     if (!target) {
       const routeTarget = event.target.closest("[data-route]");
-      if (routeTarget && ["agent-chat", "home", "practice", "report", "memory"].includes(routeTarget.dataset.route)) {
+      if (routeTarget && ["agent-chat", "home", "practice", "report", "memory", "mistakes", "mistake-detail", "mistake-practice"].includes(routeTarget.dataset.route)) {
         activeRealRoute = routeTarget.dataset.route;
         if (activeRealRoute === "memory") void loadMemory();
+        if (activeRealRoute === "mistakes") void reloadSavedMistakes();
       }
       return;
     }
@@ -2906,6 +3280,13 @@
         requestAnimationFrame(() => document.querySelector("#real-practice-input")?.focus());
       }
     }
+    else if (action === "toggle-mistake-input") {
+      mistakeTextInputVisible = !mistakeTextInputVisible;
+      rerender("mistake-practice");
+      if (mistakeTextInputVisible) {
+        requestAnimationFrame(() => document.querySelector("[data-mistake-answer]")?.focus());
+      }
+    }
     else if (action === "practice-coach") {
       if (practiceCoachVisible) {
         practiceCoachVisible = false;
@@ -2969,7 +3350,8 @@
     else if (action === "save-resume-rename") void renameManagedResume(target.dataset.resumeId);
     else if (action === "activate-resume") void activateManagedResume(target.dataset.resumeId);
     else if (action === "download-resume") window.open(`${API_BASE}/v1/preparation/resumes/${encodeURIComponent(target.dataset.resumeId)}/file`, "_blank", "noopener");
-    else if (action === "view-attachment") window.open(`${API_BASE}/v1/assistant/attachments/${encodeURIComponent(target.dataset.attachmentId)}/content`, "_blank", "noopener");
+    else if (action === "view-attachment") openAttachmentPreview(target.dataset.attachmentId, target.dataset.attachmentName);
+    else if (action === "close-attachment-preview") closeAttachmentPreview();
     else if (action === "open-conversation-history") void openConversationArchive(target.dataset.conversationId);
     else if (action === "request-delete-conversation") {
       archiveDeleteConfirm = true;
@@ -2996,6 +3378,18 @@
     else if (action === "continue") rerender("practice");
     else if (action === "open-report-card") void openInterviewHistory(target.dataset.sessionId);
     else if (action === "report") void openInterviewHistory(target.dataset.sessionId);
+    else if (action === "save-review-mistake") void saveReviewMistake(target.dataset.sessionId, target.dataset.questionIndex);
+    else if (action === "open-mistake") void openSavedMistake(target.dataset.mistakeId);
+    else if (action === "practice-saved-mistake") {
+      mistakeAnswerDraft = "";
+      mistakeTextInputVisible = false;
+      rerender("mistake-practice");
+    }
+    else if (action === "open-mistakes") {
+      selectedMistakeContext = null;
+      void reloadSavedMistakes().then(() => rerender("mistakes"));
+    }
+    else if (action === "submit-mistake-repractice") void submitMistakeRepractice(target.dataset.mistakeId);
     else if (action === "history") {
       selectedHistorySessionID = "";
       selectedInterviewSessionDetail = null;
