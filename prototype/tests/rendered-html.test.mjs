@@ -82,6 +82,8 @@ test("renders five interactive product states instead of cropped screenshots", a
   assert.match(source, /Why did you choose Kafka/);
   assert.match(source, /模拟面试已完成/);
   assert.match(source, /今天的面试怎么样/);
+  const practicePanel = source.match(/if \(kind === "practice"\)[\s\S]*?if \(kind === "interview"\)/)?.[0] || "";
+  assert.equal(practicePanel.match(/<VoiceBubble/g)?.length, 2);
   assert.match(styles, /grid-template-rows:\s*repeat\(5/);
 
   const demoStyles = styles.slice(

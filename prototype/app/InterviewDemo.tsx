@@ -87,6 +87,7 @@ function DemoPanel({ kind, href }: { kind: DemoKind; href: string }) {
         <CoachTurn>
           <p>很好，经历已经说清楚了。接下来补一句你的代表项目，以及你具体解决了什么问题。</p>
         </CoachTurn>
+        <div className="demo-user-row"><VoiceBubble label="语音回答" duration="0:24" /></div>
         <CoachTurn>
           <p>准备得差不多了。现在我邀请面试官和你进行一次真实追问。</p>
         </CoachTurn>
