@@ -190,7 +190,7 @@ h2 {
 }
 
 .hero-copy {
-  max-width: 1030px;
+  max-width: 1180px;
   margin: 0 auto 56px;
   text-align: center;
 }
@@ -204,7 +204,7 @@ h2 {
 }
 
 .hero h1 {
-  font-size: clamp(54px, 7.2vw, 100px);
+  font-size: clamp(54px, 6.4vw, 90px);
   line-height: 0.94;
 }
 
@@ -852,6 +852,10 @@ h2 {
   padding-top: 132px;
 }
 
+.features-section .section-intro {
+  max-width: 980px;
+}
+
 .demo-sequence {
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr);
@@ -1280,6 +1284,33 @@ h2 {
   border-radius: 18px 18px 3px 18px;
   background: var(--ink);
   color: var(--lumen);
+}
+
+.user-message small {
+  color: rgba(255, 255, 235, 0.62);
+}
+
+.dialogue-memory {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 8px;
+  padding: 16px 18px;
+  border: 2px solid var(--ink);
+  border-radius: 16px;
+  background: var(--paper);
+}
+
+.dialogue-memory span {
+  color: var(--fathom);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.dialogue-memory strong {
+  font-size: 15px;
 }
 
 .final-cta {

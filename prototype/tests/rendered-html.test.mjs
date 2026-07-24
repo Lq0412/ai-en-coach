@@ -23,33 +23,38 @@ async function readActivePrototype() {
   ]);
 }
 
-test("routes unfinished product actions to a coming-soon prompt", async () => {
+test("presents SpeakUp as a long-term Agent teacher connected to real outcomes", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   const html = await response.text();
-  assert.match(html, /面向真实任务的英语沟通 Agent/);
+  assert.match(html, /有记忆的 AI Agent 口语老师/);
   assert.doesNotMatch(html, /href="\/pages\/prototype\.html/);
   assert.match(html, /敬请期待/);
   assert.match(html, /下一场重要的英文沟通/);
+  assert.match(html, /越用越懂你/);
+  assert.match(html, /把岗位 JD 和简历发给我/);
   assert.match(html, /portal-interview-start\.jpg/);
+  assert.match(html, /portal-interview-practice\.jpg/);
   assert.match(html, /portal-panel-practice\.jpg/);
-  assert.match(html, /portal-evidence-report\.jpg/);
   assert.match(html, /portal-memory-chat\.jpg/);
-  assert.match(html, /portal-ielts-part2\.jpg/);
-  assert.match(html, /portal-daily-doctor\.jpg/);
-  assert.match(html, /portal-workplace-client\.jpg/);
+  assert.doesNotMatch(html, /portal-ielts-part2\.jpg|portal-daily-doctor\.jpg|portal-workplace-client\.jpg/);
   assert.match(html, /SpeakUp 首批体验即将开放/);
   assert.doesNotMatch(html, /SpeakUp 模拟面试现已开放/);
-  assert.match(html, /结合目标、经历和过往练习/);
+  assert.match(html, /先理解你，不急着开练/);
+  assert.match(html, /给建议、教表达，再陪你开口/);
+  assert.match(html, /准备好了，再进入真实追问/);
+  assert.match(html, /把真实结果带回来，下一轮更懂你/);
+  assert.match(html, /从一句“下周有面试”，.*真正走进面试/s);
   assert.match(html, /考出去、面进去，.*适应好/s);
   assert.match(html, /雅思口语/);
   assert.match(html, /海外日常/);
   assert.match(html, /国际职场/);
-  assert.match(html, /它记得的，是你的目标和能力变化/);
-  assert.match(html, /完整演示 · 后端开发工程师英文面试/);
-  assert.match(html, /Memory 会持续记住岗位、真实项目、反复卡点和已经改善的能力/);
-  assert.match(html, /单面之外，也能应对多人连续追问/);
-  assert.match(html, /英文面试完整演示步骤/);
+  assert.match(html, /每一次练习，.*都留给下一次/s);
+  assert.match(html, /老师，你压中 Kafka 了/);
+  assert.match(html, /数据库迁移/);
+  assert.match(html, /SpeakUp 陪伴一次真实任务的四个阶段/);
+  assert.doesNotMatch(html, /一次面试任务，.*Agent 的四种能力/s);
+  assert.doesNotMatch(html, /同一个 Agent，.*接住不同的真实任务/s);
   assert.doesNotMatch(html, /class="feature-card"/);
   assert.match(html, /id="coming-soon"/);
   assert.match(html, /<dialog/);

@@ -29,7 +29,7 @@ export default function InterviewDemo({ features }: { features: DemoFeature[] })
 
   return (
     <div className={`demo-sequence demo-tone-${activeIndex + 1}`}>
-      <div className="demo-step-list" role="tablist" aria-label="英文面试完整演示步骤">
+      <div className="demo-step-list" role="tablist" aria-label="SpeakUp 陪伴一次真实任务的四个阶段">
         {features.map((feature, index) => (
           <button
             className="demo-step"
