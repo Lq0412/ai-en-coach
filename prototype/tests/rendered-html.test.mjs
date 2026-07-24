@@ -36,17 +36,17 @@ test("presents SpeakUp as a long-term Agent teacher connected to real outcomes",
   assert.match(html, /越用越懂你/);
   assert.match(html, /把岗位 JD 和简历发给我/);
   assert.match(html, /portal-interview-start\.jpg/);
-  assert.match(html, /portal-interview-practice\.jpg/);
-  assert.match(html, /portal-panel-practice\.jpg/);
   assert.match(html, /portal-memory-chat\.jpg/);
+  assert.doesNotMatch(html, /portal-interview-practice\.jpg|portal-panel-practice\.jpg/);
   assert.doesNotMatch(html, /portal-ielts-part2\.jpg|portal-daily-doctor\.jpg|portal-workplace-client\.jpg/);
   assert.match(html, /SpeakUp 正在招募首批体验用户/);
   assert.doesNotMatch(html, /SpeakUp 模拟面试现已开放/);
   assert.match(html, /先理解你，不急着开练/);
-  assert.match(html, /给建议、教表达，再陪你开口/);
-  assert.match(html, /准备好了，再进入真实追问/);
-  assert.match(html, /把真实结果带回来，下一轮更懂你/);
-  assert.match(html, /从一句“下周有面试”，.*真正走进面试/s);
+  assert.match(html, /先教会你，再邀请实战/);
+  assert.match(html, /面试官接管真实追问/);
+  assert.match(html, /模拟结束，陪你复盘/);
+  assert.match(html, /真实面试回来，继续一起准备/);
+  assert.match(html, /从一句“下周有面试”，.*面试结束后继续进步/s);
   assert.match(html, /考出去、面进去，.*适应好/s);
   assert.match(html, /雅思口语/);
   assert.match(html, /海外日常/);
@@ -54,7 +54,7 @@ test("presents SpeakUp as a long-term Agent teacher connected to real outcomes",
   assert.match(html, /每一次练习，.*都留给下一次/s);
   assert.match(html, /老师，你压中 Kafka 了/);
   assert.match(html, /数据库迁移/);
-  assert.match(html, /SpeakUp 陪伴一次真实任务的四个阶段/);
+  assert.match(html, /SpeakUp 陪伴一次真实任务的五个阶段/);
   assert.doesNotMatch(html, /一次面试任务，.*Agent 的四种能力/s);
   assert.doesNotMatch(html, /同一个 Agent，.*接住不同的真实任务/s);
   assert.doesNotMatch(html, /class="feature-card"/);
@@ -67,6 +67,27 @@ test("presents SpeakUp as a long-term Agent teacher connected to real outcomes",
   assert.doesNotMatch(html, /portal-task-intake\.jpg|portal-task-brief\.jpg/);
   assert.doesNotMatch(html, /portal-career-history\.jpg|portal-career-context\.jpg|portal-interview-plan\.jpg/);
   assert.doesNotMatch(html, /职业上下文|职业英语联系人|群面计划/);
+});
+
+test("renders five interactive product states instead of cropped screenshots", async () => {
+  const [source, styles] = await Promise.all([
+    readFile(new URL("app/InterviewDemo.tsx", root), "utf8"),
+    readFile(new URL("app/globals.css", root), "utf8"),
+  ]);
+  assert.match(source, /demo-product-screen/);
+  assert.doesNotMatch(source, /<img/);
+  assert.match(source, /我下周有一场外企后端面试，好紧张/);
+  assert.match(source, /进入模拟面试/);
+  assert.match(source, /Why did you choose Kafka/);
+  assert.match(source, /模拟面试已完成/);
+  assert.match(source, /今天的面试怎么样/);
+  assert.match(styles, /grid-template-rows:\s*repeat\(5/);
+
+  const demoStyles = styles.slice(
+    styles.indexOf(".demo-sequence"),
+    styles.indexOf(".scenario-proof-section"),
+  );
+  assert.doesNotMatch(demoStyles, /gradient|glow/i);
 });
 
 test("opens the original information collection form from primary calls to action", async () => {

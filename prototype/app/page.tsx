@@ -43,43 +43,48 @@ const journeyStages = [
 const productFeatures = [
   {
     index: "01",
+    kind: "understand" as const,
     title: "先理解你，不急着开练",
     copy: "“把岗位 JD 和简历给我。我先确认这轮更可能考什么，再安排准备顺序。”",
-    image: "/assets/portal-shots/portal-interview-start.jpg",
-    alt: "SpeakUp 主动了解后端开发岗位要求与用户经历",
-    status: "主动了解",
+    status: "了解你",
     href: comingSoonHref,
     action: "看老师如何追问",
   },
   {
     index: "02",
-    title: "给建议、教表达，再陪你开口",
+    kind: "practice" as const,
+    title: "先教会你，再邀请实战",
     copy: "结合 JD 和真实项目，先教回答结构和关键表达，带着跟读，再换成你自己的经历。",
-    image: "/assets/portal-shots/portal-interview-practice.jpg",
-    alt: "SpeakUp 结合真实项目带用户练习回答并继续追问",
-    status: "先教再练",
+    status: "教你练",
     href: comingSoonHref,
     action: "看一次口语练习",
   },
   {
     index: "03",
-    title: "准备好了，再进入真实追问",
-    copy: "老师创建场景卡片并发出邀请。进入场景后，面试官会围绕刚才的回答连续深挖。",
-    image: "/assets/portal-shots/portal-panel-practice.jpg",
-    alt: "SpeakUp 创建多人面试场景并围绕同一上下文连续追问",
-    status: "邀请实战",
+    kind: "interview" as const,
+    title: "面试官接管真实追问",
+    copy: "进入独立场景后，老师暂时退场，面试官围绕刚才的回答连续深挖。",
+    status: "模拟实战",
     href: comingSoonHref,
     action: "体验面试模拟",
   },
   {
     index: "04",
-    title: "把真实结果带回来，下一轮更懂你",
-    copy: "面试结束后，命中的题和没练到的问题都会回到 Memory，继续影响下一轮准备。",
-    image: "/assets/portal-shots/portal-memory-chat.jpg",
-    alt: "SpeakUp 使用长期目标、真实项目、反复卡点和现实结果安排下一轮训练",
-    status: "现实回流",
+    kind: "review" as const,
+    title: "模拟结束，陪你复盘",
+    copy: "回到老师主页，引用刚才的回答指出问题，再陪你把同一道题重新说好。",
+    status: "陪你复盘",
     href: comingSoonHref,
-    action: "查看长期 Memory",
+    action: "看老师如何复盘",
+  },
+  {
+    index: "05",
+    kind: "real-world" as const,
+    title: "真实面试回来，继续一起准备",
+    copy: "老师主动询问现实结果，接住命中的题和新出现的问题，自然开始下一轮。",
+    status: "回到现实",
+    href: comingSoonHref,
+    action: "看看现实如何回来",
   },
 ];
 
@@ -161,8 +166,8 @@ export default function Home() {
       <section className="features-section" id="demo">
         <div className="section-intro dark-copy">
           <p className="eyebrow">一次代表性体验 · 后端开发工程师英文面试</p>
-          <h2>从一句“下周有面试”，<br />到真正走进面试。</h2>
-          <p>同一位 SpeakUp 老师贯穿准备、练习、模拟和复盘。四个画面，看懂它如何陪你完成一件真实的事。</p>
+          <h2>从一句“下周有面试”，<br />到面试结束后继续进步。</h2>
+          <p>同一位 SpeakUp 老师贯穿了解、练习、模拟、复盘和真实结果。五个时刻，看懂它如何陪你完成一件真实的事。</p>
         </div>
         <InterviewDemo features={productFeatures} />
       </section>

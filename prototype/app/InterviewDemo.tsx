@@ -1,17 +1,173 @@
 "use client";
 
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+
+type DemoKind = "understand" | "practice" | "interview" | "review" | "real-world";
 
 type DemoFeature = {
   index: string;
+  kind: DemoKind;
   title: string;
   copy: string;
-  image: string;
-  alt: string;
   status: string;
   href: string;
   action: string;
 };
+
+function CoachTurn({ children }: { children: ReactNode }) {
+  return (
+    <div className="demo-coach-turn">
+      <span className="demo-coach-mark" aria-hidden="true">S</span>
+      <div>
+        <strong>SpeakUp</strong>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function VoiceBubble({ label, duration }: { label: string; duration: string }) {
+  return (
+    <div className="demo-voice-bubble">
+      <span className="demo-mic" aria-hidden="true" />
+      <span className="demo-wave" aria-hidden="true">
+        {[7, 15, 22, 12, 26, 18, 10, 24, 16, 8, 20, 12].map((height, index) => (
+          <i key={index} style={{ height }} />
+        ))}
+      </span>
+      <strong>{label}</strong>
+      <span>{duration}</span>
+    </div>
+  );
+}
+
+function CoachScreen({ children }: { children: ReactNode }) {
+  return (
+    <div className="demo-product-screen demo-coach-screen">
+      <div className="demo-screen-bar">
+        <strong>SpeakUp</strong>
+        <span>AI 口语老师</span>
+      </div>
+      <div className="demo-screen-body">{children}</div>
+    </div>
+  );
+}
+
+function DemoPanel({ kind, href }: { kind: DemoKind; href: string }) {
+  if (kind === "understand") {
+    return (
+      <CoachScreen>
+        <p className="demo-user-message">我下周有一场外企后端面试，好紧张。</p>
+        <CoachTurn>
+          <p>先别急着练。是哪家公司？方便把岗位 JD 和简历发给我吗？我先帮你判断这轮最可能考什么。</p>
+        </CoachTurn>
+        <p className="demo-user-message demo-user-message-short">已经上传了。</p>
+        <div className="demo-attachments" aria-label="已上传资料">
+          <span>Backend Engineer JD</span>
+          <span>中文简历.pdf</span>
+        </div>
+        <CoachTurn>
+          <p>看完了。这个岗位很看重高并发系统、消息队列和技术取舍。我们先练自我介绍，再练项目深挖和系统设计。</p>
+        </CoachTurn>
+      </CoachScreen>
+    );
+  }
+
+  if (kind === "practice") {
+    return (
+      <CoachScreen>
+        <CoachTurn>
+          <p>我们先练自我介绍。不要只说工作年限，可以先说你解决过什么问题。</p>
+        </CoachTurn>
+        <div className="demo-phrase">
+          <span aria-hidden="true">▶</span>
+          <p>I&apos;m a backend engineer focused on building reliable systems at scale.</p>
+        </div>
+        <div className="demo-user-row"><VoiceBubble label="语音回答" duration="0:18" /></div>
+        <CoachTurn>
+          <p>很好，经历已经说清楚了。接下来补一句你的代表项目，以及你具体解决了什么问题。</p>
+        </CoachTurn>
+        <CoachTurn>
+          <p>准备得差不多了。现在我邀请面试官和你进行一次真实追问。</p>
+        </CoachTurn>
+        <div className="demo-invite">
+          <div>
+            <strong>后端开发工程师 · 模拟面试</strong>
+            <span>项目深挖与系统设计</span>
+          </div>
+          <a href={href}>进入模拟面试</a>
+        </div>
+      </CoachScreen>
+    );
+  }
+
+  if (kind === "interview") {
+    return (
+      <div className="demo-product-screen demo-interview-screen">
+        <div className="demo-screen-bar">
+          <span>系统设计模拟</span>
+          <strong>08:42</strong>
+          <span>结束面试</span>
+        </div>
+        <div className="demo-interviewer-strip" aria-label="本轮面试官">
+          <span>Mia</span>
+          <span className="is-active">Ethan</span>
+          <span>Noah</span>
+        </div>
+        <div className="demo-interview-body">
+          <div className="demo-interviewer">
+            <span aria-hidden="true">E</span>
+            <div><strong>Ethan</strong><small>Engineering Manager</small></div>
+          </div>
+          <p className="demo-interview-question">Tell me about a backend system you designed and the most difficult trade-off you made.</p>
+          <div className="demo-user-row"><VoiceBubble label="你的回答" duration="0:42" /></div>
+          <div className="demo-follow-up">
+            <strong>Ethan 继续追问</strong>
+            <p>Why did you choose Kafka instead of a simpler queue?</p>
+            <p>What would happen if a consumer processed the same message twice?</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (kind === "review") {
+    return (
+      <CoachScreen>
+        <div className="demo-session-summary">
+          <strong>模拟面试已完成</strong>
+          <span>18 分钟 · 6 个问题</span>
+          <a href={href}>查看记录</a>
+        </div>
+        <CoachTurn>
+          <p>刚才项目背景说得很清楚。但回答“为什么选择 Kafka”时，你只讲了技术特点，还没有说明当时的业务压力。</p>
+        </CoachTurn>
+        <blockquote>“Kafka can handle high throughput, so we chose it.”</blockquote>
+        <CoachTurn>
+          <p>可以补上当时的业务约束和最后的结果。我们按刚才那道题再说一次。</p>
+        </CoachTurn>
+        <div className="demo-user-row"><VoiceBubble label="重新回答" duration="0:00" /></div>
+      </CoachScreen>
+    );
+  }
+
+  return (
+    <CoachScreen>
+      <p className="demo-real-date">7 月 28 日 · 真实面试结束后</p>
+      <CoachTurn>
+        <p>今天的面试怎么样？之前练过的 Kafka 和系统设计有出现吗？</p>
+      </CoachTurn>
+      <p className="demo-user-message">都问到了，回答得还不错。但面试官问了数据库迁移失败怎么回滚，这部分我们没练到。</p>
+      <CoachTurn>
+        <p>太好了，之前的准备确实有成效。Kafka 这部分你已经越来越稳定了。</p>
+      </CoachTurn>
+      <CoachTurn>
+        <p>我们接下来把数据库迁移的问题补上。你还记得面试官当时是怎么问的吗？</p>
+      </CoachTurn>
+      <a className="demo-real-action" href={href}>和老师还原这道题</a>
+    </CoachScreen>
+  );
+}
 
 export default function InterviewDemo({ features }: { features: DemoFeature[] }) {
   const [activeIndex, setActiveIndex] = useState(0);
@@ -19,17 +175,17 @@ export default function InterviewDemo({ features }: { features: DemoFeature[] })
   const active = features[activeIndex];
 
   function selectByKey(event: KeyboardEvent<HTMLButtonElement>, index: number) {
-    if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+    if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
     event.preventDefault();
-    const direction = event.key === 'ArrowRight' || event.key === 'ArrowDown' ? 1 : -1;
+    const direction = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
     const nextIndex = (index + direction + features.length) % features.length;
     setActiveIndex(nextIndex);
     tabRefs.current[nextIndex]?.focus();
   }
 
   return (
-    <div className={`demo-sequence demo-tone-${activeIndex + 1}`}>
-      <div className="demo-step-list" role="tablist" aria-label="SpeakUp 陪伴一次真实任务的四个阶段">
+    <div className="demo-sequence">
+      <div className="demo-step-list" role="tablist" aria-label="SpeakUp 陪伴一次真实任务的五个阶段">
         {features.map((feature, index) => (
           <button
             className="demo-step"
@@ -58,14 +214,14 @@ export default function InterviewDemo({ features }: { features: DemoFeature[] })
         aria-labelledby={`demo-step-${active.index}`}
       >
         <header>
-          <span>{active.index} / {String(features.length).padStart(2, '0')}</span>
+          <span>{active.index} / {String(features.length).padStart(2, "0")}</span>
           <em>{active.status}</em>
           <a href={active.href}>
             {active.action} <span aria-hidden="true">↗</span>
           </a>
         </header>
         <div className="demo-stage-frame">
-          <img src={active.image} alt={active.alt} />
+          <DemoPanel kind={active.kind} href={active.href} />
         </div>
       </article>
     </div>
