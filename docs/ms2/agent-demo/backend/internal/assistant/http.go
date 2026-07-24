@@ -61,6 +61,7 @@ func (h *HTTPHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/assistant/threads/{thread_id}/live-sessions", h.startLiveSession)
 	mux.HandleFunc("POST /v1/assistant/live-sessions/{live_session_id}/resume", h.resumeLiveSession)
 	mux.HandleFunc("POST /v1/assistant/live-sessions/{live_session_id}/end", h.endLiveSession)
+	mux.HandleFunc("POST /v1/assistant/live-sessions/{live_session_id}/turns", h.commitOmniLiveTurn)
 	mux.HandleFunc("POST /v1/assistant/threads/{thread_id}/interview/end/stream", h.streamEndInterview)
 	mux.HandleFunc("POST /v1/assistant/task-runs/{task_run_id}/resume", h.resumeTask)
 	mux.HandleFunc("POST /v1/assistant/task-runs/{task_run_id}/reject", h.rejectTask)
@@ -95,6 +96,34 @@ func (h *HTTPHandler) Register(mux *http.ServeMux) {
 type liveSessionRequest struct {
 	ActorUserID    string `json:"actor_user_id"`
 	IdempotencyKey string `json:"idempotency_key,omitempty"`
+}
+
+type omniLiveTurnRequest struct {
+	ActorUserID         string `json:"actor_user_id"`
+	ThreadID            string `json:"thread_id"`
+	TurnID              string `json:"turn_id"`
+	ClientMessageID     string `json:"client_message_id"`
+	UserTranscript      string `json:"user_transcript"`
+	AssistantTranscript string `json:"assistant_transcript"`
+}
+
+func (h *HTTPHandler) commitOmniLiveTurn(w http.ResponseWriter, r *http.Request) {
+	var request omniLiveTurnRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&request); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON body"})
+		return
+	}
+	result, err := h.service.CommitOmniLiveTurn(r.Context(), CommitOmniLiveTurnCommand{
+		ActorUserID: request.ActorUserID, ThreadID: request.ThreadID,
+		LiveSessionID: r.PathValue("live_session_id"), TurnID: request.TurnID,
+		ClientMessageID: request.ClientMessageID, UserTranscript: request.UserTranscript,
+		AssistantTranscript: request.AssistantTranscript,
+	})
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (h *HTTPHandler) startLiveSession(w http.ResponseWriter, r *http.Request) {

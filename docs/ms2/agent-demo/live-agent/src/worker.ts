@@ -26,6 +26,7 @@ import {
 } from "./session-context.js";
 import { TurnAudioBuffer } from "./turn-audio-buffer.js";
 import { TurnCommitter } from "./turn-committer.js";
+import { OmniConversationOrchestrator } from "./omni-orchestrator.js";
 
 const JobMetadata = z.object({
   actor_user_id: z.string().min(1),
@@ -561,14 +562,35 @@ const worker = defineAgent({
       throw new Error("Live voice worker is disabled");
     }
     const goBaseURL = process.env.GO_BACKEND_URL ?? "http://127.0.0.1:8080";
+    const apiKey = process.env.DASHSCOPE_API_KEY?.trim() ?? "";
+    if (!apiKey) throw new Error("DASHSCOPE_API_KEY is required for Qwen Omni realtime");
     await job.connect();
     const participantMetadata = job.job.metadata.trim()
       ? ""
       : (await job.waitForParticipant()).metadata;
     const metadata = parseJobMetadata(job.job.metadata, participantMetadata);
-    await new ConversationOrchestrator(job, metadata, goBaseURL).start();
+    const websocketURL = omniWebsocketURL(process.env);
+    await new OmniConversationOrchestrator(job, metadata, goBaseURL, {
+      apiKey,
+      websocketURL,
+      ...(process.env.DASHSCOPE_OMNI_VOICE?.trim()
+        ? { voice: process.env.DASHSCOPE_OMNI_VOICE.trim() }
+        : {}),
+    }).start();
   },
 });
+
+export const omniWebsocketURL = (
+  environment: NodeJS.ProcessEnv,
+): string => {
+  const override = environment.DASHSCOPE_OMNI_WEBSOCKET_URL?.trim();
+  if (override) return override;
+  const workspaceID = environment.DASHSCOPE_WORKSPACE_ID?.trim();
+  if (workspaceID) {
+    return `wss://${workspaceID}.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime`;
+  }
+  return "wss://dashscope.aliyuncs.com/api-ws/v1/realtime";
+};
 
 export const liveVoiceFeatureEnabled = (value: string | undefined): boolean =>
   value === "1" || value?.toLowerCase() === "true";

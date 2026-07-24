@@ -4,7 +4,15 @@ import test from "node:test";
 import { SessionContext } from "../src/session-context.js";
 import { TurnAudioBuffer } from "../src/turn-audio-buffer.js";
 import { TurnCommitter } from "../src/turn-committer.js";
-import { ConversationOrchestrator, parseJobMetadata } from "../src/worker.js";
+import {
+  ConversationOrchestrator,
+  omniWebsocketURL,
+  parseJobMetadata,
+} from "../src/worker.js";
+import {
+  QwenOmniRealtimeModel,
+  QWEN_OMNI_REALTIME_MODEL,
+} from "../src/providers/qwen-omni-realtime.js";
 import { boundedTextSegments } from "../src/worker.js";
 import { streamCommittedTurn } from "../src/worker.js";
 
@@ -22,6 +30,19 @@ test("worker metadata prefers job data and falls back to participant token metad
   assert.equal(parseJobMetadata(job, participant).actor_user_id, "job-user");
   assert.equal(parseJobMetadata("", participant).actor_user_id, "participant-user");
   assert.throws(() => parseJobMetadata("", ""), /metadata is missing/);
+});
+
+test("live runtime is pinned to the end-to-end Qwen Omni realtime model", () => {
+  const model = new QwenOmniRealtimeModel({ apiKey: "test-key" });
+  assert.equal(model.model, QWEN_OMNI_REALTIME_MODEL);
+  assert.equal(model.model, "qwen3.5-omni-flash-realtime");
+  assert.equal(model.capabilities.turnDetection, true);
+  assert.equal(model.capabilities.audioOutput, true);
+  assert.equal(model.capabilities.userTranscription, true);
+  assert.equal(
+    omniWebsocketURL({ DASHSCOPE_WORKSPACE_ID: "workspace-1" }),
+    "wss://workspace-1.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime",
+  );
 });
 
 test("worker registers provider capabilities for every custom voice node", () => {

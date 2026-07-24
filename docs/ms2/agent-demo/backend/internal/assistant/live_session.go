@@ -73,6 +73,21 @@ type EndLiveSessionCommand struct {
 	LiveSessionID string
 }
 
+type CommitOmniLiveTurnCommand struct {
+	ActorUserID         string
+	ThreadID            string
+	LiveSessionID       string
+	TurnID              string
+	ClientMessageID     string
+	UserTranscript      string
+	AssistantTranscript string
+}
+
+type CommittedOmniLiveTurn struct {
+	UserMessage      AssistantMessage `json:"user_message"`
+	AssistantMessage AssistantMessage `json:"assistant_message"`
+}
+
 type LiveSessionCredentials struct {
 	ServerURL        string      `json:"server_url"`
 	ParticipantToken string      `json:"participant_token"`
@@ -142,6 +157,80 @@ func (s *Service) RecordLivePartial(liveSessionID, turnID string) error {
 
 func (s *Service) CommitLiveTurn(liveSessionID, turnID string) error {
 	return s.live.commitTurn(liveSessionID, turnID)
+}
+
+func (s *Service) CommitOmniLiveTurn(
+	ctx context.Context,
+	command CommitOmniLiveTurnCommand,
+) (CommittedOmniLiveTurn, error) {
+	for field, value := range map[string]string{
+		"actor_user_id": command.ActorUserID, "thread_id": command.ThreadID,
+		"live_session_id": command.LiveSessionID, "turn_id": command.TurnID,
+		"client_message_id":    command.ClientMessageID,
+		"user_transcript":      command.UserTranscript,
+		"assistant_transcript": command.AssistantTranscript,
+	} {
+		if strings.TrimSpace(value) == "" {
+			return CommittedOmniLiveTurn{}, fmt.Errorf("assistant: omni live turn %s is required", field)
+		}
+	}
+	session, err := s.live.get(command.LiveSessionID)
+	if err != nil {
+		return CommittedOmniLiveTurn{}, err
+	}
+	if session.ThreadID != command.ThreadID {
+		return CommittedOmniLiveTurn{}, errors.New("assistant: live session thread mismatch")
+	}
+	if _, err := s.GetThread(ctx, GetThreadQuery{
+		ActorUserID: command.ActorUserID, ThreadID: command.ThreadID,
+	}); err != nil {
+		return CommittedOmniLiveTurn{}, err
+	}
+
+	s.taskMu.Lock()
+	defer s.taskMu.Unlock()
+	var result CommittedOmniLiveTurn
+	messages, err := s.dependencies.ConversationStore.ListMessages(ctx, command.ThreadID)
+	if err != nil {
+		return result, err
+	}
+	for _, message := range messages {
+		if message.ClientMessageID != command.ClientMessageID ||
+			message.LiveSessionID != command.LiveSessionID ||
+			message.TurnID != command.TurnID {
+			continue
+		}
+		switch message.Role {
+		case "user":
+			result.UserMessage = message
+		case "assistant":
+			result.AssistantMessage = message
+		}
+	}
+	if result.UserMessage.ID == "" {
+		result.UserMessage, err = s.appendMessageWithAttachments(
+			ctx, "user", strings.TrimSpace(command.UserTranscript), nil,
+			command.ClientMessageID, command.LiveSessionID, command.TurnID,
+			ConversationModeLive,
+		)
+		if err != nil {
+			return CommittedOmniLiveTurn{}, err
+		}
+	}
+	if result.AssistantMessage.ID == "" {
+		result.AssistantMessage, err = s.appendMessageWithAttachments(
+			ctx, "assistant", strings.TrimSpace(command.AssistantTranscript), nil,
+			command.ClientMessageID, command.LiveSessionID, command.TurnID,
+			ConversationModeLive,
+		)
+		if err != nil {
+			return CommittedOmniLiveTurn{}, err
+		}
+	}
+	if err := s.live.commitTurn(command.LiveSessionID, command.TurnID); err != nil {
+		return CommittedOmniLiveTurn{}, err
+	}
+	return result, nil
 }
 
 func (coordinator *liveSessionCoordinator) start(command StartLiveSessionCommand) (LiveSessionCredentials, error) {

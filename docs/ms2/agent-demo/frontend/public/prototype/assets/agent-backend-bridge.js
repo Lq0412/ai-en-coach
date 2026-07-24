@@ -68,6 +68,7 @@
   let recordingElapsedSeconds = 0;
   let recordingTimer = null;
   let liveTranscript = "";
+  let recordingInputBase = "";
   let liveCallState = "idle";
   let liveSessionID = "";
   let liveMuted = false;
@@ -2405,7 +2406,9 @@
       if (activeRealRoute === "practice" && pendingVoiceAnswerSubmit) {
         submitRecognizedVoiceAnswer(transcript);
       } else {
-        inputValue = transcript;
+        liveTranscript = transcript;
+        voiceTranscriptFinal = true;
+        inputValue = mergeVoiceInput(recordingInputBase, transcript);
       }
     } catch (error) {
       bridgeError = "语音识别失败：" + (error.message || "未知错误");
@@ -2433,15 +2436,27 @@
     await transcribe(fallbackRecordingBlob);
   }
 
+  function mergeVoiceInput(base, transcript) {
+    const previous = String(base || "").trim();
+    const recognized = String(transcript || "").trim();
+    if (!previous) return recognized;
+    if (!recognized) return previous;
+    return `${previous} ${recognized}`;
+  }
+
   function handleASREvent(event) {
     if (event.type === "transcript.delta") {
       liveTranscript += event.text || "";
-      if (activeRealRoute !== "practice") inputValue = liveTranscript;
+      if (activeRealRoute !== "practice") {
+        inputValue = mergeVoiceInput(recordingInputBase, liveTranscript);
+      }
       rerender(activeRealRoute);
     } else if (event.type === "transcript.completed" || event.type === "transcription.done") {
       liveTranscript = event.text || liveTranscript;
       voiceTranscriptFinal = true;
-      if (activeRealRoute !== "practice") inputValue = liveTranscript;
+      if (activeRealRoute !== "practice") {
+        inputValue = mergeVoiceInput(recordingInputBase, liveTranscript);
+      }
       recordingStatus = activeRealRoute === "practice" ? "识别完成，正在提交" : "识别完成，可编辑后发送";
       if (event.type === "transcription.done") {
         asrSocket?.close();
@@ -2467,6 +2482,7 @@
     asrStreamingFailed = false;
     fallbackRecordingBlob = null;
     fallbackTranscriptionStarted = false;
+    recordingInputBase = activeRealRoute === "practice" ? "" : inputValue;
     liveTranscript = "";
     pendingVoiceAnswerSubmit = false;
     voiceTranscriptFinal = false;
@@ -2572,7 +2588,7 @@
       optimisticUserMessage = {
         ID: `optimistic-message-${clientMessageID}`,
         Role: "user",
-        Content: liveTranscript.trim() || "语音消息",
+        Content: mergeVoiceInput(recordingInputBase, liveTranscript) || "语音消息",
         attachments: [],
         optimisticStatus: "transcribing",
         thread_id: THREAD_ID,
@@ -2589,7 +2605,8 @@
     if (recorder?.state === "recording") recorder.stop();
     const recordingBlob = await stoppedRecording;
     if (cancel) {
-      inputValue = "";
+      inputValue = recordingInputBase;
+      recordingInputBase = "";
       liveTranscript = "";
       fallbackRecordingBlob = null;
       pendingVoiceAnswerSubmit = false;
@@ -2609,9 +2626,12 @@
     rerender(activeRealRoute);
     try {
       if (!recordingBlob?.size) throw new Error("没有录到有效语音");
-      const transcript = voiceTranscriptFinal && liveTranscript.trim()
+      const recognizedTranscript = voiceTranscriptFinal && liveTranscript.trim()
         ? liveTranscript.trim()
         : await requestTranscription(recordingBlob);
+      const transcript = activeRealRoute === "practice"
+        ? recognizedTranscript
+        : mergeVoiceInput(recordingInputBase, recognizedTranscript);
       if (!transcript) throw new Error("没有识别到可发送的文字");
       liveTranscript = transcript;
       if (optimisticUserMessage) optimisticUserMessage.Content = transcript;
@@ -2621,6 +2641,7 @@
       });
       pendingVoiceAnswerSubmit = false;
       inputValue = "";
+      recordingInputBase = "";
       liveTranscript = "";
       fallbackRecordingBlob = null;
       voiceSubmissionInProgress = false;

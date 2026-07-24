@@ -413,6 +413,12 @@ func TestDashScopeRealtimeTranscriberForwardsPartialAndFinalText(t *testing.T) {
 		_ = connection.WriteJSON(map[string]any{
 			"type": "conversation.item.input_audio_transcription.completed", "transcript": "你好",
 		})
+		_ = connection.WriteJSON(map[string]any{
+			"type": "conversation.item.input_audio_transcription.delta", "delta": "世",
+		})
+		_ = connection.WriteJSON(map[string]any{
+			"type": "conversation.item.input_audio_transcription.completed", "transcript": "世界",
+		})
 		_ = connection.WriteJSON(map[string]any{"type": "session.finished"})
 	}))
 	defer server.Close()
@@ -427,7 +433,14 @@ func TestDashScopeRealtimeTranscriberForwardsPartialAndFinalText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if transcript.Text != "你好" || len(updates) != 2 || updates[0].Text != "你" || !updates[1].Completed {
+	if transcript.Text != "你好 世界" ||
+		len(updates) != 4 ||
+		updates[0].Text != "你" ||
+		updates[1].Text != "你好" ||
+		!updates[1].Completed ||
+		updates[2].Text != "世" ||
+		updates[3].Text != "你好 世界" ||
+		!updates[3].Completed {
 		t.Fatalf("unexpected realtime transcription: transcript=%#v updates=%#v", transcript, updates)
 	}
 }

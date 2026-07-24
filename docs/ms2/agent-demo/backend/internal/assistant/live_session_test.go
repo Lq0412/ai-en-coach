@@ -145,3 +145,56 @@ func TestLiveSessionRejectsUnknownThreadAndEndDropsPartialOnly(t *testing.T) {
 		t.Fatalf("unexpected finalized session: %#v", ended)
 	}
 }
+
+func TestCommitOmniLiveTurnPersistsCanonicalPairIdempotently(t *testing.T) {
+	store := NewMemoryConversationStore()
+	service := NewService(Dependencies{
+		ConversationStore: store,
+		LiveKit:           testLiveKitConfig(),
+	})
+	started, err := service.StartLiveSession(context.Background(), StartLiveSessionCommand{
+		ActorUserID: DemoUserID, ThreadID: DemoThreadID, IdempotencyKey: "omni-start",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	command := CommitOmniLiveTurnCommand{
+		ActorUserID: DemoUserID, ThreadID: DemoThreadID,
+		LiveSessionID: started.Session.ID, TurnID: "turn-omni-1",
+		ClientMessageID: "client-omni-1", UserTranscript: "Hello",
+		AssistantTranscript: "Hi, nice to meet you.",
+	}
+	first, err := service.CommitOmniLiveTurn(context.Background(), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := service.CommitOmniLiveTurn(context.Background(), command)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.UserMessage.ID == "" || first.AssistantMessage.ID == "" {
+		t.Fatalf("missing canonical messages: %#v", first)
+	}
+	if second.UserMessage.ID != first.UserMessage.ID ||
+		second.AssistantMessage.ID != first.AssistantMessage.ID {
+		t.Fatalf("retry created a second pair: %#v %#v", first, second)
+	}
+	messages, err := store.ListMessages(context.Background(), DemoThreadID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var matching int
+	for _, message := range messages {
+		if message.ClientMessageID == command.ClientMessageID {
+			matching++
+			if message.Mode != ConversationModeLive ||
+				message.LiveSessionID != command.LiveSessionID ||
+				message.TurnID != command.TurnID {
+				t.Fatalf("lost live correlation: %#v", message)
+			}
+		}
+	}
+	if matching != 2 {
+		t.Fatalf("canonical pair count=%d want=2", matching)
+	}
+}

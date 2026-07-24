@@ -646,7 +646,22 @@ func (p *DashScopeProvider) StreamTranscribePCM(
 	done := make(chan TranscriptSnapshot, 1)
 	readError := make(chan error, 1)
 	go func() {
-		var finalText strings.Builder
+		var committedText string
+		var partialText strings.Builder
+		mergeTranscript := func(base, next string) string {
+			base = strings.TrimSpace(base)
+			next = strings.TrimSpace(next)
+			if base == "" {
+				return next
+			}
+			if next == "" || strings.HasSuffix(base, next) {
+				return base
+			}
+			if strings.HasPrefix(next, base) {
+				return next
+			}
+			return base + " " + next
+		}
 		for {
 			var event realtimeEvent
 			if err := connection.ReadJSON(&event); err != nil {
@@ -660,7 +675,7 @@ func (p *DashScopeProvider) StreamTranscribePCM(
 					text = event.Text
 				}
 				if text != "" {
-					finalText.WriteString(text)
+					partialText.WriteString(text)
 					if err := writeUpdate(TranscriptUpdate{Text: text}); err != nil {
 						readError <- err
 						return
@@ -669,12 +684,12 @@ func (p *DashScopeProvider) StreamTranscribePCM(
 			case "conversation.item.input_audio_transcription.completed":
 				text := strings.TrimSpace(event.Transcript)
 				if text == "" {
-					text = strings.TrimSpace(finalText.String())
+					text = strings.TrimSpace(partialText.String())
 				}
-				finalText.Reset()
-				finalText.WriteString(text)
+				partialText.Reset()
+				committedText = mergeTranscript(committedText, text)
 				if text != "" {
-					if err := writeUpdate(TranscriptUpdate{Text: text, Completed: true}); err != nil {
+					if err := writeUpdate(TranscriptUpdate{Text: committedText, Completed: true}); err != nil {
 						readError <- err
 						return
 					}
@@ -683,7 +698,7 @@ func (p *DashScopeProvider) StreamTranscribePCM(
 				readError <- realtimeEventError(event)
 				return
 			case "session.finished":
-				text := strings.TrimSpace(finalText.String())
+				text := mergeTranscript(committedText, partialText.String())
 				if text == "" {
 					readError <- errors.New("DashScope ASR returned an empty transcript")
 					return

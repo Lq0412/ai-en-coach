@@ -124,6 +124,10 @@ test("prototype bridges the original interaction to the Go assistant", async () 
   assert.match(bridge, /pendingVoiceAnswerSubmit/);
   assert.match(bridge, /uploadVoiceRecording/);
   assert.match(bridge, /voiceSubmissionInProgress/);
+  assert.match(bridge, /recordingInputBase = activeRealRoute === "practice" \? "" : inputValue/);
+  assert.match(bridge, /inputValue = mergeVoiceInput\(recordingInputBase, liveTranscript\)/);
+  assert.match(bridge, /const transcript = activeRealRoute === "practice"[\s\S]*mergeVoiceInput\(recordingInputBase, recognizedTranscript\)/);
+  assert.match(bridge, /if \(cancel\) \{[\s\S]*inputValue = recordingInputBase/);
   assert.match(bridge, /正在识别并发送/);
   assert.match(bridge, /optimisticUserMessage/);
   assert.match(bridge, /optimisticStatus: "transcribing"/);
