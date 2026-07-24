@@ -1,8 +1,9 @@
 import ComingSoonDialog from "./ComingSoonDialog";
+import EarlyAccessDialog from "./EarlyAccessDialog";
 import InterviewDemo from "./InterviewDemo";
 
 const comingSoonHref = "#coming-soon";
-const prototypeHref = "/pages/prototype.html";
+const earlyAccessHref = "#early-access";
 
 const journeyStages = [
   {
@@ -86,10 +87,10 @@ export default function Home() {
   return (
     <main>
       <div className="announcement">
-        <span>SpeakUp 首批体验即将开放</span>
+        <span>SpeakUp 正在招募首批体验用户</span>
         <span className="announcement-separator" aria-hidden="true">·</span>
-        <a href={comingSoonHref}>
-          查看开放进度 <span aria-hidden="true">↗</span>
+        <a href={earlyAccessHref} data-scenario="英文面试">
+          申请首批体验 <span aria-hidden="true">↗</span>
         </a>
       </div>
 
@@ -103,8 +104,8 @@ export default function Home() {
           <a href="#use-cases">适用阶段</a>
           <a href="#memory">长期记忆</a>
         </div>
-        <a className="button button-small" href={`${prototypeHref}#agent-chat`} target="_blank" rel="noreferrer">
-          体验 SpeakUp
+        <a className="button button-small" href={earlyAccessHref} data-scenario="英文面试">
+          申请体验
         </a>
       </nav>
 
@@ -120,7 +121,7 @@ export default function Home() {
             它会主动了解你的目标，先教、再陪你模拟，也会记住真实世界的结果，越用越懂你。
           </p>
           <div className="button-group">
-            <a className="button" href={`${prototypeHref}#agent-chat`} target="_blank" rel="noreferrer">
+            <a className="button" href={earlyAccessHref} data-scenario="英文面试">
               先让 SpeakUp 了解我 <span aria-hidden="true">↗</span>
             </a>
             <a className="button button-secondary" href="#demo">
@@ -251,11 +252,12 @@ export default function Home() {
         <h2>告诉 SpeakUp，<br />接下来要面对什么。</h2>
         <p>可以是一场雅思口语考试、英文面试，也可以是海外生活和工作里马上要发生的关键沟通。</p>
         <div className="button-group">
-          <a className="button" href={`${prototypeHref}#agent-chat`} target="_blank" rel="noreferrer">开始一次任务准备 ↗</a>
+          <a className="button" href={earlyAccessHref} data-scenario="英文面试">开始一次任务准备 ↗</a>
           <a className="button button-dark-secondary" href="#top">回到顶部</a>
         </div>
       </section>
 
+      <EarlyAccessDialog />
       <ComingSoonDialog />
 
       <footer>

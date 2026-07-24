@@ -28,7 +28,8 @@ test("presents SpeakUp as a long-term Agent teacher connected to real outcomes",
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /有记忆的 AI Agent 口语老师/);
-  assert.match(html, /href="\/pages\/prototype\.html#agent-chat"/);
+  assert.doesNotMatch(html, /href="\/pages\/prototype\.html/);
+  assert.match(html, /href="#early-access"/);
   assert.match(html, /先让 SpeakUp 了解我/);
   assert.match(html, /敬请期待/);
   assert.match(html, /下一场重要的英文沟通/);
@@ -39,7 +40,7 @@ test("presents SpeakUp as a long-term Agent teacher connected to real outcomes",
   assert.match(html, /portal-panel-practice\.jpg/);
   assert.match(html, /portal-memory-chat\.jpg/);
   assert.doesNotMatch(html, /portal-ielts-part2\.jpg|portal-daily-doctor\.jpg|portal-workplace-client\.jpg/);
-  assert.match(html, /SpeakUp 首批体验即将开放/);
+  assert.match(html, /SpeakUp 正在招募首批体验用户/);
   assert.doesNotMatch(html, /SpeakUp 模拟面试现已开放/);
   assert.match(html, /先理解你，不急着开练/);
   assert.match(html, /给建议、教表达，再陪你开口/);
@@ -58,6 +59,7 @@ test("presents SpeakUp as a long-term Agent teacher connected to real outcomes",
   assert.doesNotMatch(html, /同一个 Agent，.*接住不同的真实任务/s);
   assert.doesNotMatch(html, /class="feature-card"/);
   assert.match(html, /id="coming-soon"/);
+  assert.match(html, /id="early-access"/);
   assert.match(html, /<dialog/);
   assert.match(html, /method="dialog"/);
   assert.match(html, /href="#coming-soon"/);
@@ -65,6 +67,18 @@ test("presents SpeakUp as a long-term Agent teacher connected to real outcomes",
   assert.doesNotMatch(html, /portal-task-intake\.jpg|portal-task-brief\.jpg/);
   assert.doesNotMatch(html, /portal-career-history\.jpg|portal-career-context\.jpg|portal-interview-plan\.jpg/);
   assert.doesNotMatch(html, /职业上下文|职业英语联系人|群面计划/);
+});
+
+test("opens the original information collection form from primary calls to action", async () => {
+  const source = await readFile(new URL("app/EarlyAccessDialog.tsx", root), "utf8");
+  assert.match(source, /dialog\.showModal\(\)/);
+  assert.match(source, /fetch\("\/api\/waitlist"/);
+  assert.match(source, /name="scenario"/);
+  assert.match(source, /name="urgency"/);
+  assert.match(source, /name="targetRole"/);
+  assert.match(source, /name="challenge"/);
+  assert.match(source, /name="contact"/);
+  assert.match(source, /name="consent"/);
 });
 
 test("uses native dialog behavior for the coming-soon prompt", async () => {
