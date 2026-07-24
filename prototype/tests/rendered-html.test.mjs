@@ -86,6 +86,10 @@ test("renders five interactive product states instead of cropped screenshots", a
   assert.match(source, />提示</);
   assert.match(source, /模拟面试已完成/);
   assert.match(source, /今天的面试怎么样/);
+  assert.doesNotMatch(source, /duration="0:00"/);
+  assert.match(source, /数据库迁移与回滚 · 专项模拟/);
+  assert.match(source, /进入专项练习/);
+  assert.doesNotMatch(source, /和老师还原这道题/);
   const practicePanel = source.match(/if \(kind === "practice"\)[\s\S]*?if \(kind === "interview"\)/)?.[0] || "";
   assert.equal(practicePanel.match(/<VoiceBubble/g)?.length, 2);
   assert.match(styles, /grid-template-rows:\s*repeat\(5/);

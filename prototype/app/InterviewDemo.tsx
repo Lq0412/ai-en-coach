@@ -178,7 +178,7 @@ function DemoPanel({ kind, href }: { kind: DemoKind; href: string }) {
         <CoachTurn>
           <p>可以补上当时的业务约束和最后的结果。我们按刚才那道题再说一次。</p>
         </CoachTurn>
-        <div className="demo-user-row"><VoiceBubble label="重新回答" duration="0:00" /></div>
+        <div className="demo-user-row"><VoiceBubble label="重新回答" duration="0:29" /></div>
       </CoachScreen>
     );
   }
@@ -194,9 +194,15 @@ function DemoPanel({ kind, href }: { kind: DemoKind; href: string }) {
         <p>太好了，之前的准备确实有成效。Kafka 这部分你已经越来越稳定了。</p>
       </CoachTurn>
       <CoachTurn>
-        <p>我们接下来把数据库迁移的问题补上。你还记得面试官当时是怎么问的吗？</p>
+        <p>我已经根据这次没练到的问题，创建了一轮数据库迁移与回滚专项模拟。我们现在把它补上。</p>
       </CoachTurn>
-      <a className="demo-real-action" href={href}>和老师还原这道题</a>
+      <div className="demo-invite">
+        <div>
+          <strong>数据库迁移与回滚 · 专项模拟</strong>
+          <span>失败处理、回滚策略与风险沟通</span>
+        </div>
+        <a href={href}>进入专项练习</a>
+      </div>
     </CoachScreen>
   );
 }
