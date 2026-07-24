@@ -267,6 +267,21 @@ type StreamingSpeechSynthesizer interface {
 	StreamSynthesize(context.Context, string, *string, func([]byte) error) error
 }
 
+type SpeechSynthesisOptions struct {
+	Format     string
+	SampleRate int
+}
+
+type ConfigurableStreamingSpeechSynthesizer interface {
+	StreamSynthesizeWithOptions(
+		context.Context,
+		string,
+		*string,
+		SpeechSynthesisOptions,
+		func([]byte) error,
+	) error
+}
+
 type TranscriptSnapshot struct {
 	Text string
 }
@@ -275,6 +290,26 @@ type GeneratedAudio struct {
 	Content     io.ReadCloser
 	ContentType string
 	DurationMS  int64
+}
+
+// LiveEventPublisher is the transport-neutral boundary shared by Go, the
+// LiveKit Worker, and the browser. Ephemeral events are published for UI only;
+// canonical events carry the Go-owned AssistantMessage.
+type LiveEventPublisher interface {
+	PublishLiveEvent(context.Context, LiveEvent) error
+}
+
+// LiveLatencyRecorder persists structured time points without coupling the
+// assistant domain to a metrics or tracing vendor.
+type LiveLatencyRecorder interface {
+	RecordLiveLatency(context.Context, LiveLatencyPoint) error
+}
+
+// LiveTurnStore defines the idempotent lookup boundary used by later live turn
+// persistence work. client_message_id, scoped by thread, is the stable key.
+type LiveTurnStore interface {
+	GetLiveTurnByClientMessageID(context.Context, string, string) (LiveTurn, error)
+	SaveLiveTurn(context.Context, LiveTurn) error
 }
 
 type ToolInvocation struct {
@@ -286,6 +321,7 @@ type ToolInvocation struct {
 }
 
 type textDeltaWriterKey struct{}
+type canonicalMessageWriterKey struct{}
 
 func WithTextDeltaWriter(ctx context.Context, writer func(string) error) context.Context {
 	return context.WithValue(ctx, textDeltaWriterKey{}, writer)
@@ -293,6 +329,15 @@ func WithTextDeltaWriter(ctx context.Context, writer func(string) error) context
 
 func textDeltaWriterFromContext(ctx context.Context) func(string) error {
 	writer, _ := ctx.Value(textDeltaWriterKey{}).(func(string) error)
+	return writer
+}
+
+func WithCanonicalMessageWriter(ctx context.Context, writer func(AssistantMessage) error) context.Context {
+	return context.WithValue(ctx, canonicalMessageWriterKey{}, writer)
+}
+
+func canonicalMessageWriterFromContext(ctx context.Context) func(AssistantMessage) error {
+	writer, _ := ctx.Value(canonicalMessageWriterKey{}).(func(AssistantMessage) error)
 	return writer
 }
 
@@ -311,5 +356,7 @@ type ConversationStore interface {
 	GetPendingConfirmationRequest(context.Context, string) (ConfirmationRequest, error)
 	SaveConfirmationRequest(context.Context, ConfirmationRequest) error
 	AppendMessage(context.Context, AssistantMessage) error
+	GetMessageByClientMessageID(context.Context, string, string) (AssistantMessage, error)
+	LinkMessageAttachment(context.Context, string, AttachmentReference) (AssistantMessage, error)
 	ListMessages(context.Context, string) ([]AssistantMessage, error)
 }

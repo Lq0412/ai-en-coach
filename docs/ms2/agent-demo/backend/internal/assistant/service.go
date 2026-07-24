@@ -39,15 +39,20 @@ type Dependencies struct {
 	Runtime           InterviewRuntime
 	Attachments       AttachmentResolver
 	Resetter          DemoResetter
+	LiveKit           LiveKitConfig
 }
 
 type Service struct {
 	dependencies Dependencies
 	taskMu       sync.Mutex
+	live         *liveSessionCoordinator
 }
 
 func NewService(dependencies Dependencies) *Service {
-	return &Service{dependencies: dependencies}
+	return &Service{
+		dependencies: dependencies,
+		live:         newLiveSessionCoordinator(dependencies.LiveKit),
+	}
 }
 
 type StartTaskCommand struct {
@@ -57,6 +62,10 @@ type StartTaskCommand struct {
 	AttachmentIDs   []string
 	IdempotencyKey  string
 	InteractionMode string
+	ClientMessageID string
+	LiveSessionID   string
+	TurnID          string
+	Mode            ConversationMode
 }
 
 type ResumeTaskCommand struct {
@@ -106,6 +115,22 @@ func (s *Service) startTask(ctx context.Context, command StartTaskCommand) (Task
 		command.IdempotencyKey,
 	)
 	if err == nil {
+		if command.ClientMessageID != "" {
+			if writer := canonicalMessageWriterFromContext(ctx); writer != nil {
+				messages, listErr := s.dependencies.ConversationStore.ListMessages(ctx, thread.ID)
+				if listErr != nil {
+					return TaskRun{}, listErr
+				}
+				for _, message := range messages {
+					if message.ClientMessageID != command.ClientMessageID {
+						continue
+					}
+					if writeErr := writer(message); writeErr != nil {
+						return TaskRun{}, writeErr
+					}
+				}
+			}
+		}
 		return existing, nil
 	}
 	if !errors.Is(err, ErrNotFound) {
@@ -140,15 +165,20 @@ func (s *Service) startTask(ctx context.Context, command StartTaskCommand) (Task
 			contextSummary = built.Summary
 		}
 	}
-	plan, err := s.dependencies.Planner.Plan(ctx, PlanRequest{
-		ThreadID:        thread.ID,
-		UserMessage:     visibleMessage,
-		ContextSummary:  contextSummary,
-		Messages:        messages,
-		InteractionMode: interactionMode,
-	})
-	if err != nil {
-		return TaskRun{}, fmt.Errorf("plan task: %w", err)
+	var plan Plan
+	if command.Mode == ConversationModeLive && interactionMode == "conversation" {
+		plan = freeConversationPlan()
+	} else {
+		plan, err = s.dependencies.Planner.Plan(ctx, PlanRequest{
+			ThreadID:        thread.ID,
+			UserMessage:     visibleMessage,
+			ContextSummary:  contextSummary,
+			Messages:        messages,
+			InteractionMode: interactionMode,
+		})
+		if err != nil {
+			return TaskRun{}, fmt.Errorf("plan task: %w", err)
+		}
 	}
 	state := RuntimeSnapshot{}
 	if s.dependencies.Runtime != nil {
@@ -217,8 +247,12 @@ func (s *Service) startTask(ctx context.Context, command StartTaskCommand) (Task
 		}
 	}
 	if plan.Intent != "submit_interview_answer" {
-		if err := s.appendMessageWithAttachments(ctx, "user", visibleMessage, attachments); err != nil {
-			return TaskRun{}, err
+		_, appendErr := s.appendMessageWithAttachments(
+			ctx, "user", visibleMessage, attachments,
+			command.ClientMessageID, command.LiveSessionID, command.TurnID, command.Mode,
+		)
+		if appendErr != nil {
+			return TaskRun{}, appendErr
 		}
 	}
 
@@ -274,13 +308,13 @@ func (s *Service) startTask(ctx context.Context, command StartTaskCommand) (Task
 		if err := s.dependencies.ConversationStore.SaveTaskRun(ctx, run); err != nil {
 			return TaskRun{}, err
 		}
-		if err := s.appendMessage(ctx, "assistant", fmt.Sprintf("背景快照已读取。创建 %s 真实模拟面试（%s）会产生新的练习记录，请确认后继续。", targetRole, scope)); err != nil {
+		if err := s.appendCorrelatedMessage(ctx, "assistant", fmt.Sprintf("背景快照已读取。创建 %s 真实模拟面试（%s）会产生新的练习记录，请确认后继续。", targetRole, scope), command); err != nil {
 			return TaskRun{}, err
 		}
 		return run, nil
 	}
 
-	return s.completeRun(ctx, command.ActorUserID, run, plan.Steps)
+	return s.completeRun(ctx, command.ActorUserID, run, plan.Steps, command)
 }
 
 func preConfirmationSteps(plan Plan) []PlanStep {
@@ -463,7 +497,7 @@ func (s *Service) ResumeTask(ctx context.Context, command ResumeTaskCommand) (Ta
 	if err := s.dependencies.ConversationStore.SaveTaskRun(ctx, run); err != nil {
 		return TaskRun{}, err
 	}
-	return s.completeRun(ctx, command.ActorUserID, run, plan.Steps[resumeIndex:])
+	return s.completeRun(ctx, command.ActorUserID, run, plan.Steps[resumeIndex:], StartTaskCommand{})
 }
 
 func (s *Service) EndInterview(ctx context.Context, command EndInterviewCommand) (TaskRun, error) {
@@ -512,7 +546,7 @@ func (s *Service) EndInterview(ctx context.Context, command EndInterviewCommand)
 	if err := s.dependencies.ConversationStore.SaveTaskIdempotency(ctx, command.ActorUserID, command.IdempotencyKey, run.ID); err != nil {
 		return TaskRun{}, err
 	}
-	return s.completeRun(ctx, command.ActorUserID, run, plan.Steps)
+	return s.completeRun(ctx, command.ActorUserID, run, plan.Steps, StartTaskCommand{})
 }
 
 // RejectTask 是 Demo 用于验证 ConfirmationRequest 拒绝分支的增量入口。
@@ -571,7 +605,13 @@ func (s *Service) GetThread(ctx context.Context, query GetThreadQuery) (Assistan
 	return thread, nil
 }
 
-func (s *Service) completeRun(ctx context.Context, actorUserID string, run TaskRun, steps []PlanStep) (TaskRun, error) {
+func (s *Service) completeRun(
+	ctx context.Context,
+	actorUserID string,
+	run TaskRun,
+	steps []PlanStep,
+	correlation StartTaskCommand,
+) (TaskRun, error) {
 	result, err := s.executeSteps(ctx, actorUserID, run, steps)
 	if err != nil {
 		run.Status = TaskRunStatusFailed
@@ -604,7 +644,7 @@ func (s *Service) completeRun(ctx context.Context, actorUserID string, run TaskR
 		}
 	} else if run.Intent != "submit_interview_answer" && run.Intent != "start_mock_interview" &&
 		!(run.Intent == "scenario_practice" && result["summary"] == nil) {
-		if err := s.appendMessage(ctx, "assistant", composeResponse(run.Intent, result)); err != nil {
+		if err := s.appendCorrelatedMessage(ctx, "assistant", composeResponse(run.Intent, result), correlation); err != nil {
 			return TaskRun{}, err
 		}
 	}
@@ -733,21 +773,50 @@ func (s *Service) updateThreadSummary(ctx context.Context, run TaskRun) error {
 }
 
 func (s *Service) appendMessage(ctx context.Context, role, content string) error {
-	return s.appendMessageWithAttachments(ctx, role, content, nil)
+	_, err := s.appendMessageWithAttachments(ctx, role, content, nil, "", "", "", "")
+	return err
 }
 
-func (s *Service) appendMessageWithAttachments(ctx context.Context, role, content string, attachments []Attachment) error {
+func (s *Service) appendCorrelatedMessage(
+	ctx context.Context,
+	role, content string,
+	correlation StartTaskCommand,
+) error {
+	_, err := s.appendMessageWithAttachments(
+		ctx, role, content, nil,
+		correlation.ClientMessageID, correlation.LiveSessionID,
+		correlation.TurnID, correlation.Mode,
+	)
+	return err
+}
+
+func (s *Service) appendMessageWithAttachments(
+	ctx context.Context,
+	role, content string,
+	attachments []Attachment,
+	clientMessageID, liveSessionID, turnID string,
+	mode ConversationMode,
+) (AssistantMessage, error) {
 	references := make([]AttachmentReference, 0, len(attachments))
 	for _, attachment := range attachments {
 		references = append(references, attachment.AttachmentReference)
 	}
-	return s.dependencies.ConversationStore.AppendMessage(ctx, AssistantMessage{
-		ID:          nextID("message"),
-		Role:        role,
-		Content:     content,
-		Attachments: references,
-		CreatedAt:   time.Now().UTC(),
-	})
+	message := AssistantMessage{
+		ID: nextID("message"), Role: role, Content: content,
+		ClientMessageID: clientMessageID, LiveSessionID: liveSessionID,
+		TurnID: turnID, Mode: mode,
+		Attachments: references, CreatedAt: time.Now().UTC(),
+	}
+	if err := s.dependencies.ConversationStore.AppendMessage(ctx, message); err != nil {
+		return AssistantMessage{}, err
+	}
+	if writer := canonicalMessageWriterFromContext(ctx); writer != nil &&
+		message.ClientMessageID != "" {
+		if err := writer(message); err != nil {
+			return AssistantMessage{}, err
+		}
+	}
+	return message, nil
 }
 
 func (s *Service) appendReportCard(ctx context.Context, report InterviewReportCard) error {

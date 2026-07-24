@@ -240,6 +240,41 @@ func (s *MemoryConversationStore) AppendMessage(_ context.Context, message Assis
 	return s.persistLocked()
 }
 
+func (s *MemoryConversationStore) GetMessageByClientMessageID(_ context.Context, threadID, clientMessageID string) (AssistantMessage, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if threadID != s.thread.ID {
+		return AssistantMessage{}, ErrNotFound
+	}
+	for _, message := range s.messages {
+		if message.ClientMessageID == clientMessageID {
+			return message, nil
+		}
+	}
+	return AssistantMessage{}, ErrNotFound
+}
+
+func (s *MemoryConversationStore) LinkMessageAttachment(_ context.Context, messageID string, attachment AttachmentReference) (AssistantMessage, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for index := range s.messages {
+		if s.messages[index].ID != messageID {
+			continue
+		}
+		for _, existing := range s.messages[index].Attachments {
+			if existing.ID == attachment.ID {
+				return s.messages[index], nil
+			}
+		}
+		s.messages[index].Attachments = append(s.messages[index].Attachments, attachment)
+		if err := s.persistLocked(); err != nil {
+			return AssistantMessage{}, err
+		}
+		return s.messages[index], nil
+	}
+	return AssistantMessage{}, ErrNotFound
+}
+
 func (s *MemoryConversationStore) ListMessages(_ context.Context, threadID string) ([]AssistantMessage, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

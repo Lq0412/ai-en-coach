@@ -21,6 +21,7 @@ body {
 }
 
 .prototype-host {
+  position: relative;
   background: #eef1ef;
 }
 
@@ -28,4 +29,12 @@ body {
   display: block;
   border: 0;
   background: #fff;
+}
+
+.livekit-audio-host {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  pointer-events: none;
 }

@@ -9,6 +9,7 @@ import (
 	"mime"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -60,6 +61,10 @@ func (h *HTTPHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/assistant/threads/{thread_id}", h.getThread)
 	mux.HandleFunc("POST /v1/assistant/threads/{thread_id}/tasks", h.startTask)
 	mux.HandleFunc("POST /v1/assistant/threads/{thread_id}/tasks/stream", h.streamTask)
+	mux.HandleFunc("POST /v1/assistant/threads/{thread_id}/live-sessions", h.startLiveSession)
+	mux.HandleFunc("POST /v1/assistant/live-sessions/{live_session_id}/resume", h.resumeLiveSession)
+	mux.HandleFunc("POST /v1/assistant/live-sessions/{live_session_id}/end", h.endLiveSession)
+	mux.HandleFunc("POST /v1/assistant/live-sessions/{live_session_id}/turns", h.commitOmniLiveTurn)
 	mux.HandleFunc("POST /v1/assistant/threads/{thread_id}/interview/end/stream", h.streamEndInterview)
 	mux.HandleFunc("POST /v1/assistant/task-runs/{task_run_id}/resume", h.resumeTask)
 	mux.HandleFunc("POST /v1/assistant/task-runs/{task_run_id}/reject", h.rejectTask)
@@ -77,6 +82,7 @@ func (h *HTTPHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /v1/review/mistakes/{mistake_id}", h.getSavedMistake)
 	mux.HandleFunc("POST /v1/review/mistakes/{mistake_id}/repractice", h.submitSavedMistakeRepractice)
 	mux.HandleFunc("POST /v1/assistant/attachments", h.uploadAttachment)
+	mux.HandleFunc("POST /v1/assistant/messages/{message_id}/attachments", h.linkMessageAttachment)
 	mux.HandleFunc("GET /v1/assistant/attachments/{attachment_id}/content", h.getAttachmentContent)
 	mux.HandleFunc("DELETE /v1/assistant/attachments/{attachment_id}", h.deleteAttachment)
 	mux.HandleFunc("GET /v1/preparation/profile", h.getCandidateProfile)
@@ -92,6 +98,88 @@ func (h *HTTPHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/audio/transcriptions", h.transcribe)
 	mux.HandleFunc("GET /v1/audio/transcriptions/stream", h.streamTranscription)
 	mux.HandleFunc("POST /v1/audio/speech", h.synthesize)
+}
+
+type liveSessionRequest struct {
+	ActorUserID    string `json:"actor_user_id"`
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
+}
+
+type omniLiveTurnRequest struct {
+	ActorUserID         string `json:"actor_user_id"`
+	ThreadID            string `json:"thread_id"`
+	TurnID              string `json:"turn_id"`
+	ClientMessageID     string `json:"client_message_id"`
+	UserTranscript      string `json:"user_transcript"`
+	AssistantTranscript string `json:"assistant_transcript"`
+}
+
+func (h *HTTPHandler) commitOmniLiveTurn(w http.ResponseWriter, r *http.Request) {
+	var request omniLiveTurnRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 64<<10)).Decode(&request); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON body"})
+		return
+	}
+	result, err := h.service.CommitOmniLiveTurn(r.Context(), CommitOmniLiveTurnCommand{
+		ActorUserID: request.ActorUserID, ThreadID: request.ThreadID,
+		LiveSessionID: r.PathValue("live_session_id"), TurnID: request.TurnID,
+		ClientMessageID: request.ClientMessageID, UserTranscript: request.UserTranscript,
+		AssistantTranscript: request.AssistantTranscript,
+	})
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *HTTPHandler) startLiveSession(w http.ResponseWriter, r *http.Request) {
+	var request liveSessionRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&request); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON body"})
+		return
+	}
+	credentials, err := h.service.StartLiveSession(r.Context(), StartLiveSessionCommand{
+		ActorUserID: request.ActorUserID, ThreadID: r.PathValue("thread_id"),
+		IdempotencyKey: request.IdempotencyKey,
+	})
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, credentials)
+}
+
+func (h *HTTPHandler) resumeLiveSession(w http.ResponseWriter, r *http.Request) {
+	var request liveSessionRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&request); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON body"})
+		return
+	}
+	credentials, err := h.service.ResumeLiveSession(r.Context(), ResumeLiveSessionCommand{
+		ActorUserID: request.ActorUserID, LiveSessionID: r.PathValue("live_session_id"),
+	})
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, credentials)
+}
+
+func (h *HTTPHandler) endLiveSession(w http.ResponseWriter, r *http.Request) {
+	var request liveSessionRequest
+	if err := json.NewDecoder(io.LimitReader(r.Body, 16<<10)).Decode(&request); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON body"})
+		return
+	}
+	session, err := h.service.EndLiveSession(r.Context(), EndLiveSessionCommand{
+		ActorUserID: request.ActorUserID, LiveSessionID: r.PathValue("live_session_id"),
+	})
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"live_session": session})
 }
 
 func (h *HTTPHandler) generateLanguageAssistance(w http.ResponseWriter, r *http.Request) {
@@ -443,11 +531,15 @@ type endInterviewRequest struct {
 }
 
 type startTaskRequest struct {
-	ActorUserID     string   `json:"actor_user_id"`
-	UserMessage     string   `json:"user_message"`
-	AttachmentIDs   []string `json:"attachment_ids,omitempty"`
-	IdempotencyKey  string   `json:"idempotency_key"`
-	InteractionMode string   `json:"interaction_mode,omitempty"`
+	ActorUserID     string           `json:"actor_user_id"`
+	UserMessage     string           `json:"user_message"`
+	AttachmentIDs   []string         `json:"attachment_ids,omitempty"`
+	IdempotencyKey  string           `json:"idempotency_key"`
+	InteractionMode string           `json:"interaction_mode,omitempty"`
+	ClientMessageID string           `json:"client_message_id,omitempty"`
+	LiveSessionID   string           `json:"live_session_id,omitempty"`
+	TurnID          string           `json:"turn_id,omitempty"`
+	Mode            ConversationMode `json:"mode,omitempty"`
 }
 
 const maxAttachmentBytes = 20 << 20
@@ -514,6 +606,29 @@ func (h *HTTPHandler) uploadAttachment(w http.ResponseWriter, r *http.Request) {
 		"attachment":        attachment.AttachmentReference,
 		"candidate_profile": candidateProfileView(h.tools.State().CandidateProfile),
 	})
+}
+
+func (h *HTTPHandler) linkMessageAttachment(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		AttachmentID string `json:"attachment_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil || strings.TrimSpace(request.AttachmentID) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "attachment_id is required"})
+		return
+	}
+	attachments, err := h.tools.Attachments([]string{request.AttachmentID})
+	if err != nil || len(attachments) != 1 {
+		h.writeError(w, ErrNotFound)
+		return
+	}
+	message, err := h.store.LinkMessageAttachment(
+		r.Context(), r.PathValue("message_id"), attachments[0].AttachmentReference,
+	)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"message": message})
 }
 
 func (h *HTTPHandler) getAttachmentContent(w http.ResponseWriter, r *http.Request) {
@@ -645,6 +760,10 @@ func (h *HTTPHandler) startTask(w http.ResponseWriter, r *http.Request) {
 		AttachmentIDs:   request.AttachmentIDs,
 		IdempotencyKey:  request.IdempotencyKey,
 		InteractionMode: request.InteractionMode,
+		ClientMessageID: request.ClientMessageID,
+		LiveSessionID:   request.LiveSessionID,
+		TurnID:          request.TurnID,
+		Mode:            request.Mode,
 	})
 	if err != nil {
 		h.writeError(w, err)
@@ -675,7 +794,32 @@ func (h *HTTPHandler) streamTask(w http.ResponseWriter, r *http.Request) {
 	_ = writeSSE(w, "task.started", map[string]any{"thread_id": r.PathValue("thread_id")})
 	flusher.Flush()
 
-	ctx := WithTextDeltaWriter(r.Context(), func(delta string) error {
+	ctx := r.Context()
+	if request.ClientMessageID != "" &&
+		request.LiveSessionID != "" &&
+		request.TurnID != "" &&
+		request.Mode.Valid() {
+		var sequence uint64
+		ctx = WithCanonicalMessageWriter(ctx, func(message AssistantMessage) error {
+			eventType := LiveEventTurnUserCommitted
+			if message.Role == "assistant" {
+				eventType = LiveEventTurnAssistantCommitted
+			}
+			sequence++
+			event := LiveEvent{
+				Type: eventType, ThreadID: r.PathValue("thread_id"),
+				LiveSessionID: request.LiveSessionID, TurnID: request.TurnID,
+				ClientMessageID: request.ClientMessageID, Mode: request.Mode,
+				OccurredAt: time.Now().UTC(), Sequence: sequence, Message: &message,
+			}
+			if err := writeSSE(w, string(eventType), event); err != nil {
+				return err
+			}
+			flusher.Flush()
+			return nil
+		})
+	}
+	ctx = WithTextDeltaWriter(ctx, func(delta string) error {
 		if err := writeSSE(w, "assistant.delta", map[string]any{"delta": delta}); err != nil {
 			return err
 		}
@@ -689,6 +833,10 @@ func (h *HTTPHandler) streamTask(w http.ResponseWriter, r *http.Request) {
 		AttachmentIDs:   request.AttachmentIDs,
 		IdempotencyKey:  request.IdempotencyKey,
 		InteractionMode: request.InteractionMode,
+		ClientMessageID: request.ClientMessageID,
+		LiveSessionID:   request.LiveSessionID,
+		TurnID:          request.TurnID,
+		Mode:            request.Mode,
 	})
 	if err != nil {
 		h.logger.Printf("assistant stream failed: %v", err)
@@ -836,6 +984,8 @@ var transcriptionUpgrader = websocket.Upgrader{
 	},
 }
 
+const realtimeTranscriptionUnavailableMessage = "语音识别连接暂时不可用，请重试"
+
 func (h *HTTPHandler) streamTranscription(w http.ResponseWriter, r *http.Request) {
 	streamer, ok := h.transcriber.(RealtimeTranscriber)
 	if !ok {
@@ -890,7 +1040,9 @@ func (h *HTTPHandler) streamTranscription(w http.ResponseWriter, r *http.Request
 	})
 	if err != nil {
 		h.logger.Printf("realtime transcription failed: %v", err)
-		_ = connection.WriteJSON(map[string]any{"type": "transcription.error", "error": err.Error()})
+		_ = connection.WriteJSON(map[string]any{
+			"type": "transcription.error", "error": realtimeTranscriptionUnavailableMessage,
+		})
 		return
 	}
 	_ = connection.WriteJSON(map[string]any{"type": "transcription.done", "text": transcript.Text})
@@ -899,8 +1051,10 @@ func (h *HTTPHandler) streamTranscription(w http.ResponseWriter, r *http.Request
 
 func (h *HTTPHandler) synthesize(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		Text  string  `json:"text"`
-		Voice *string `json:"voice,omitempty"`
+		Text       string  `json:"text"`
+		Voice      *string `json:"voice,omitempty"`
+		Format     string  `json:"format,omitempty"`
+		SampleRate *int    `json:"sample_rate,omitempty"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "invalid JSON body"})
@@ -908,6 +1062,65 @@ func (h *HTTPHandler) synthesize(w http.ResponseWriter, r *http.Request) {
 	}
 	if strings.TrimSpace(request.Text) == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "text is required"})
+		return
+	}
+	format := strings.ToLower(strings.TrimSpace(request.Format))
+	if format == "" {
+		format = "mp3"
+	}
+	sampleRate := 22050
+	if request.SampleRate != nil {
+		sampleRate = *request.SampleRate
+	}
+	if (format != "mp3" || sampleRate != 22050) &&
+		(format != "pcm" || sampleRate != 24000) {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": "speech format must be mp3 at 22050 Hz or pcm at 24000 Hz",
+		})
+		return
+	}
+	contentType := "audio/mpeg"
+	if format == "pcm" {
+		contentType = "audio/pcm"
+	}
+	if streamer, ok := h.synthesizer.(ConfigurableStreamingSpeechSynthesizer); ok {
+		flusher, canFlush := w.(http.Flusher)
+		started := false
+		err := streamer.StreamSynthesizeWithOptions(
+			r.Context(),
+			request.Text,
+			request.Voice,
+			SpeechSynthesisOptions{Format: format, SampleRate: sampleRate},
+			func(chunk []byte) error {
+				if !started {
+					w.Header().Set("Content-Type", contentType)
+					w.Header().Set("Cache-Control", "no-store, no-transform")
+					w.Header().Set("X-Accel-Buffering", "no")
+					w.WriteHeader(http.StatusOK)
+					started = true
+				}
+				if _, err := w.Write(chunk); err != nil {
+					return err
+				}
+				if canFlush {
+					flusher.Flush()
+				}
+				return nil
+			},
+		)
+		if err != nil {
+			if !started {
+				h.writeError(w, err)
+			} else {
+				h.logger.Printf("stream TTS audio: %v", err)
+			}
+		}
+		return
+	}
+	if format == "pcm" {
+		writeJSON(w, http.StatusNotImplemented, map[string]any{
+			"error": "PCM speech synthesis is not configured",
+		})
 		return
 	}
 	if streamer, ok := h.synthesizer.(StreamingSpeechSynthesizer); ok {
@@ -966,6 +1179,10 @@ func (h *HTTPHandler) writeError(w http.ResponseWriter, err error) {
 	status := http.StatusInternalServerError
 	if errors.Is(err, ErrNotFound) {
 		status = http.StatusNotFound
+	} else if errors.Is(err, ErrLiveVoiceUnavailable) {
+		status = http.StatusServiceUnavailable
+	} else if errors.Is(err, ErrLiveSessionEnded) {
+		status = http.StatusConflict
 	} else if errors.Is(err, ErrForbidden) {
 		status = http.StatusForbidden
 	} else if errors.Is(err, ErrInvalidTaskRunState) || errors.Is(err, ErrNoPendingConfirm) {

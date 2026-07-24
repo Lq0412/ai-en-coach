@@ -77,9 +77,10 @@ func LoadDashScopeConfig() (DashScopeConfig, error) {
 }
 
 type DashScopeProvider struct {
-	config DashScopeConfig
-	client *http.Client
-	dialer *websocket.Dialer
+	config       DashScopeConfig
+	client       *http.Client
+	dialer       *websocket.Dialer
+	writeTimeout time.Duration
 }
 
 const (
@@ -96,9 +97,10 @@ const (
 
 func NewDashScopeProvider(config DashScopeConfig) *DashScopeProvider {
 	return &DashScopeProvider{
-		config: config,
-		client: &http.Client{Timeout: 90 * time.Second},
-		dialer: websocket.DefaultDialer,
+		config:       config,
+		client:       &http.Client{Timeout: 90 * time.Second},
+		dialer:       websocket.DefaultDialer,
+		writeTimeout: 30 * time.Second,
 	}
 }
 
@@ -702,8 +704,7 @@ func (p *DashScopeProvider) StreamTranscribePCM(
 	}
 	defer connection.Close()
 	_ = connection.SetReadDeadline(time.Now().Add(10 * time.Minute))
-	_ = connection.SetWriteDeadline(time.Now().Add(30 * time.Second))
-	if err := connection.WriteJSON(asrSessionUpdate()); err != nil {
+	if err := p.writeRealtimeJSON(connection, asrSessionUpdate()); err != nil {
 		return TranscriptSnapshot{}, fmt.Errorf("initialize DashScope ASR: %w", err)
 	}
 	if err := waitForRealtimeEvent(connection, "session.updated"); err != nil {
@@ -713,7 +714,22 @@ func (p *DashScopeProvider) StreamTranscribePCM(
 	done := make(chan TranscriptSnapshot, 1)
 	readError := make(chan error, 1)
 	go func() {
-		var finalText strings.Builder
+		var committedText string
+		var partialText strings.Builder
+		mergeTranscript := func(base, next string) string {
+			base = strings.TrimSpace(base)
+			next = strings.TrimSpace(next)
+			if base == "" {
+				return next
+			}
+			if next == "" || strings.HasSuffix(base, next) {
+				return base
+			}
+			if strings.HasPrefix(next, base) {
+				return next
+			}
+			return base + " " + next
+		}
 		for {
 			var event realtimeEvent
 			if err := connection.ReadJSON(&event); err != nil {
@@ -727,7 +743,7 @@ func (p *DashScopeProvider) StreamTranscribePCM(
 					text = event.Text
 				}
 				if text != "" {
-					finalText.WriteString(text)
+					partialText.WriteString(text)
 					if err := writeUpdate(TranscriptUpdate{Text: text}); err != nil {
 						readError <- err
 						return
@@ -736,12 +752,12 @@ func (p *DashScopeProvider) StreamTranscribePCM(
 			case "conversation.item.input_audio_transcription.completed":
 				text := strings.TrimSpace(event.Transcript)
 				if text == "" {
-					text = strings.TrimSpace(finalText.String())
+					text = strings.TrimSpace(partialText.String())
 				}
-				finalText.Reset()
-				finalText.WriteString(text)
+				partialText.Reset()
+				committedText = mergeTranscript(committedText, text)
 				if text != "" {
-					if err := writeUpdate(TranscriptUpdate{Text: text, Completed: true}); err != nil {
+					if err := writeUpdate(TranscriptUpdate{Text: committedText, Completed: true}); err != nil {
 						readError <- err
 						return
 					}
@@ -750,7 +766,7 @@ func (p *DashScopeProvider) StreamTranscribePCM(
 				readError <- realtimeEventError(event)
 				return
 			case "session.finished":
-				text := strings.TrimSpace(finalText.String())
+				text := mergeTranscript(committedText, partialText.String())
 				if text == "" {
 					readError <- errors.New("DashScope ASR returned an empty transcript")
 					return
@@ -765,7 +781,7 @@ func (p *DashScopeProvider) StreamTranscribePCM(
 	for {
 		count, readErr := pcm.Read(buffer)
 		if count > 0 {
-			if err := connection.WriteJSON(map[string]any{
+			if err := p.writeRealtimeJSON(connection, map[string]any{
 				"event_id": eventID(), "type": "input_audio_buffer.append",
 				"audio": base64.StdEncoding.EncodeToString(buffer[:count]),
 			}); err != nil {
@@ -779,10 +795,10 @@ func (p *DashScopeProvider) StreamTranscribePCM(
 			break
 		}
 	}
-	for _, eventType := range []string{"input_audio_buffer.commit", "session.finish"} {
-		if err := connection.WriteJSON(map[string]any{"event_id": eventID(), "type": eventType}); err != nil {
-			return TranscriptSnapshot{}, fmt.Errorf("finish DashScope ASR: %w", err)
-		}
+	if err := p.writeRealtimeJSON(connection, map[string]any{
+		"event_id": eventID(), "type": "session.finish",
+	}); err != nil {
+		return TranscriptSnapshot{}, fmt.Errorf("finish DashScope ASR: %w", err)
 	}
 	select {
 	case transcript := <-done:
@@ -792,6 +808,13 @@ func (p *DashScopeProvider) StreamTranscribePCM(
 	case <-ctx.Done():
 		return TranscriptSnapshot{}, ctx.Err()
 	}
+}
+
+func (p *DashScopeProvider) writeRealtimeJSON(connection *websocket.Conn, value any) error {
+	if err := connection.SetWriteDeadline(time.Now().Add(p.writeTimeout)); err != nil {
+		return err
+	}
+	return connection.WriteJSON(value)
 }
 
 func asrSessionUpdate() map[string]any {
@@ -805,7 +828,11 @@ func asrSessionUpdate() map[string]any {
 			"input_audio_transcription": map[string]any{
 				"language": "zh",
 			},
-			"turn_detection": nil,
+			"turn_detection": map[string]any{
+				"type":                "server_vad",
+				"threshold":           0.0,
+				"silence_duration_ms": 400,
+			},
 		},
 	}
 }
@@ -830,8 +857,25 @@ func (p *DashScopeProvider) StreamSynthesize(
 	voice *string,
 	writeChunk func([]byte) error,
 ) error {
+	return p.StreamSynthesizeWithOptions(ctx, text, voice, SpeechSynthesisOptions{
+		Format: "mp3", SampleRate: 22050,
+	}, writeChunk)
+}
+
+func (p *DashScopeProvider) StreamSynthesizeWithOptions(
+	ctx context.Context,
+	text string,
+	voice *string,
+	options SpeechSynthesisOptions,
+	writeChunk func([]byte) error,
+) error {
 	if strings.TrimSpace(text) == "" {
 		return errors.New("speech text is empty")
+	}
+	format := strings.ToLower(strings.TrimSpace(options.Format))
+	if (format != "mp3" || options.SampleRate != 22050) &&
+		(format != "pcm" || options.SampleRate != 24000) {
+		return fmt.Errorf("unsupported speech format %q at %d Hz", format, options.SampleRate)
 	}
 	selectedVoice := p.config.TTSVoice
 	if voice != nil && strings.TrimSpace(*voice) != "" {
@@ -847,6 +891,21 @@ func (p *DashScopeProvider) StreamSynthesize(
 	_ = connection.SetWriteDeadline(time.Now().Add(30 * time.Second))
 
 	taskID := uuid()
+	parameters := map[string]any{
+		"text_type":   "PlainText",
+		"voice":       selectedVoice,
+		"sample_rate": options.SampleRate,
+		"volume":      50,
+		"rate":        1.0,
+		"pitch":       1.0,
+		"enable_ssml": false,
+	}
+	if format == "pcm" {
+		parameters["response_format"] = "pcm"
+	} else {
+		// Preserve the established MP3 request used by the ordinary page.
+		parameters["format"] = "mp3"
+	}
 	if err := connection.WriteJSON(map[string]any{
 		"header": map[string]any{"action": "run-task", "task_id": taskID, "streaming": "duplex"},
 		"payload": map[string]any{
@@ -854,17 +913,8 @@ func (p *DashScopeProvider) StreamSynthesize(
 			"task":       "tts",
 			"function":   "SpeechSynthesizer",
 			"model":      p.config.TTSModel,
-			"parameters": map[string]any{
-				"text_type":   "PlainText",
-				"voice":       selectedVoice,
-				"format":      "mp3",
-				"sample_rate": 22050,
-				"volume":      50,
-				"rate":        1.0,
-				"pitch":       1.0,
-				"enable_ssml": false,
-			},
-			"input": map[string]any{},
+			"parameters": parameters,
+			"input":      map[string]any{},
 		},
 	}); err != nil {
 		return fmt.Errorf("start DashScope TTS: %w", err)

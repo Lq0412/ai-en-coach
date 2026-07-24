@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -433,9 +434,15 @@ func TestDashScopeRealtimeTranscriberForwardsPartialAndFinalText(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer connection.Close()
-		var session realtimeEvent
-		if err := connection.ReadJSON(&session); err != nil || session.Type != "session.update" {
+		var session map[string]any
+		if err := connection.ReadJSON(&session); err != nil || session["type"] != "session.update" {
 			t.Fatalf("unexpected session event: %#v err=%v", session, err)
+		}
+		turnDetection := session["session"].(map[string]any)["turn_detection"].(map[string]any)
+		if turnDetection["type"] != "server_vad" ||
+			turnDetection["threshold"] != float64(0) ||
+			turnDetection["silence_duration_ms"] != float64(400) {
+			t.Fatalf("unexpected turn detection: %#v", turnDetection)
 		}
 		_ = connection.WriteJSON(map[string]any{"type": "session.updated"})
 		deltaSent := false
@@ -452,16 +459,18 @@ func TestDashScopeRealtimeTranscriberForwardsPartialAndFinalText(t *testing.T) {
 					"type": "conversation.item.input_audio_transcription.delta", "delta": "你",
 				})
 			}
-			if event.Type == "input_audio_buffer.commit" {
+			if event.Type == "session.finish" {
 				break
 			}
 		}
-		var finish realtimeEvent
-		if err := connection.ReadJSON(&finish); err != nil || finish.Type != "session.finish" {
-			t.Fatalf("unexpected finish event: %#v err=%v", finish, err)
-		}
 		_ = connection.WriteJSON(map[string]any{
 			"type": "conversation.item.input_audio_transcription.completed", "transcript": "你好",
+		})
+		_ = connection.WriteJSON(map[string]any{
+			"type": "conversation.item.input_audio_transcription.delta", "delta": "世",
+		})
+		_ = connection.WriteJSON(map[string]any{
+			"type": "conversation.item.input_audio_transcription.completed", "transcript": "世界",
 		})
 		_ = connection.WriteJSON(map[string]any{"type": "session.finished"})
 	}))
@@ -477,8 +486,64 @@ func TestDashScopeRealtimeTranscriberForwardsPartialAndFinalText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if transcript.Text != "你好" || len(updates) != 2 || updates[0].Text != "你" || !updates[1].Completed {
+	if transcript.Text != "你好 世界" ||
+		len(updates) != 4 ||
+		updates[0].Text != "你" ||
+		updates[1].Text != "你好" ||
+		!updates[1].Completed ||
+		updates[2].Text != "世" ||
+		updates[3].Text != "你好 世界" ||
+		!updates[3].Completed {
 		t.Fatalf("unexpected realtime transcription: transcript=%#v updates=%#v", transcript, updates)
+	}
+}
+
+func TestDashScopeRealtimeTranscriberRefreshesWriteDeadline(t *testing.T) {
+	upgrader := websocket.Upgrader{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		connection, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer connection.Close()
+		var event realtimeEvent
+		if err := connection.ReadJSON(&event); err != nil || event.Type != "session.update" {
+			t.Fatalf("unexpected session event: %#v err=%v", event, err)
+		}
+		_ = connection.WriteJSON(map[string]any{"type": "session.updated"})
+		for {
+			if err := connection.ReadJSON(&event); err != nil {
+				t.Fatal(err)
+			}
+			if event.Type == "session.finish" {
+				break
+			}
+		}
+		_ = connection.WriteJSON(map[string]any{
+			"type": "conversation.item.input_audio_transcription.completed", "transcript": "still connected",
+		})
+		_ = connection.WriteJSON(map[string]any{"type": "session.finished"})
+	}))
+	defer server.Close()
+
+	reader, writer := io.Pipe()
+	go func() {
+		_, _ = writer.Write([]byte("first"))
+		time.Sleep(50 * time.Millisecond)
+		_, _ = writer.Write([]byte("second"))
+		_ = writer.Close()
+	}()
+	provider := testDashScopeProvider(server.URL)
+	provider.config.ASRWebSocketURL = "ws" + strings.TrimPrefix(server.URL, "http")
+	provider.writeTimeout = 20 * time.Millisecond
+	transcript, err := provider.StreamTranscribePCM(context.Background(), reader, func(TranscriptUpdate) error {
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if transcript.Text != "still connected" {
+		t.Fatalf("unexpected transcript: %#v", transcript)
 	}
 }
 
@@ -535,6 +600,58 @@ func TestDashScopeSynthesizerStreamsBinaryAudio(t *testing.T) {
 	}
 	if audio.ContentType != "audio/mpeg" || string(body) != "test-mp3-audio" {
 		t.Fatalf("unexpected generated audio: %s %q", audio.ContentType, body)
+	}
+}
+
+func TestDashScopeSynthesizerRequestsPCM24K(t *testing.T) {
+	upgrader := websocket.Upgrader{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		connection, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer connection.Close()
+		var runTask map[string]any
+		if err := connection.ReadJSON(&runTask); err != nil {
+			t.Fatal(err)
+		}
+		parameters := runTask["payload"].(map[string]any)["parameters"].(map[string]any)
+		if parameters["response_format"] != "pcm" ||
+			parameters["sample_rate"] != float64(24000) ||
+			parameters["format"] != nil {
+			t.Fatalf("unexpected PCM TTS parameters: %#v", parameters)
+		}
+		_ = connection.WriteJSON(map[string]any{"header": map[string]any{"event": "task-started"}})
+		var message map[string]any
+		if err := connection.ReadJSON(&message); err != nil {
+			t.Fatal(err)
+		}
+		if err := connection.ReadJSON(&message); err != nil {
+			t.Fatal(err)
+		}
+		_ = connection.WriteMessage(websocket.BinaryMessage, []byte{1, 0, 2, 0})
+		_ = connection.WriteJSON(map[string]any{"header": map[string]any{"event": "task-finished"}})
+	}))
+	defer server.Close()
+
+	provider := testDashScopeProvider(server.URL)
+	provider.config.TTSWebSocketURL = "ws" + strings.TrimPrefix(server.URL, "http")
+	var audio bytes.Buffer
+	err := provider.StreamSynthesizeWithOptions(
+		context.Background(),
+		"Hello.",
+		nil,
+		SpeechSynthesisOptions{Format: "pcm", SampleRate: 24000},
+		func(chunk []byte) error {
+			_, err := audio.Write(chunk)
+			return err
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(audio.Bytes(), []byte{1, 0, 2, 0}) {
+		t.Fatalf("unexpected PCM audio: %v", audio.Bytes())
 	}
 }
 

@@ -59,6 +59,49 @@ func TestLanguageAssistanceHTTPResponse(t *testing.T) {
 	}
 }
 
+func TestLanguageAssistanceAcceptsCanonicalLiveMessageText(t *testing.T) {
+	stub := &languageAssistanceStub{result: LanguageAssistanceResult{
+		Operation:  "correct",
+		Correction: &LanguageCorrection{HasIssues: false, Brief: "表达自然"},
+	}}
+	handler := NewHTTPHandler(
+		log.New(io.Discard, "", 0),
+		nil, nil, nil, nil, nil, stub, nil, nil, nil, nil,
+	)
+	mux := http.NewServeMux()
+	handler.Register(mux)
+
+	message := AssistantMessage{
+		ID:              "message-live-user",
+		Role:            "user",
+		Content:         "I handled the project successfully.",
+		ClientMessageID: "client-live-1",
+		LiveSessionID:   "live-1",
+		TurnID:          "turn-1",
+		Mode:            ConversationModeLive,
+	}
+	body, err := json.Marshal(LanguageAssistanceInput{
+		Operation: "correct",
+		Text:      message.Content,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	mux.ServeHTTP(recorder, httptest.NewRequest(
+		http.MethodPost,
+		"/v1/language-assistance",
+		strings.NewReader(string(body)),
+	))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("unexpected status: %d body=%s", recorder.Code, recorder.Body.String())
+	}
+	if stub.input.Text != message.Content || stub.input.Operation != "correct" {
+		t.Fatalf("live message text did not reuse language assistance: %#v", stub.input)
+	}
+}
+
 func TestLanguageAssistanceHTTPValidatesOperationAndText(t *testing.T) {
 	handler := NewHTTPHandler(
 		log.New(io.Discard, "", 0),

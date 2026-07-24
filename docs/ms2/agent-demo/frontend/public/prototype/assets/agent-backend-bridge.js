@@ -1,11 +1,49 @@
 (function () {
   window.SPEAKUP_REAL_AGENT_BRIDGE = true;
   const requestedAPIBase = new URLSearchParams(window.location.search).get("api_base");
+  const LIVE_FEATURE_ENABLED =
+    new URLSearchParams(window.location.search).get("live_voice") === "1";
   const API_BASE = /^https?:\/\//.test(requestedAPIBase || "")
     ? requestedAPIBase.replace(/\/$/, "")
     : "http://localhost:8080";
   const ACTOR_ID = "demo-user";
   const THREAD_ID = "thread-demo-001";
+  const LIVE_BRIDGE_SOURCE = "speakup-agent-bridge";
+  const LIVE_HOST_SOURCE = "speakup-livekit-host";
+  const LIVE_BRIDGE_VERSION = 1;
+  const LIVE_EVENT_TYPES = new Set([
+    "transcript.partial",
+    "turn.user_committed",
+    "assistant.delta",
+    "turn.assistant_committed",
+    "turn.failed",
+    "attachment.linked",
+    "attachment.failed",
+    "latency.point",
+  ]);
+  const LIVE_CANONICAL_EVENT_TYPES = new Set([
+    "turn.user_committed",
+    "turn.assistant_committed",
+    "attachment.linked",
+  ]);
+  const LIVE_CALL_STATES = new Set([
+    "idle",
+    "connecting",
+    "listening",
+    "thinking",
+    "speaking",
+    "reconnecting",
+    "failed",
+  ]);
+  const LIVE_INTENT_TYPES = new Set([
+    "live.intent.start",
+    "live.intent.resume",
+    "live.intent.end",
+    "live.intent.mute",
+    "live.intent.recover",
+  ]);
+  const MAX_LIVE_BRIDGE_BYTES = 16384;
+  const liveEventSequences = new Map();
 
   let snapshot = null;
   let loading = true;
@@ -30,6 +68,12 @@
   let recordingElapsedSeconds = 0;
   let recordingTimer = null;
   let liveTranscript = "";
+  let recordingInputBase = "";
+  let liveCallState = "idle";
+  let liveSessionID = "";
+  let liveMuted = false;
+  let liveCallError = "";
+  let liveRecoveryNotice = "";
   let discardRecording = false;
   let asrStreamingFailed = false;
   let fallbackRecordingBlob = null;
@@ -82,6 +126,7 @@
   let voiceTranscriptFinal = false;
   let voiceSubmissionInProgress = false;
   let failedVoiceRecordingBlob = null;
+  let failedVoiceMessageID = "";
   let lastAutoPlayedQuestion = "";
   let memoryFacts = [];
   let memoryLoading = false;
@@ -94,6 +139,276 @@
   let expandedTranslationID = "";
   let expandedCorrectionID = "";
   let correctionDetailMessageID = "";
+
+  function liveIdentityKey(identity) {
+    return [
+      identity.thread_id,
+      identity.live_session_id,
+      identity.turn_id,
+      identity.client_message_id,
+    ].join(":");
+  }
+
+  function nextLiveEventSequence(identity) {
+    const key = liveIdentityKey(identity);
+    const sequence = (liveEventSequences.get(key) || 0) + 1;
+    liveEventSequences.set(key, sequence);
+    return sequence;
+  }
+
+  function validateLiveEvent(event) {
+    if (!event || !LIVE_EVENT_TYPES.has(event.type)) return false;
+    if (event.mode !== "live") return false;
+    if (
+      !event.thread_id ||
+      !event.live_session_id ||
+      !event.turn_id ||
+      !event.client_message_id ||
+      !event.occurred_at ||
+      !Number.isInteger(event.sequence) ||
+      event.sequence < 1
+    ) return false;
+    if (event.type === "transcript.partial" && event.message) return false;
+    if (event.type === "assistant.delta") {
+      return typeof event.delta === "string" &&
+        event.delta.length > 0 &&
+        event.delta.length <= 4000 &&
+        !event.message;
+    }
+    if (event.type === "turn.failed") {
+      return typeof event.error === "string" &&
+        event.error.length > 0 &&
+        event.error.length <= 500 &&
+        !event.message;
+    }
+    if (event.type === "attachment.failed") {
+      return typeof event.stage === "string" &&
+        event.stage.length > 0 &&
+        event.stage.length <= 100 &&
+        typeof event.error === "string" &&
+        event.error.length > 0 &&
+        event.error.length <= 500 &&
+        !event.message;
+    }
+    if (LIVE_CANONICAL_EVENT_TYPES.has(event.type)) {
+      return Boolean(
+        event.message?.ID &&
+        event.message?.client_message_id === event.client_message_id,
+      );
+    }
+    return true;
+  }
+
+  function postLiveBridgeMessage(event) {
+    if (!validateLiveEvent(event) || window.parent === window) return false;
+    window.parent.postMessage(
+      {
+        source: LIVE_BRIDGE_SOURCE,
+        version: LIVE_BRIDGE_VERSION,
+        event,
+      },
+      window.location.origin,
+    );
+    return true;
+  }
+
+  function hasExactKeys(value, required, optional = []) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const allowed = new Set([...required, ...optional]);
+    return required.every((key) => Object.hasOwn(value, key)) &&
+      Object.keys(value).every((key) => allowed.has(key));
+  }
+
+  function isBoundedBridgeMessage(value) {
+    try {
+      return new TextEncoder().encode(JSON.stringify(value)).byteLength <=
+        MAX_LIVE_BRIDGE_BYTES;
+    } catch {
+      return false;
+    }
+  }
+
+  function validateLiveIntent(type, payload) {
+    if (!LIVE_INTENT_TYPES.has(type) || !payload || typeof payload !== "object") {
+      return false;
+    }
+    const bounded = (value) =>
+      typeof value === "string" && value.length > 0 && value.length <= 256;
+    if (type === "live.intent.start") {
+      return hasExactKeys(payload, ["actor_user_id", "thread_id"]) &&
+        bounded(payload.actor_user_id) &&
+        bounded(payload.thread_id);
+    }
+    if (type === "live.intent.resume" || type === "live.intent.end") {
+      return hasExactKeys(payload, ["actor_user_id", "live_session_id"]) &&
+        bounded(payload.actor_user_id) &&
+        bounded(payload.live_session_id);
+    }
+    if (type === "live.intent.mute") {
+      return hasExactKeys(payload, ["muted"]) && typeof payload.muted === "boolean";
+    }
+    return type === "live.intent.recover" && hasExactKeys(payload, []);
+  }
+
+  function postLiveIntent(type, payload) {
+    if (
+      !LIVE_FEATURE_ENABLED ||
+      window.parent === window ||
+      !validateLiveIntent(type, payload)
+    ) return false;
+    const message = {
+      source: LIVE_BRIDGE_SOURCE,
+      version: LIVE_BRIDGE_VERSION,
+      type,
+      payload,
+    };
+    if (!isBoundedBridgeMessage(message)) return false;
+    window.parent.postMessage(message, window.location.origin);
+    return true;
+  }
+
+  function validateLiveStatus(payload) {
+    return hasExactKeys(
+      payload,
+      ["state", "muted"],
+      ["live_session_id", "error"],
+    ) &&
+      LIVE_CALL_STATES.has(payload.state) &&
+      typeof payload.muted === "boolean" &&
+      (payload.live_session_id === undefined ||
+        (typeof payload.live_session_id === "string" &&
+          payload.live_session_id.length > 0 &&
+          payload.live_session_id.length <= 256)) &&
+      (payload.error === undefined ||
+        (typeof payload.error === "string" && payload.error.length <= 500));
+  }
+
+  function validateLiveHostMessage(value) {
+    if (
+      !hasExactKeys(value, ["source", "version", "type", "payload"]) ||
+      !isBoundedBridgeMessage(value) ||
+      value.source !== LIVE_HOST_SOURCE ||
+      value.version !== LIVE_BRIDGE_VERSION
+    ) return false;
+    if (value.type === "live.status") return validateLiveStatus(value.payload);
+    return value.type === "live.event" && validateLiveEvent(value.payload);
+  }
+
+  function recordLiveLatencyPoint(
+    identity,
+    stage,
+    source = "browser",
+    occurredAt = new Date(),
+  ) {
+    const occurred_at = occurredAt.toISOString();
+    const sequence = nextLiveEventSequence(identity);
+    const point = {
+      ...identity,
+      stage,
+      source,
+      occurred_at,
+      sequence,
+    };
+    const event = {
+      type: "latency.point",
+      ...identity,
+      occurred_at,
+      sequence,
+      latency: point,
+    };
+    postLiveBridgeMessage(event);
+    return point;
+  }
+
+  function reconcileCanonicalMessage(message) {
+    const clientMessageID = message?.client_message_id;
+    if (!clientMessageID) return false;
+    if (optimisticUserMessage?.client_message_id === clientMessageID) {
+      optimisticUserMessage = null;
+    }
+    if (!snapshot) snapshot = { messages: [] };
+    if (!Array.isArray(snapshot.messages)) snapshot.messages = [];
+    const canonicalIndex = snapshot.messages.findIndex(
+      (item) =>
+        item.ID === message.ID ||
+        (
+          item.client_message_id === clientMessageID &&
+          item.Role === message.Role
+        ),
+    );
+    if (canonicalIndex >= 0) snapshot.messages[canonicalIndex] = message;
+    else snapshot.messages.push(message);
+    return true;
+  }
+
+  function applyLiveEvent(event) {
+    if (!validateLiveEvent(event)) return false;
+    if (event.type === "transcript.partial") {
+      liveTranscript = event.transcript || "";
+      rerender(activeRealRoute);
+      return true;
+    }
+    if (event.type === "assistant.delta") {
+      streamingText += event.delta;
+      rerender(activeRealRoute);
+      return true;
+    }
+    if (event.type === "turn.failed") {
+      streamingText = "";
+      rerender(activeRealRoute);
+      return true;
+    }
+    if (event.type === "attachment.failed") {
+      const message = snapshot?.messages?.find(
+        (item) =>
+          item.Role === "user" &&
+          item.client_message_id === event.client_message_id,
+      );
+      if (message) {
+        message.recording_error = event.error || "录音未保存";
+      }
+      rerender(activeRealRoute);
+      return true;
+    }
+    if (LIVE_CANONICAL_EVENT_TYPES.has(event.type)) {
+      reconcileCanonicalMessage(event.message);
+      if (event.type === "turn.user_committed") {
+        liveTranscript = "";
+        streamingText = "";
+      } else if (event.type === "turn.assistant_committed") {
+        streamingText = "";
+      }
+      rerender(activeRealRoute);
+    }
+    return true;
+  }
+
+  window.addEventListener("message", (messageEvent) => {
+    if (
+      messageEvent.origin !== window.location.origin ||
+      messageEvent.source !== window.parent ||
+      !validateLiveHostMessage(messageEvent.data)
+    ) return;
+    if (messageEvent.data.type === "live.event") {
+      applyLiveEvent(messageEvent.data.payload);
+      return;
+    }
+    const status = messageEvent.data.payload;
+    liveCallState = status.state;
+    liveMuted = status.muted;
+    if (status.live_session_id) liveSessionID = status.live_session_id;
+    liveCallError = status.state === "failed"
+      ? status.error || "实时通话失败"
+      : "";
+    if (status.state === "idle") {
+      liveSessionID = "";
+      liveTranscript = "";
+      if (status.error) liveRecoveryNotice = status.error;
+    } else {
+      liveRecoveryNotice = "";
+    }
+    rerender(activeRealRoute);
+  });
 
   const escapeHTML = (value) =>
     String(value ?? "")
@@ -362,20 +677,46 @@
       .replace(/\bvery successfully\b/gi, "very successful")
       .replace(/^Good morning,\s*good morning\.?$/i, "Good morning!");
     const demoChanged = demoNativeExpression !== original;
-    return message?.learning_assessment ||
-      languageAssistanceState(message?.ID, "correct").result?.assessment || {
-        overall: 90,
-        fluency: 100,
-        pronunciation: 99,
-        naturalness: 70,
-        native_expression: correction?.corrected_text || demoNativeExpression,
-        explanations: correction?.items?.map((item) => item.explanation) || [
-          demoChanged
-            ? "当前为演示数据：推荐表达用于展示卡片效果，后续由真实评分模块替换。"
-            : "当前为演示评分，后续由真实语音评分模块提供分析说明。",
-        ],
-        is_demo: true,
-      };
+    const assessment = message?.learning_assessment ||
+      languageAssistanceState(message?.ID, "correct").result?.assessment;
+    if (assessment) return assessment;
+    return {
+      overall: 90,
+      fluency: 100,
+      pronunciation: 99,
+      naturalness: 70,
+      native_expression: correction?.corrected_text || demoNativeExpression,
+      explanations: correction?.items?.map((item) => item.explanation) || [
+        demoChanged
+          ? "当前为演示数据：推荐表达用于展示卡片效果，后续由真实评分模块替换。"
+          : "当前为演示评分，后续由真实语音评分模块提供分析说明。",
+      ],
+      is_demo: true,
+    };
+  }
+
+  function audioAttachmentForMessage(message) {
+    return message?.Attachments?.find(
+      (attachment) => String(attachment.mediaType || "").startsWith("audio/"),
+    ) || message?.attachments?.find(
+      (attachment) => String(attachment.mediaType || "").startsWith("audio/"),
+    );
+  }
+
+  function userRecordingControlHTML(message) {
+    if (audioAttachmentForMessage(message) || message?.recording_url || message?.audio_url) {
+      return `<button class="real-bubble-tool" data-real-action="play-user-recording" data-message-id="${escapeHTML(message.ID)}" aria-label="播放我的录音" title="播放我的录音">${soundIconHTML("ME")}</button>`;
+    }
+    if (message?.recording_error) {
+      return `<button class="real-bubble-tool" type="button" disabled aria-label="录音未保存" title="${escapeHTML(message.recording_error)}">${soundIconHTML("ME")}</button>`;
+    }
+    if (message?.mode === "live") {
+      const callIsActive = liveCallState !== "idle" && liveCallState !== "failed";
+      return callIsActive
+        ? `<button class="real-bubble-tool" type="button" disabled aria-label="录音处理中" title="录音上传并关联后可播放">${soundIconHTML("ME")}</button>`
+        : `<button class="real-bubble-tool" type="button" disabled aria-label="本次录音不可用" title="本次录音没有可播放的附件">${soundIconHTML("ME")}</button>`;
+    }
+    return `<button class="real-bubble-tool" data-real-action="play-user-recording" data-message-id="${escapeHTML(message.ID)}" aria-label="播放我的录音" title="播放我的录音">${soundIconHTML("ME")}</button>`;
   }
 
   function scoreBarHTML(message) {
@@ -428,7 +769,7 @@
           ${optimisticStatus ? `<small class="real-optimistic-status ${optimisticStatus}">${optimisticLabel}</small>` : ""}
           <div class="real-message-tools user-tools">
             <button class="real-bubble-tool" data-real-action="speak-text" data-text="${escapeHTML(message.Content)}" aria-label="AI 发音" title="AI 发音">${soundIconHTML("AI")}</button>
-            <button class="real-bubble-tool" data-real-action="play-user-recording" data-message-id="${escapeHTML(message.ID)}" aria-label="播放我的录音" title="播放我的录音">${soundIconHTML("ME")}</button>
+            ${userRecordingControlHTML(message)}
             ${optimisticStatus ? "" : `<button class="real-correction-tool" data-real-action="toggle-correction" data-message-id="${escapeHTML(message.ID)}" aria-expanded="${expandedCorrectionID === message.ID}"><strong>!!</strong><span>纠错</span></button>`}
           </div>
           ${optimisticStatus ? "" : correctionPreviewHTML(message)}
@@ -588,43 +929,75 @@
     </section>`;
   }
 
+  const liveCallLabels = {
+    connecting: "正在连接",
+    listening: "正在聆听",
+    thinking: "正在思考",
+    speaking: "正在说话",
+    reconnecting: "正在重新连接",
+    failed: "实时通话失败",
+  };
+
+  function liveCallComposerHTML() {
+    const label = liveCallLabels[liveCallState] || "实时通话";
+    if (liveCallState === "failed") {
+      return `<footer class="real-live-call failed">
+        <div class="real-live-call-status" role="status" aria-live="polite"><i></i><span><b>${escapeHTML(label)}</b><small>${escapeHTML(liveCallError || "连接没有完成")}</small></span></div>
+        <div class="real-live-call-actions">
+          <button data-real-action="recover-live-call">返回普通模式</button>
+          <button class="primary" data-real-action="retry-live-call">重试</button>
+        </div>
+      </footer>`;
+    }
+    return `<footer class="real-live-call ${escapeHTML(liveCallState)}">
+      <div class="real-live-call-status" role="status" aria-live="polite"><i></i><span><b>${escapeHTML(label)}</b><small>${liveMuted ? "麦克风已静音" : "你可以直接说话"}</small></span></div>
+      ${liveTranscript ? `<p class="real-live-partial"><small>正在识别</small>${escapeHTML(liveTranscript)}</p>` : ""}
+      <div class="real-live-call-actions">
+        <button data-real-action="toggle-live-mute" aria-pressed="${liveMuted}">${liveMuted ? "取消静音" : "静音"}</button>
+        <button class="danger" data-real-action="end-live-call">结束</button>
+      </div>
+    </footer>`;
+  }
+
   function composerHTML() {
+    if (LIVE_FEATURE_ENABLED && liveCallState !== "idle") {
+      return liveCallComposerHTML();
+    }
     const composerAttachments = [...pendingAttachments, ...uploadingAttachments];
     const hasPending = pendingAttachments.length > 0;
     if (isRecording()) {
-      return `<footer class="real-voice-capture">
-        <div class="real-voice-capture-head"><span class="real-live-dot"></span><b>${formatRecordingTime(recordingElapsedSeconds)}</b><small>${escapeHTML(recordingStatus)}</small></div>
-        <div class="real-live-wave" aria-hidden="true">${Array.from({ length: 12 }, () => "<i></i>").join("")}</div>
-        <p>${escapeHTML(liveTranscript || "正在听你说话…")}</p>
-        <div><button data-real-action="cancel-record">取消</button><button class="primary" data-real-action="record">结束并使用</button></div>
+      return `<footer class="real-agent-composer recording">
+        <button class="real-add real-recording-cancel" data-real-action="cancel-record" aria-label="取消录音">×</button>
+        <div class="real-recording-inline" role="status" aria-live="polite">
+          <div class="real-live-wave" aria-hidden="true">${Array.from({ length: 12 }, () => "<i></i>").join("")}</div>
+          <span><b>${formatRecordingTime(recordingElapsedSeconds)}</b><small>${escapeHTML(liveTranscript || "正在听你说话…")}</small></span>
+        </div>
+        <button class="real-mic recording" data-real-action="record" aria-label="停止并发送录音"><i></i></button>
       </footer>`;
     }
     if (voiceSubmissionInProgress) {
-      return `<footer class="real-voice-capture processing">
-        <div class="real-voice-capture-head"><span class="real-live-dot"></span><b>正在发送</b><small>${escapeHTML(recordingStatus)}</small></div>
-        <div class="real-live-wave" aria-hidden="true">${Array.from({ length: 12 }, () => "<i></i>").join("")}</div>
-        <p>${escapeHTML(liveTranscript || "正在整理语音和文字…")}</p>
+      return `<footer class="real-agent-composer processing">
+        <button class="real-add" aria-hidden="true" disabled>＋</button>
+        <div class="real-recording-inline" role="status" aria-live="polite">
+          <div class="real-live-wave" aria-hidden="true">${Array.from({ length: 12 }, () => "<i></i>").join("")}</div>
+          <span><b>正在发送</b><small>${escapeHTML(liveTranscript || recordingStatus || "正在整理语音和文字…")}</small></span>
+        </div>
+        <button class="real-mic processing" aria-label="录音处理中" disabled><i></i></button>
       </footer>`;
     }
     return `<section class="real-composer-shell ${attachmentDragActive ? "drag-active" : ""}">
     ${attachmentCardsHTML(composerAttachments, true)}
     ${attachmentDragActive ? `<div class="real-attachment-drop-hint"><b>松开即可添加图片</b><small>支持 PNG、JPEG 和 WebP</small></div>` : ""}
     ${attachmentUploading ? `<div class="real-attachment-uploading"><i></i><span>正在上传并由真实模型理解附件…</span></div>` : ""}
-    ${failedVoiceRecordingBlob ? `<div class="real-voice-send-retry"><span><b>录音尚未发送</b><small>本次录音已保留，可以直接重试。</small></span><button data-real-action="discard-voice-recording">删除</button><button class="primary" data-real-action="retry-voice-send">重试发送</button></div>` : ""}
-    ${voiceStateHTML()}
+    ${failedVoiceRecordingBlob ? `<div class="real-voice-send-retry"><span><b>${failedVoiceMessageID ? "文字已发送，录音尚未补充" : "录音尚未发送"}</b><small>本次录音已保留，可以直接重试。</small></span><button data-real-action="discard-voice-recording">删除</button><button class="primary" data-real-action="retry-voice-send">${failedVoiceMessageID ? "重试上传" : "重试发送"}</button></div>` : ""}
     <footer class="real-agent-composer">
       <input data-attachment-input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" multiple hidden>
       <button class="real-add" data-real-action="more" aria-label="添加照片和文件" ${attachmentUploading || pendingAttachments.length >= 4 ? "disabled" : ""}>＋</button>
       <textarea data-real-input rows="1" placeholder="发消息或粘贴图片">${escapeHTML(inputValue)}</textarea>
-      <button class="real-mic" data-real-action="record" aria-label="开始实时语音输入"><i></i></button>
+      <button class="real-mic" data-real-action="record" aria-label="开始录音"><i></i></button>
       <button class="real-send" data-real-action="send" aria-label="发送" ${loading || attachmentUploading || (!inputValue.trim() && !hasPending) || currentConfirmation() || contextLimitExceeded || snapshot?.requiresNewThread ? "disabled" : ""}>↑</button>
     </footer>
     </section>`;
-  }
-
-  function voiceStateHTML() {
-    const status = conversationVoiceState();
-    return `<div class="real-voice-state ${status.key}"><span><i></i>${escapeHTML(status.label)}</span><div>${speaking ? `<button data-real-action="stop-speech">停止</button>` : ""}${lastSpokenSentence && !speaking ? `<button data-real-action="replay-last-sentence">重听上一句</button>` : ""}<button data-real-action="toggle-auto-voice">${autoVoiceEnabled ? "自动朗读已开" : "自动朗读已关"}</button></div></div>`;
   }
 
   function formatRecordingTime(seconds) {
@@ -659,7 +1032,12 @@
         ${contextLimitHTML()}
         ${realErrorHTML()}
         ${thinkingHTML()}`;
-    return `<div class="agent-page real-agent-page ${hasComposerAttachments ? "has-composer-attachments" : ""}">
+    const liveLayoutClass =
+      LIVE_FEATURE_ENABLED && liveCallState !== "idle" ? " live-call-active" : "";
+    const attachmentLayoutClass = hasComposerAttachments
+      ? " has-composer-attachments"
+      : "";
+    return `<div class="agent-page real-agent-page${liveLayoutClass}${attachmentLayoutClass}">
       <section class="real-agent-thread">${content}</section>
       ${composerHTML()}
       ${correctionDetailSheetHTML()}
@@ -1159,7 +1537,7 @@
 
   const prototypeBottomNav = bottomNav;
   bottomNav = function () {
-    return prototypeBottomNav()
+    let navigation = prototypeBottomNav()
       .replaceAll('data-action="agent-new-chat"', 'data-real-action="reset"')
       .replace(
         'data-action="drawer-route" data-route-target="agent-chat"',
@@ -1169,6 +1547,17 @@
         /<section class="app-drawer-recent">.*?<\/section>/s,
         recentConversationHTML(),
       );
+    if (
+      LIVE_FEATURE_ENABLED &&
+      state.route === "agent-chat" &&
+      liveCallState === "idle"
+    ) {
+      navigation = navigation.replace(
+        '<button class="app-new-chat"',
+        '<button class="app-live-call" data-real-action="start-live-call" aria-label="开始实时通话"><span aria-hidden="true"><i></i><i></i><i></i></span></button><button class="app-new-chat"',
+      );
+    }
+    return navigation;
   };
   views["agent-chat"] = realAgentView;
   views["practice"] = realPracticeView;
@@ -1675,7 +2064,12 @@
     }
   }
 
-  async function sendMessage(value, additionalAttachmentIDs = [], additionalAttachments = []) {
+  async function sendMessage(
+    value,
+    additionalAttachmentIDs = [],
+    additionalAttachments = [],
+    onUserCommitted,
+  ) {
     const message = String(value || inputValue).trim();
     const attachmentIDs = [
       ...pendingAttachments.map((attachment) => attachment.id),
@@ -1690,9 +2084,20 @@
       snapshot?.requiresNewThread
     ) return;
     const originRoute = activeRealRoute;
+    const clientMessageID =
+      optimisticUserMessage?.client_message_id || crypto.randomUUID();
+    const liveIdentity = {
+      thread_id: THREAD_ID,
+      live_session_id:
+        optimisticUserMessage?.live_session_id || `normal-${THREAD_ID}`,
+      turn_id:
+        optimisticUserMessage?.turn_id || `turn-${clientMessageID}`,
+      client_message_id: clientMessageID,
+      mode: "normal",
+    };
     if (originRoute === "agent-chat") {
       optimisticUserMessage = optimisticUserMessage || {
-        ID: `optimistic-message-${Date.now()}`,
+        ID: `optimistic-message-${clientMessageID}`,
         Role: "user",
         Content: message,
         attachments: [],
@@ -1700,6 +2105,7 @@
       optimisticUserMessage.Content = message;
       optimisticUserMessage.attachments = [...pendingAttachments, ...additionalAttachments];
       optimisticUserMessage.optimisticStatus = "sending";
+      Object.assign(optimisticUserMessage, liveIdentity);
     }
     if (originRoute === "practice") {
       practiceCoachVisible = false;
@@ -1713,9 +2119,16 @@
     streamingText = "";
     loading = true;
     bridgeError = "";
+    recordLiveLatencyPoint(liveIdentity, "turn.submitted");
     rerender();
+    let canonicalUserMessage = null;
     try {
-      await streamTask(message, attachmentIDs);
+      canonicalUserMessage = await streamTask(
+        message,
+        attachmentIDs,
+        liveIdentity,
+        onUserCommitted,
+      );
       pendingAttachments = [];
       optimisticUserMessage = null;
       if (originRoute === "practice" && interviewFinished()) {
@@ -1739,6 +2152,7 @@
       streamingText = "";
       rerender(activeRealRoute);
     }
+    return canonicalUserMessage;
   }
 
   function submitRecognizedVoiceAnswer(text) {
@@ -1762,7 +2176,13 @@
     });
   }
 
-  async function streamTask(message, attachmentIDs = []) {
+  async function streamTask(
+    message,
+    attachmentIDs = [],
+    liveIdentity,
+    onUserCommitted,
+  ) {
+    const clientMessageID = liveIdentity?.client_message_id || crypto.randomUUID();
     const response = await fetch(
       `${API_BASE}/v1/assistant/threads/${THREAD_ID}/tasks/stream`,
       {
@@ -1776,14 +2196,18 @@
           user_message: message,
           attachment_ids: attachmentIDs,
           interaction_mode: activeRealRoute === "practice" ? "interview" : "conversation",
-          idempotency_key: crypto.randomUUID(),
+          client_message_id: clientMessageID,
+          live_session_id: liveIdentity?.live_session_id,
+          turn_id: liveIdentity?.turn_id,
+          mode: liveIdentity?.mode || "normal",
+          idempotency_key: clientMessageID,
         }),
       },
     );
-    await consumeTaskStream(response);
+    return consumeTaskStream(response, liveIdentity, onUserCommitted);
   }
 
-  async function consumeTaskStream(response) {
+  async function consumeTaskStream(response, liveIdentity, onUserCommitted) {
     if (!response.ok || !response.body) {
       throw new Error(await response.text());
     }
@@ -1791,6 +2215,7 @@
     const decoder = new TextDecoder();
     let buffer = "";
     let completed = false;
+    let canonicalUserMessage = null;
     while (true) {
       const { value, done } = await reader.read();
       buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
@@ -1811,7 +2236,12 @@
           .join("\n");
         if (dataText) {
           const data = JSON.parse(dataText);
-          if (eventName === "assistant.delta") {
+          if (eventName === "turn.user_committed") {
+            canonicalUserMessage = data.message;
+            reconcileCanonicalMessage(canonicalUserMessage);
+            onUserCommitted?.(canonicalUserMessage);
+            rerender(activeRealRoute);
+          } else if (eventName === "assistant.delta") {
             const delta = data.delta || "";
             streamingText += delta;
             queueStreamingSpeechDelta(delta);
@@ -1819,6 +2249,16 @@
           } else if (eventName === "task.completed") {
             snapshot = data.snapshot;
             contextLimitExceeded = Boolean(snapshot?.requiresNewThread);
+            if (liveIdentity) {
+              const canonicalMessage = [...(snapshot?.messages || [])]
+                .reverse()
+                .find(
+                  (message) =>
+                    message.client_message_id === liveIdentity.client_message_id,
+                );
+              if (canonicalMessage) reconcileCanonicalMessage(canonicalMessage);
+              recordLiveLatencyPoint(liveIdentity, "turn.persisted");
+            }
             flushStreamingSpeech();
             if (activeRealRoute === "practice" && streamingText.trim() && snapshot?.activeQuestion) {
               lastAutoPlayedQuestion = String(snapshot.activeQuestion).trim();
@@ -1839,6 +2279,7 @@
     if (!completed) {
       throw new Error("Agent 流式响应未返回最终状态");
     }
+    return canonicalUserMessage;
   }
 
   async function endInterview(reason = "user_requested") {
@@ -1917,6 +2358,10 @@
     loading = true;
     bridgeError = "";
     inputValue = "";
+    optimisticUserMessage = null;
+    failedVoiceRecordingBlob = null;
+    failedVoiceMessageID = "";
+    fallbackRecordingBlob = null;
     contextLimitExceeded = false;
     rejectedContextTokenCount = 0;
     selectedHistorySessionID = "";
@@ -2053,11 +2498,7 @@
 
   async function playUserRecording(messageID) {
     const message = findLanguageMessage(messageID);
-    const audioAttachment = message?.Attachments?.find(
-      (attachment) => String(attachment.mediaType || "").startsWith("audio/"),
-    ) || message?.attachments?.find(
-      (attachment) => String(attachment.mediaType || "").startsWith("audio/"),
-    );
+    const audioAttachment = audioAttachmentForMessage(message);
     const recordingURL = message?.recording_url ||
       message?.audio_url ||
       (audioAttachment?.id
@@ -2287,7 +2728,9 @@
       if (voiceAnswerRouteActive() && pendingVoiceAnswerSubmit) {
         submitRecognizedVoiceAnswer(transcript);
       } else {
-        inputValue = transcript;
+        liveTranscript = transcript;
+        voiceTranscriptFinal = true;
+        inputValue = mergeVoiceInput(recordingInputBase, transcript);
       }
     } catch (error) {
       bridgeError = "语音识别失败：" + (error.message || "未知错误");
@@ -2315,15 +2758,27 @@
     await transcribe(fallbackRecordingBlob);
   }
 
+  function mergeVoiceInput(base, transcript) {
+    const previous = String(base || "").trim();
+    const recognized = String(transcript || "").trim();
+    if (!previous) return recognized;
+    if (!recognized) return previous;
+    return `${previous} ${recognized}`;
+  }
+
   function handleASREvent(event) {
     if (event.type === "transcript.delta") {
       liveTranscript += event.text || "";
-      if (!voiceAnswerRouteActive()) inputValue = liveTranscript;
+      if (!voiceAnswerRouteActive()) {
+        inputValue = mergeVoiceInput(recordingInputBase, liveTranscript);
+      }
       rerender(activeRealRoute);
     } else if (event.type === "transcript.completed" || event.type === "transcription.done") {
       liveTranscript = event.text || liveTranscript;
       voiceTranscriptFinal = true;
-      if (!voiceAnswerRouteActive()) inputValue = liveTranscript;
+      if (!voiceAnswerRouteActive()) {
+        inputValue = mergeVoiceInput(recordingInputBase, liveTranscript);
+      }
       recordingStatus = voiceAnswerRouteActive() ? "识别完成，正在提交" : "识别完成，可编辑后发送";
       if (event.type === "transcription.done") {
         asrSocket?.close();
@@ -2349,6 +2804,7 @@
     asrStreamingFailed = false;
     fallbackRecordingBlob = null;
     fallbackTranscriptionStarted = false;
+    recordingInputBase = activeRealRoute === "practice" ? "" : inputValue;
     liveTranscript = "";
     pendingVoiceAnswerSubmit = false;
     voiceTranscriptFinal = false;
@@ -2449,13 +2905,30 @@
     const stream = recordingStream;
     recordingStream = null;
     stream.getTracks().forEach((track) => track.stop());
+    if (!cancel && activeRealRoute === "agent-chat") {
+      const clientMessageID = crypto.randomUUID();
+      optimisticUserMessage = {
+        ID: `optimistic-message-${clientMessageID}`,
+        Role: "user",
+        Content: mergeVoiceInput(recordingInputBase, liveTranscript) || "语音消息",
+        attachments: [],
+        optimisticStatus: "transcribing",
+        thread_id: THREAD_ID,
+        live_session_id: `normal-${THREAD_ID}`,
+        turn_id: `turn-${clientMessageID}`,
+        client_message_id: clientMessageID,
+        mode: "normal",
+      };
+      rerender(activeRealRoute);
+    }
     const stoppedRecording = recorder?.state === "recording"
       ? new Promise((resolve) => recorder.addEventListener("stop", () => resolve(fallbackRecordingBlob), { once: true }))
       : Promise.resolve(fallbackRecordingBlob);
     if (recorder?.state === "recording") recorder.stop();
     const recordingBlob = await stoppedRecording;
     if (cancel) {
-      inputValue = "";
+      inputValue = recordingInputBase;
+      recordingInputBase = "";
       liveTranscript = "";
       fallbackRecordingBlob = null;
       pendingVoiceAnswerSubmit = false;
@@ -2465,16 +2938,6 @@
       return;
     }
     recordingElapsedSeconds = 0;
-    if (activeRealRoute === "agent-chat") {
-      optimisticUserMessage = {
-        ID: `optimistic-message-${Date.now()}`,
-        Role: "user",
-        Content: liveTranscript.trim() || "语音消息",
-        attachments: [],
-        optimisticStatus: "transcribing",
-      };
-    }
-    rerender(activeRealRoute);
     await submitVoiceRecording(recordingBlob);
   }
 
@@ -2485,27 +2948,51 @@
     rerender(activeRealRoute);
     try {
       if (!recordingBlob?.size) throw new Error("没有录到有效语音");
-      const transcript = voiceTranscriptFinal && liveTranscript.trim()
+      const recognizedTranscript = voiceTranscriptFinal && liveTranscript.trim()
         ? liveTranscript.trim()
         : await requestTranscription(recordingBlob);
+      const transcript = activeRealRoute === "practice"
+        ? recognizedTranscript
+        : mergeVoiceInput(recordingInputBase, recognizedTranscript);
       if (!transcript) throw new Error("没有识别到可发送的文字");
       liveTranscript = transcript;
       if (optimisticUserMessage) optimisticUserMessage.Content = transcript;
-      recordingStatus = "正在上传原始录音…";
-      rerender(activeRealRoute);
-      const recordingAttachment = await uploadVoiceRecording(recordingBlob);
-      if (optimisticUserMessage) optimisticUserMessage.attachments = [recordingAttachment];
+      let resolveUserCommitted;
+      const userCommitted = new Promise((resolve) => {
+        resolveUserCommitted = resolve;
+      });
       pendingVoiceAnswerSubmit = false;
-      voiceSubmissionInProgress = false;
-      failedVoiceRecordingBlob = null;
       inputValue = "";
+      recordingInputBase = "";
       liveTranscript = "";
       fallbackRecordingBlob = null;
-      await sendMessage(
+      voiceSubmissionInProgress = false;
+      const messageTask = sendMessage(
         transcript,
-        [recordingAttachment.id],
-        [recordingAttachment],
+        [],
+        [],
+        (message) => resolveUserCommitted(message),
       );
+      const recordingUpload = uploadVoiceRecording(recordingBlob).then(
+        (attachment) => ({ attachment }),
+        (error) => ({ error }),
+      );
+      const canonicalUserMessage = await Promise.race([userCommitted, messageTask]);
+      if (!canonicalUserMessage?.ID) {
+        throw new Error("文字消息发送失败");
+      }
+      try {
+        const recordingResult = await recordingUpload;
+        if (recordingResult.error) throw recordingResult.error;
+        const recordingAttachment = recordingResult.attachment;
+        await linkVoiceRecording(canonicalUserMessage.ID, recordingAttachment.id);
+        failedVoiceRecordingBlob = null;
+        failedVoiceMessageID = "";
+      } catch (_uploadError) {
+        failedVoiceRecordingBlob = recordingBlob;
+        failedVoiceMessageID = canonicalUserMessage.ID;
+        toast("文字对话已发送，录音上传失败，可稍后重试");
+      }
     } catch (error) {
       failedVoiceRecordingBlob = recordingBlob?.size ? recordingBlob : null;
       if (optimisticUserMessage) optimisticUserMessage.optimisticStatus = "failed";
@@ -2515,6 +3002,36 @@
       voiceSubmissionInProgress = false;
       rerender(activeRealRoute);
     }
+  }
+
+  async function linkVoiceRecording(messageID, attachmentID) {
+    const result = await request(
+      `/v1/assistant/messages/${encodeURIComponent(messageID)}/attachments`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ attachment_id: attachmentID }),
+      },
+    );
+    if (result?.message) reconcileCanonicalMessage(result.message);
+    return result?.message;
+  }
+
+  async function retryVoiceAttachmentUpload() {
+    if (!failedVoiceRecordingBlob || !failedVoiceMessageID || voiceSubmissionInProgress) return;
+    voiceSubmissionInProgress = true;
+    try {
+      const attachment = await uploadVoiceRecording(failedVoiceRecordingBlob);
+      await linkVoiceRecording(failedVoiceMessageID, attachment.id);
+      failedVoiceRecordingBlob = null;
+      failedVoiceMessageID = "";
+      toast("录音已补充完成");
+    } catch (_error) {
+      toast("录音上传仍未完成，请稍后重试");
+    } finally {
+      voiceSubmissionInProgress = false;
+    }
+    rerender(activeRealRoute);
   }
 
   async function toggleRecording() {
@@ -2642,6 +3159,60 @@
     }
     const action = target.dataset.realAction;
     if (action === "send") void sendMessage();
+    else if (action === "start-live-call") {
+      liveCallState = "connecting";
+      liveCallError = "";
+      liveRecoveryNotice = "";
+      rerender("agent-chat");
+      if (!postLiveIntent("live.intent.start", {
+        actor_user_id: ACTOR_ID,
+        thread_id: THREAD_ID,
+      })) {
+        liveCallState = "failed";
+        liveCallError = "无法启动实时通话";
+        rerender("agent-chat");
+      }
+    }
+    else if (action === "retry-live-call") {
+      liveCallState = "connecting";
+      liveCallError = "";
+      rerender("agent-chat");
+      const posted = liveSessionID
+        ? postLiveIntent("live.intent.resume", {
+            actor_user_id: ACTOR_ID,
+            live_session_id: liveSessionID,
+          })
+        : postLiveIntent("live.intent.start", {
+            actor_user_id: ACTOR_ID,
+            thread_id: THREAD_ID,
+          });
+      if (!posted) {
+        liveCallState = "failed";
+        liveCallError = "无法重新连接实时通话";
+        rerender("agent-chat");
+      }
+    }
+    else if (action === "toggle-live-mute") {
+      postLiveIntent("live.intent.mute", { muted: !liveMuted });
+    }
+    else if (action === "end-live-call") {
+      if (liveSessionID) {
+        postLiveIntent("live.intent.end", {
+          actor_user_id: ACTOR_ID,
+          live_session_id: liveSessionID,
+        });
+      } else {
+        postLiveIntent("live.intent.recover", {});
+      }
+    }
+    else if (action === "recover-live-call") {
+      postLiveIntent("live.intent.recover", {});
+      liveCallState = "idle";
+      liveSessionID = "";
+      liveTranscript = "";
+      liveCallError = "";
+      rerender("agent-chat");
+    }
     else if (action === "submit-answer") void sendMessage();
     else if (action === "quick") void sendMessage(target.dataset.message);
     else if (action === "toggle-translation") toggleTranslation(target.dataset.messageId);
@@ -2664,6 +3235,10 @@
     else if (action === "record") void toggleRecording();
     else if (action === "cancel-record") void stopLiveRecording(true);
     else if (action === "retry-voice-send") {
+      if (failedVoiceMessageID) {
+        void retryVoiceAttachmentUpload();
+        return;
+      }
       const recording = failedVoiceRecordingBlob;
       failedVoiceRecordingBlob = null;
       bridgeError = "";
@@ -2671,6 +3246,7 @@
     }
     else if (action === "discard-voice-recording") {
       failedVoiceRecordingBlob = null;
+      failedVoiceMessageID = "";
       fallbackRecordingBlob = null;
       bridgeError = "";
       if (optimisticUserMessage?.optimisticStatus === "failed") optimisticUserMessage = null;

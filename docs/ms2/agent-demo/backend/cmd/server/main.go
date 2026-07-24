@@ -71,6 +71,13 @@ func main() {
 	// Mem0 recall is performed by UserContextReader so it is retrieved once and
 	// rendered alongside the current Scenario and confirmed profile.
 	contextBuilder := assistantcontext.NewBuilder(nil)
+	liveKitConfig := assistant.LoadLiveKitConfig()
+	logger.Printf(
+		"live_voice_config enabled=%t available=%t token_ttl_seconds=%d",
+		liveKitConfig.Enabled,
+		liveKitConfig.Available(),
+		int64(liveKitConfig.TokenTTL/time.Second),
+	)
 	service := assistant.NewService(assistant.Dependencies{
 		Planner:           provider,
 		ContextBuilder:    mem0client.AssistantContextBuilder{Builder: contextBuilder, UserContext: contextReader},
@@ -80,6 +87,7 @@ func main() {
 		Runtime:           state,
 		Attachments:       preparationService,
 		Resetter:          state,
+		LiveKit:           liveKitConfig,
 	})
 	handler := assistant.NewHTTPHandler(
 		logger,

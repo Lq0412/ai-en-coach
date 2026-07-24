@@ -32,6 +32,7 @@ test("server-renders the SpeakUp product prototype host", async () => {
   assert.match(html, /<title>SpeakUp 产品原型<\/title>/i);
   assert.match(html, /SpeakUp 产品原型/);
   assert.match(html, /\/prototype\/pages\/prototype\.html\?api_base=/);
+  assert.match(html, /live_voice=0/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 
@@ -80,7 +81,13 @@ test("prototype bridges the original interaction to the Go assistant", async () 
   assert.match(bridge, /queueStreamingSpeechDelta/);
   assert.match(bridge, /flushStreamingSpeech/);
   assert.match(bridge, /stopSpeechPlayback/);
-  assert.match(bridge, /real-voice-capture/);
+  assert.match(bridge, /real-recording-inline/);
+  assert.match(bridge, /class="real-agent-composer recording"/);
+  assert.match(bridge, /aria-label="开始录音"/);
+  assert.match(bridge, /aria-label="停止并发送录音"/);
+  assert.doesNotMatch(bridge, /class="real-live-entry"/);
+  assert.match(bridge, /class="app-live-call"/);
+  assert.match(bridge, /aria-label="开始实时通话"/);
   assert.match(bridge, /transcript\.delta/);
   assert.match(bridge, /interview_paused|interaction_mode/);
   assert.match(bridge, /context_limit_exceeded/);
@@ -119,16 +126,43 @@ test("prototype bridges the original interaction to the Go assistant", async () 
   assert.match(bridge, /pendingVoiceAnswerSubmit/);
   assert.match(bridge, /uploadVoiceRecording/);
   assert.match(bridge, /voiceSubmissionInProgress/);
+  assert.match(bridge, /recordingInputBase = activeRealRoute === "practice" \? "" : inputValue/);
+  assert.match(bridge, /inputValue = mergeVoiceInput\(recordingInputBase, liveTranscript\)/);
+  assert.match(bridge, /const transcript = activeRealRoute === "practice"[\s\S]*mergeVoiceInput\(recordingInputBase, recognizedTranscript\)/);
+  assert.match(bridge, /if \(cancel\) \{[\s\S]*inputValue = recordingInputBase/);
   assert.match(bridge, /正在识别并发送/);
   assert.match(bridge, /optimisticUserMessage/);
   assert.match(bridge, /optimisticStatus: "transcribing"/);
   assert.match(bridge, /正在识别语音/);
   assert.match(bridge, /已发送，等待 SpeakUp 回复/);
   assert.match(bridge, /语音播放失败，请稍后点击重读/);
-  assert.match(bridge, /sendMessage\(\s*transcript,\s*\[recordingAttachment\.id\]/);
+  assert.doesNotMatch(bridge, /await uploadVoiceRecording\(recordingBlob\)[\s\S]{0,500}await sendMessage/);
+  assert.match(bridge, /const messageTask = sendMessage\(\s*transcript,/);
+  assert.match(bridge, /const recordingUpload = uploadVoiceRecording\(recordingBlob\)/);
+  assert.match(
+    bridge,
+    /voiceSubmissionInProgress = false;[\s\S]{0,500}const messageTask = sendMessage\(\s*transcript,/,
+  );
+  assert.match(
+    bridge,
+    /return consumeTaskStream\(response, liveIdentity, onUserCommitted\)/,
+  );
+  assert.match(bridge, /onUserCommitted\?\.\(canonicalUserMessage\)/);
+  assert.match(bridge, /Promise\.race\(\[userCommitted, messageTask\]\)/);
+  assert.doesNotMatch(bridge, /const canonicalUserMessage = await messageTask/);
+  assert.match(bridge, /turn\.user_committed/);
+  assert.match(bridge, /linkVoiceRecording/);
   assert.match(bridge, /startsWith\("audio\/"\)/);
   assert.match(bridge, /data-real-action="retry-voice-send"/);
   assert.match(bridge, /本次录音已保留/);
+  const resetConversation = bridge.match(
+    /async function resetConversation\(\) \{[\s\S]*?\n  \}\n\n  async function uploadAttachments/,
+  )?.[0];
+  assert.ok(resetConversation, "resetConversation implementation is missing");
+  assert.match(resetConversation, /optimisticUserMessage = null/);
+  assert.match(resetConversation, /failedVoiceRecordingBlob = null/);
+  assert.match(resetConversation, /failedVoiceMessageID = ""/);
+  assert.match(resetConversation, /fallbackRecordingBlob = null/);
   assert.doesNotMatch(bridge, /⭐|★|☆/);
   assert.match(bridge, /data-attachment-input/);
   assert.match(bridge, /accept="application\/pdf,image\/png,image\/jpeg,image\/webp"/);
@@ -217,6 +251,85 @@ test("keeps Go assistant contracts aligned with the XE3-ESL scaffold", async () 
   assert.match(client, /async Transcribe\(audio: Blob\)/);
   assert.match(client, /async Synthesize\(text: string/);
   assert.match(client, /convertRecordingToWAV/);
+});
+
+test("defines realtime event, reconciliation, and latency bridge contracts", async () => {
+  const [bridge, host, session, styles, backendModel] = await Promise.all([
+    readFile(
+      new URL(
+        "../public/prototype/assets/agent-backend-bridge.js",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+    readFile(
+      new URL("../app/components/live-conversation-host.tsx", import.meta.url),
+      "utf8",
+    ),
+    readFile(new URL("../app/lib/livekit-session.ts", import.meta.url), "utf8"),
+    readFile(
+      new URL(
+        "../public/prototype/assets/agent-backend-bridge.css",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+    readFile(
+      new URL("../../backend/internal/assistant/model.go", import.meta.url),
+      "utf8",
+    ),
+  ]);
+
+  assert.match(bridge, /transcript\.partial/);
+  assert.match(bridge, /turn\.user_committed/);
+  assert.match(bridge, /assistant\.delta/);
+  assert.match(bridge, /turn\.assistant_committed/);
+  assert.match(bridge, /attachment\.linked/);
+  assert.match(bridge, /latency\.point/);
+  assert.match(bridge, /thread_id/);
+  assert.match(bridge, /live_session_id/);
+  assert.match(bridge, /turn_id/);
+  assert.match(bridge, /client_message_id/);
+  assert.match(bridge, /occurred_at/);
+  assert.match(bridge, /sequence/);
+  assert.match(bridge, /postMessage\(/);
+  assert.match(bridge, /reconcileCanonicalMessage/);
+  assert.match(bridge, /recordLiveLatencyPoint/);
+  assert.match(bridge, /client_message_id:\s*clientMessageID/);
+  assert.match(bridge, /idempotency_key:\s*clientMessageID/);
+  assert.match(bridge, /live\.intent\.start/);
+  assert.match(bridge, /live\.intent\.resume/);
+  assert.match(bridge, /live\.intent\.end/);
+  assert.match(bridge, /live\.intent\.mute/);
+  assert.match(bridge, /validateLiveHostMessage/);
+  assert.match(bridge, /messageEvent\.source\s*!==\s*window\.parent/);
+  assert.match(bridge, /messageEvent\.origin\s*!==\s*window\.location\.origin/);
+  assert.match(bridge, /role="status"\s+aria-live="polite"/);
+  assert.match(bridge, /正在连接|正在聆听|正在思考|正在说话|正在重新连接/);
+  assert.match(bridge, /action === "start-live-call"/);
+  assert.match(bridge, /data-real-action="toggle-live-mute"/);
+  assert.match(bridge, /data-real-action="end-live-call"/);
+  assert.match(bridge, /streamingText \+= event\.delta/);
+  assert.match(bridge, /item\.Role === message\.Role/);
+  assert.match(bridge, /aria-label="录音处理中"/);
+  assert.match(bridge, /is_demo:\s*true/);
+  assert.match(bridge, /LIVE_FEATURE_ENABLED/);
+  assert.match(styles, /\.real-live-call/);
+  assert.match(bridge, /live-call-active/);
+  assert.doesNotMatch(styles, /\.real-live-entry/);
+  assert.match(
+    styles,
+    /\.real-agent-page\.live-call-active\s+\.real-agent-thread[\s\S]*?bottom:\s*228px/,
+  );
+  assert.match(host, /from "livekit-client"/);
+  assert.match(host, /RoomEvent\.TrackSubscribed/);
+  assert.match(host, /RoomEvent\.DataReceived/);
+  assert.match(host, /setMicrophoneEnabled/);
+  assert.match(host, /isTrustedMessageEvent/);
+  assert.match(host, /iframe\.contentWindow/);
+  assert.match(session, /live_session_id/);
+  assert.doesNotMatch(session, /live_session:\s*\{\s*ID:/);
+  assert.match(backendModel, /ID\s+string\s+`json:"live_session_id"`/);
 });
 
 test("removes disposable starter artifacts", async () => {
