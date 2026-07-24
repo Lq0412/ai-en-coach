@@ -44,7 +44,7 @@ test("presents SpeakUp as a long-term Agent teacher connected to real outcomes",
   assert.doesNotMatch(html, /英文面试……|独自去医院……|汇报项目……|IELTS Part 2……/);
   assert.match(html, /<textPath/);
   assert.match(html, /scenario-flow-input-path/);
-  assert.match(flowMarkup, /M -180 190 C 140 252 350 190 570 118 C 820 38 1035 95 1380 58/);
+  assert.match(flowMarkup, /M -40 196 C 180 208 330 190 470 158 C 610 126 720 102 840 108 C 980 116 1100 82 1240 48/);
   assert.doesNotMatch(flowMarkup, /　·　/);
   assert.doesNotMatch(html, /scenario-flow-output-path|scenario-flow-ribbon|scenario-flow-copy-bright/);
   assert.doesNotMatch(flowMarkup, /<strong>SpeakUp<\/strong>|把下一件真实的事说给我听/);
@@ -59,7 +59,7 @@ test("presents SpeakUp as a long-term Agent teacher connected to real outcomes",
   assert.match(html, /portal-memory-chat\.jpg/);
   assert.doesNotMatch(html, /portal-interview-practice\.jpg|portal-panel-practice\.jpg/);
   assert.doesNotMatch(html, /portal-ielts-part2\.jpg|portal-daily-doctor\.jpg|portal-workplace-client\.jpg/);
-  assert.match(html, /SpeakUp 正在招募首批体验用户/);
+  assert.doesNotMatch(html, /SpeakUp 正在招募首批体验用户/);
   assert.doesNotMatch(html, /SpeakUp 模拟面试现已开放/);
   assert.match(html, /先理解你，不急着开练/);
   assert.match(html, /先教会你，再邀请实战/);
@@ -91,9 +91,10 @@ test("presents SpeakUp as a long-term Agent teacher connected to real outcomes",
 });
 
 test("renders five interactive product states instead of cropped screenshots", async () => {
-  const [source, styles] = await Promise.all([
+  const [source, styles, pageSource] = await Promise.all([
     readFile(new URL("app/InterviewDemo.tsx", root), "utf8"),
     readFile(new URL("app/globals.css", root), "utf8"),
+    readFile(new URL("app/page.tsx", root), "utf8"),
   ]);
   assert.match(source, /demo-product-screen/);
   assert.doesNotMatch(source, /<img/);
@@ -110,9 +111,14 @@ test("renders five interactive product states instead of cropped screenshots", a
   assert.match(source, /数据库迁移与回滚 · 专项模拟/);
   assert.match(source, /进入专项练习/);
   assert.doesNotMatch(source, /和老师还原这道题/);
+  assert.match(source, /IntersectionObserver/);
+  assert.match(source, /scrollIntoView/);
+  assert.match(source, /demo-mobile-story/);
+  assert.match(pageSource, /M -40 196 C 180 208 330 190 470 158 C 610 126 720 102 840 108 C 980 116 1100 82 1240 48/);
+  assert.match(pageSource, /attributeName="startOffset"[\s\S]*?dur="2\.2s"/);
   const practicePanel = source.match(/if \(kind === "practice"\)[\s\S]*?if \(kind === "interview"\)/)?.[0] || "";
   assert.equal(practicePanel.match(/<VoiceBubble/g)?.length, 2);
-  assert.match(styles, /grid-template-rows:\s*repeat\(5/);
+  assert.match(styles, /\.demo-step-list[\s\S]*?border-right:\s*2px solid var\(--ink\)/);
 
   const demoStyles = styles.slice(
     styles.indexOf(".demo-sequence"),
@@ -123,11 +129,70 @@ test("renders five interactive product states instead of cropped screenshots", a
   assert.match(styles, /\.scenario-flow-stage/);
   assert.doesNotMatch(styles, /\.scenario-flow-ribbon|\.scenario-flow-copy-bright/);
   assert.match(styles, /\.scenario-flow-stage[\s\S]*?height:\s*clamp\(200px,\s*20vw,\s*240px\)/);
-  assert.match(styles, /\.hero h1[\s\S]*?font-size:\s*clamp\(52px,\s*5\.8vw,\s*76px\)/);
+  assert.match(styles, /\.scenario-flow-stage svg[\s\S]*?width:\s*100%[\s\S]*?height:\s*100%/);
+  assert.equal(styles.match(/\.scenario-flow-stage svg\s*\{/g)?.length, 1);
+  assert.match(styles, /\.hero h1[\s\S]*?font-size:\s*clamp\(48px,\s*5\.4vw,\s*70px\)/);
   assert.match(styles, /\.headline-muted[\s\S]*?rgba\(26,\s*26,\s*26,\s*0\.52\)/);
   assert.match(styles, /--section-space:/);
   assert.match(styles, /prefers-reduced-motion[\s\S]*\.scenario-flow-copy-motion/);
   assert.match(styles, /prefers-reduced-motion[\s\S]*\.scenario-flow-copy-static/);
+});
+
+test("uses one responsive layout scale across the portal", async () => {
+  const [styles, source] = await Promise.all([
+    readFile(new URL("app/globals.css", root), "utf8"),
+    readFile(new URL("app/InterviewDemo.tsx", root), "utf8"),
+  ]);
+  assert.match(styles, /--section-space:\s*clamp\(80px,\s*8vw,\s*120px\)/);
+  assert.match(styles, /--section-heading:\s*clamp\(44px,\s*5\.2vw,\s*68px\)/);
+  assert.match(styles, /\.section-intro h2,[\s\S]*?font-size:\s*var\(--section-heading\)/);
+  assert.match(styles, /\.demo-stage[\s\S]*?position:\s*sticky[\s\S]*?top:\s*24px/);
+  assert.match(styles, /\.demo-step[\s\S]*?min-height:\s*clamp\(260px,\s*36vh,\s*320px\)[\s\S]*?gap:\s*12px[\s\S]*?padding:\s*28px 24px/);
+  assert.match(styles, /\.demo-tone-1\s*\{[\s\S]*?var\(--glow\)/);
+  assert.match(styles, /\.demo-tone-2\s*\{[\s\S]*?var\(--lumen-dark\)/);
+  assert.match(styles, /\.demo-tone-3\s*\{[\s\S]*?var\(--dawn\)/);
+  assert.match(styles, /\.demo-tone-4\s*\{[\s\S]*?var\(--lumen\)/);
+  assert.match(styles, /\.demo-tone-5\s*\{[\s\S]*?#d7eadf/);
+  assert.match(styles, /\.demo-screen-bar\s*\{[\s\S]*?font-size:\s*14px/);
+  assert.match(styles, /\.demo-user-message\s*\{[\s\S]*?font-size:\s*15px/);
+  assert.match(styles, /\.demo-coach-turn p\s*\{[\s\S]*?font-size:\s*15px/);
+  assert.match(styles, /\.demo-interviewer-bubble > p\s*\{[\s\S]*?font-size:\s*18px/);
+  assert.match(styles, /\.demo-question-actions button\s*\{[\s\S]*?font-size:\s*12px/);
+  assert.match(styles, /\.demo-session-summary\s*\{[\s\S]*?font-size:\s*13px/);
+  assert.match(source, /demo-sequence demo-tone-\$\{activeIndex \+ 1\}/);
+  assert.match(source, /demo-mobile-chapter demo-tone-\$\{index \+ 1\}/);
+  assert.match(styles, /\.context-section[\s\S]*?border-radius:\s*64px/);
+  assert.match(styles, /@media \(min-width:\s*641px\)[\s\S]*?\.site-nav\s*\{[\s\S]*?position:\s*sticky[\s\S]*?top:\s*16px[\s\S]*?min-height:\s*73px[\s\S]*?border:\s*2px solid var\(--lumen-dark\)[\s\S]*?border-radius:\s*12px/);
+  assert.match(styles, /@media \(min-width:\s*641px\)[\s\S]*?\.hero\s*\{[\s\S]*?padding:\s*clamp\(150px,\s*12vw,\s*170px\) 0 var\(--section-space\)/);
+  assert.match(styles, /@media \(min-width:\s*641px\)[\s\S]*?\.hero h1\s*\{[\s\S]*?max-width:\s*var\(--content-width\)[\s\S]*?font-size:\s*clamp\(74px,\s*6\.7vw,\s*96px\)/);
+  assert.match(styles, /@media \(min-width:\s*641px\)[\s\S]*?\.hero-subtitle\s*\{[\s\S]*?margin-top:\s*56px/);
+  assert.match(styles, /@media \(min-width:\s*641px\)[\s\S]*?\.scenario-flow\s*\{[\s\S]*?margin-top:\s*20px/);
+  assert.match(styles, /@media \(min-width:\s*641px\) and \(max-height:\s*800px\)[\s\S]*?\.hero\s*\{[\s\S]*?padding-top:\s*88px/);
+  assert.match(styles, /@media \(min-width:\s*641px\) and \(max-height:\s*800px\)[\s\S]*?\.scenario-flow-stage\s*\{[\s\S]*?height:\s*146px/);
+  assert.match(styles, /@media \(max-width:\s*640px\)[\s\S]*?\.hero h1\s*\{[\s\S]*?width:\s*calc\(100vw - 20px\)[\s\S]*?font-size:\s*clamp\(32px,\s*9\.1vw,\s*38px\)/);
+  assert.match(styles, /@media \(max-width:\s*640px\)[\s\S]*?\.hero-subtitle\s*\{[\s\S]*?margin-top:\s*44px/);
+  assert.match(styles, /\.hero-product\s*\{[\s\S]*?width:\s*calc\(100vw - 32px\)[\s\S]*?transform:\s*translateX\(-50%\)/);
+  assert.match(styles, /@media \(max-width:\s*640px\)[\s\S]*?\.scenario-flow\s*\{[\s\S]*?margin:\s*8px -18px 16px/);
+  assert.match(styles, /@media \(max-width:\s*640px\)[\s\S]*?\.hero-product\s*\{[\s\S]*?width:\s*calc\(100vw - 16px\)/);
+  assert.match(styles, /@media \(min-width:\s*641px\)[\s\S]*?\.hero \.button-secondary\s*\{[\s\S]*?border:\s*0/);
+  assert.match(styles, /@media \(max-width:\s*640px\)[\s\S]*?--section-space:\s*72px/);
+  assert.match(styles, /@media \(max-width:\s*640px\)[\s\S]*?\.site-nav\s*\{[\s\S]*?position:\s*sticky[\s\S]*?top:\s*8px[\s\S]*?min-height:\s*54px[\s\S]*?border:\s*2px solid var\(--lumen-dark\)/);
+  assert.match(styles, /@media \(max-width:\s*640px\)[\s\S]*?\.hero\s*\{[\s\S]*?padding:\s*98px 0 var\(--section-space\)/);
+  assert.match(styles, /@media \(max-width:\s*640px\)[\s\S]*?\.hero \.button-secondary\s*\{[\s\S]*?border:\s*0/);
+  assert.match(styles, /@media \(max-width:\s*640px\)[\s\S]*?\.features-section \.section-intro h2\s*\{[\s\S]*?font-size:\s*clamp\(24px,\s*7\.5vw,\s*28px\)[\s\S]*?white-space:\s*nowrap/);
+  assert.match(styles, /@media \(max-width:\s*640px\)[\s\S]*?\.demo-question\s*\{[\s\S]*?font-size:\s*28px/);
+  assert.match(styles, /@media \(max-width:\s*640px\)[\s\S]*?\.demo-sequence\s*\{\s*display:\s*none/);
+  assert.match(styles, /@media \(max-width:\s*640px\)[\s\S]*?\.demo-mobile-story\s*\{[\s\S]*?display:\s*grid/);
+});
+
+test("uses one consistent font system across the portal", async () => {
+  const styles = await readFile(new URL("app/globals.css", root), "utf8");
+  assert.match(styles, /--font-sans:\s*-apple-system,\s*BlinkMacSystemFont/);
+  assert.match(styles, /--font-serif:\s*Georgia,\s*"Times New Roman",\s*"Songti SC",\s*STSong,\s*serif/);
+  assert.match(styles, /--font-mark:\s*Georgia,\s*"Times New Roman",\s*serif/);
+  assert.match(styles, /body\s*\{[\s\S]*?font-family:\s*var\(--font-sans\)/);
+  assert.match(styles, /h1,[\s\S]*?h2\s*\{[\s\S]*?font-family:\s*var\(--font-serif\)/);
+  assert.match(styles, /\.brand-mark\s*\{[\s\S]*?font-family:\s*var\(--font-mark\)/);
 });
 
 test("opens the original information collection form from primary calls to action", async () => {

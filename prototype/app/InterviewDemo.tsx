@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 
 type DemoKind = "understand" | "practice" | "interview" | "review" | "real-world";
 
@@ -209,59 +209,116 @@ function DemoPanel({ kind, href }: { kind: DemoKind; href: string }) {
 
 export default function InterviewDemo({ features }: { features: DemoFeature[] }) {
   const [activeIndex, setActiveIndex] = useState(0);
-  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const stepRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const active = features[activeIndex];
+
+  useEffect(() => {
+    const desktopQuery = window.matchMedia("(min-width: 641px)");
+    let observer: IntersectionObserver | null = null;
+
+    function observeSteps() {
+      observer?.disconnect();
+      if (!desktopQuery.matches) return;
+
+      observer = new IntersectionObserver(
+        (entries) => {
+          const current = entries.find((entry) => entry.isIntersecting);
+          if (!current) return;
+          const index = Number((current.target as HTMLElement).dataset.demoIndex);
+          if (Number.isInteger(index)) setActiveIndex(index);
+        },
+        { rootMargin: "-40% 0px -40% 0px", threshold: 0 },
+      );
+
+      stepRefs.current.forEach((step) => {
+        if (step) observer?.observe(step);
+      });
+    }
+
+    observeSteps();
+    desktopQuery.addEventListener("change", observeSteps);
+    return () => {
+      observer?.disconnect();
+      desktopQuery.removeEventListener("change", observeSteps);
+    };
+  }, [features.length]);
+
+  function goToStep(index: number) {
+    setActiveIndex(index);
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    stepRefs.current[index]?.scrollIntoView({
+      behavior: reduceMotion ? "auto" : "smooth",
+      block: "center",
+    });
+  }
 
   function selectByKey(event: KeyboardEvent<HTMLButtonElement>, index: number) {
     if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown"].includes(event.key)) return;
     event.preventDefault();
     const direction = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : -1;
     const nextIndex = (index + direction + features.length) % features.length;
-    setActiveIndex(nextIndex);
-    tabRefs.current[nextIndex]?.focus();
+    goToStep(nextIndex);
+    stepRefs.current[nextIndex]?.focus();
   }
 
   return (
-    <div className="demo-sequence">
-      <div className="demo-step-list" role="tablist" aria-label="SpeakUp 陪伴一次真实任务的五个阶段">
-        {features.map((feature, index) => (
-          <button
-            className="demo-step"
-            id={`demo-step-${feature.index}`}
-            key={feature.index}
-            type="button"
-            ref={(element) => { tabRefs.current[index] = element; }}
-            role="tab"
-            aria-controls="demo-stage"
-            aria-selected={activeIndex === index}
-            tabIndex={activeIndex === index ? 0 : -1}
-            onClick={() => setActiveIndex(index)}
-            onKeyDown={(event) => selectByKey(event, index)}
-          >
-            <span><b>{feature.index}</b><em>{feature.status}</em></span>
-            <strong>{feature.title}</strong>
-            <small aria-hidden={activeIndex !== index}>{feature.copy}</small>
-          </button>
-        ))}
+    <>
+      <div className={`demo-sequence demo-tone-${activeIndex + 1}`}>
+        <nav className="demo-step-list" aria-label="SpeakUp 陪伴一次真实任务的五个阶段">
+          {features.map((feature, index) => (
+            <button
+              className="demo-step"
+              data-demo-index={index}
+              id={`demo-step-${feature.index}`}
+              key={feature.index}
+              type="button"
+              ref={(element) => { stepRefs.current[index] = element; }}
+              aria-current={activeIndex === index ? "step" : undefined}
+              onClick={() => goToStep(index)}
+              onKeyDown={(event) => selectByKey(event, index)}
+            >
+              <span><b>{feature.index}</b><em>{feature.status}</em></span>
+              <strong>{feature.title}</strong>
+              <small>{feature.copy}</small>
+            </button>
+          ))}
+        </nav>
+
+        <article
+          className="demo-stage"
+          id="demo-stage"
+          aria-labelledby={`demo-step-${active.index}`}
+        >
+          <header>
+            <span>{active.index} / {String(features.length).padStart(2, "0")}</span>
+            <em>{active.status}</em>
+            <a href={active.href}>
+              {active.action} <span aria-hidden="true">↗</span>
+            </a>
+          </header>
+          <div className="demo-stage-frame">
+            <DemoPanel key={active.kind} kind={active.kind} href={active.href} />
+          </div>
+        </article>
       </div>
 
-      <article
-        className="demo-stage"
-        id="demo-stage"
-        role="tabpanel"
-        aria-labelledby={`demo-step-${active.index}`}
-      >
-        <header>
-          <span>{active.index} / {String(features.length).padStart(2, "0")}</span>
-          <em>{active.status}</em>
-          <a href={active.href}>
-            {active.action} <span aria-hidden="true">↗</span>
-          </a>
-        </header>
-        <div className="demo-stage-frame">
-          <DemoPanel kind={active.kind} href={active.href} />
-        </div>
-      </article>
-    </div>
+      <div className="demo-mobile-story" aria-label="SpeakUp 陪伴一次真实任务的五个阶段">
+        {features.map((feature, index) => (
+          <article className={`demo-mobile-chapter demo-tone-${index + 1}`} key={feature.index}>
+            <header>
+              <span><b>{feature.index}</b><em>{feature.status}</em></span>
+              <h3>{feature.title}</h3>
+              <p>{feature.copy}</p>
+            </header>
+            <div className="demo-mobile-stage-frame">
+              <DemoPanel kind={feature.kind} href={feature.href} />
+            </div>
+            <a className="demo-mobile-action" href={feature.href}>
+              {feature.action} <span aria-hidden="true">↗</span>
+            </a>
+          </article>
+        ))}
+      </div>
+    </>
   );
 }

@@ -104,14 +104,6 @@ const productFeatures = [
 export default function Home() {
   return (
     <main>
-      <div className="announcement">
-        <span>SpeakUp 正在招募首批体验用户</span>
-        <span className="announcement-separator" aria-hidden="true">·</span>
-        <a href={earlyAccessHref} data-scenario="英文面试">
-          申请首批体验 <span aria-hidden="true">↗</span>
-        </a>
-      </div>
-
       <nav className="site-nav" aria-label="主导航">
         <a className="brand" href="#top" aria-label="SpeakUp 首页">
           <span className="brand-mark" aria-hidden="true">S</span>
@@ -157,14 +149,14 @@ export default function Home() {
               <defs>
                 <path
                   id="scenario-flow-input-path"
-                  d="M -180 190 C 140 252 350 190 570 118 C 820 38 1035 95 1380 58"
+                  d="M -40 196 C 180 208 330 190 470 158 C 610 126 720 102 840 108 C 980 116 1100 82 1240 48"
                 />
               </defs>
 
               <text className="scenario-flow-copy scenario-flow-copy-muted scenario-flow-copy-motion">
                 <textPath href="#scenario-flow-input-path" startOffset="-50%">
                   {flowingTaskLoop}
-                  <animate attributeName="startOffset" from="-50%" to="0%" dur="50s" repeatCount="indefinite" />
+                  <animate attributeName="startOffset" from="-50%" to="0%" dur="2.2s" repeatCount="indefinite" />
                 </textPath>
               </text>
               <text className="scenario-flow-copy scenario-flow-copy-muted scenario-flow-copy-static">
