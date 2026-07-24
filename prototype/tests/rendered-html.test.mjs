@@ -105,16 +105,35 @@ test("balances marketing headlines without hard-coded line breaks", async () => 
 });
 
 test("keeps contact data behind a password-protected admin API", async () => {
-  const [summary, exportRoute, auth, schema] = await Promise.all([
+  const [
+    summary,
+    exportRoute,
+    auth,
+    schema,
+    environment,
+    dashboard,
+    viteConfig,
+    nginxConfig,
+  ] = await Promise.all([
     readFile(new URL("app/api/admin/summary/route.ts", root), "utf8"),
     readFile(new URL("app/api/admin/export/route.ts", root), "utf8"),
     readFile(new URL("lib/admin-auth.ts", root), "utf8"),
     readFile(new URL("db/schema.ts", root), "utf8"),
+    readFile(new URL(".env.example", root), "utf8"),
+    readFile(new URL("app/admin/AdminDashboard.tsx", root), "utf8"),
+    readFile(new URL("vite.config.ts", root), "utf8"),
+    readFile(new URL("deploy/xe3-speakup-portal.conf", root), "utf8"),
   ]);
   assert.match(summary, /isAdminRequest/);
   assert.match(exportRoute, /isAdminRequest/);
   assert.match(auth, /PORTAL_ADMIN_PASSWORD/);
   assert.match(auth, /SHA-256/);
+  assert.match(environment, /^PORTAL_ADMIN_PASSWORD=\s*$/m);
+  assert.match(dashboard, /function lockDashboard\(\)[\s\S]*?setPassword\(""\)/);
+  assert.doesNotMatch(viteConfig, /PORTAL_ADMIN_PASSWORD/);
+  assert.match(nginxConfig, /limit_req zone=speakup_portal_waitlist/);
+  assert.match(nginxConfig, /limit_req zone=speakup_portal_admin/);
+  assert.match(nginxConfig, /client_max_body_size/);
   assert.match(schema, /portal_events/);
   assert.match(schema, /portal_waitlist/);
   assert.doesNotMatch(schema, /ip_address|user_agent/);

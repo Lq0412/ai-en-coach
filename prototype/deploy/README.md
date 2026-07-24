@@ -10,6 +10,8 @@
 - `prototype/` 的内容位于 `/opt/xe3-speakup-portal/`。
 - Nginx 会加载 `/usr/local/nginx/conf/conf.d/*.conf`。若实际安装目录不同，
   下方命令中的目录需随服务器配置调整。
+- `PORTAL_ADMIN_PASSWORD` 必须通过部署环境或托管平台的 Secret 注入，
+  不得作为 Vite 构建变量传入或写入镜像。
 
 以下服务器命令需由 `root` 执行，或按实际环境添加 `sudo`。
 
@@ -22,6 +24,9 @@ docker compose -f deploy/compose.yaml up -d --build
 
 Compose 只将容器的 `3000` 端口映射到主机回环地址
 `127.0.0.1:18082`，外部流量必须经过 Nginx。
+正式 Nginx 配置会分别限制埋点、报名和管理接口的请求频率，并限制请求体大小。
+Compose 仅信任 `speak-up.top` 与 `www.speak-up.top` 的代理主机信息，
+用于还原 Nginx 终止 TLS 前的 HTTPS 请求来源。
 
 ## 2. 首次签发证书
 

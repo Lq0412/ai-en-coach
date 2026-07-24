@@ -57,36 +57,54 @@ export default function AdminDashboard() {
     setLoading(true);
     setError("");
 
-    const response = await fetch("/api/admin/summary", {
-      headers: { "x-portal-admin-password": password },
-    });
-    const result = await response.json() as Summary & { error?: string };
-    setLoading(false);
-
-    if (!response.ok) {
+    try {
+      const response = await fetch("/api/admin/summary", {
+        headers: { "x-portal-admin-password": password },
+      });
+      const result = await response.json().catch(() => ({})) as Summary & {
+        error?: string;
+      };
+      if (!response.ok) {
+        setSummary(null);
+        setError(result.error || "暂时无法读取数据。");
+        return;
+      }
+      setSummary(result);
+    } catch {
       setSummary(null);
-      setError(result.error || "暂时无法读取数据。");
-      return;
+      setError("网络连接失败，请稍后重试。");
+    } finally {
+      setLoading(false);
     }
-    setSummary(result);
   }
 
   async function exportWaitlist() {
-    const response = await fetch("/api/admin/export", {
-      headers: { "x-portal-admin-password": password },
-    });
-    if (!response.ok) {
-      setError("导出失败，请重新输入管理密码。");
-      return;
-    }
+    setError("");
+    try {
+      const response = await fetch("/api/admin/export", {
+        headers: { "x-portal-admin-password": password },
+      });
+      if (!response.ok) {
+        setError("导出失败，请重新输入管理密码。");
+        return;
+      }
 
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "speakup-waitlist.csv";
-    link.click();
-    URL.revokeObjectURL(url);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "speakup-waitlist.csv";
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError("网络连接失败，暂时无法导出。");
+    }
+  }
+
+  function lockDashboard() {
+    setPassword("");
+    setSummary(null);
+    setError("");
   }
 
   if (!summary) {
@@ -134,7 +152,7 @@ export default function AdminDashboard() {
         </Link>
         <div>
           <span>首批体验数据</span>
-          <button type="button" onClick={() => setSummary(null)}>锁定看板</button>
+          <button type="button" onClick={lockDashboard}>锁定看板</button>
         </div>
       </header>
 

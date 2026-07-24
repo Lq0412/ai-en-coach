@@ -4,7 +4,8 @@ import { jsonResponse } from "../../../../lib/portal-validation";
 
 function csvCell(value: unknown): string {
   const text = value == null ? "" : String(value);
-  return `"${text.replaceAll('"', '""')}"`;
+  const safeText = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+  return `"${safeText.replaceAll('"', '""')}"`;
 }
 
 export async function GET(request: Request) {

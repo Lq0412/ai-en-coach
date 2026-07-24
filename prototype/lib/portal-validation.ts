@@ -1,4 +1,4 @@
-export const eventTypes = ["page_view", "cta_click", "signup_submit"] as const;
+export const eventTypes = ["page_view", "cta_click"] as const;
 export type EventType = (typeof eventTypes)[number];
 
 export interface Attribution {
@@ -25,6 +25,26 @@ export function readAttribution(value: unknown): Attribution {
     campaign: cleanText(candidate.campaign, 140),
     content: cleanText(candidate.content, 140),
   };
+}
+
+export function jsonRequestRejectionStatus(request: Request): 403 | 415 | null {
+  const mediaType = request.headers.get("content-type")
+    ?.split(";", 1)[0]
+    .trim()
+    .toLowerCase();
+  if (mediaType !== "application/json") return 415;
+
+  const origin = request.headers.get("origin");
+  if (origin) {
+    try {
+      if (new URL(origin).origin !== new URL(request.url).origin) return 403;
+    } catch {
+      return 403;
+    }
+  }
+
+  if (request.headers.get("sec-fetch-site") === "cross-site") return 403;
+  return null;
 }
 
 export function jsonResponse(body: unknown, status = 200): Response {

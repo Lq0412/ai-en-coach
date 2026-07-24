@@ -2,11 +2,17 @@ import { getPortalDatabase } from "../../../lib/portal-db";
 import {
   cleanText,
   eventTypes,
+  jsonRequestRejectionStatus,
   jsonResponse,
   readAttribution,
 } from "../../../lib/portal-validation";
 
 export async function POST(request: Request) {
+  const rejectionStatus = jsonRequestRejectionStatus(request);
+  if (rejectionStatus) {
+    return jsonResponse({ error: "只接受同源 JSON 请求。" }, rejectionStatus);
+  }
+
   let input: Record<string, unknown>;
   try {
     input = await request.json() as Record<string, unknown>;
