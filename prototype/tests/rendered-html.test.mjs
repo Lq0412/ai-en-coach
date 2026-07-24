@@ -52,6 +52,7 @@ test("presents SpeakUp as a long-term Agent teacher connected to real outcomes",
   assert.match(html, /海外日常/);
   assert.match(html, /国际职场/);
   assert.match(html, /每一次练习，.*都留给下一次/s);
+  assert.doesNotMatch(html, /Memory 正在使用/);
   assert.match(html, /老师，你压中 Kafka 了/);
   assert.match(html, /数据库迁移/);
   assert.match(html, /SpeakUp 陪伴一次真实任务的五个阶段/);

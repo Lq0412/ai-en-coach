@@ -1480,20 +1480,6 @@ h2 {
   object-position: top;
 }
 
-.context-stamp {
-  position: absolute;
-  right: -32px;
-  bottom: 9%;
-  padding: 10px 16px;
-  border: 2px solid var(--ink);
-  border-radius: 999px;
-  background: var(--glow);
-  color: var(--ink);
-  font-weight: 750;
-  transform: rotate(5deg);
-  box-shadow: 5px 5px 0 var(--ink);
-}
-
 .context-copy h2,
 .outcome-copy h2 {
   font-family: "Songti SC", STSong, Georgia, serif;
@@ -2433,11 +2419,6 @@ footer > span {
   .context-shot-frame img {
     max-height: 480px;
     border-radius: 26px;
-  }
-
-  .context-stamp {
-    right: -8px;
-    font-size: 12px;
   }
 
   .context-copy h2,

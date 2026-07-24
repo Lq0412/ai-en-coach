@@ -203,7 +203,6 @@ export default function Home() {
               alt="SpeakUp Memory 记录用户目标、真实项目、能力变化与下一轮重点"
             />
           </div>
-          <span className="context-stamp">Memory 正在使用</span>
         </div>
         <div className="context-copy">
           <p className="eyebrow eyebrow-light">越用越懂你</p>
