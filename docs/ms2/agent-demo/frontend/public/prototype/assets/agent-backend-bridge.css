@@ -6,6 +6,14 @@
   background: #fff !important;
 }
 
+.real-interview-setup-message .real-message-copy{max-width:min(100%,330px)}
+.real-interview-setup-card{width:100%;display:grid;gap:6px;margin-top:12px;padding:15px;border:1px solid #d8e6e5;border-radius:17px;background:linear-gradient(145deg,#f7fbfa,#eef7f6);color:#202523;text-align:left;box-shadow:0 8px 20px rgba(34,85,84,.07);cursor:pointer}
+.real-interview-setup-card small{color:#4e8485;font-size:10px;font-weight:700;letter-spacing:.04em}
+.real-interview-setup-card strong{font-size:15px;line-height:1.35}
+.real-interview-setup-card>span{overflow:hidden;color:#6f7773;font-size:11px;line-height:1.45;text-overflow:ellipsis;white-space:nowrap}
+.real-interview-setup-card em{display:flex;align-items:center;justify-content:space-between;margin-top:4px;padding-top:10px;border-top:1px solid rgba(78,132,133,.16);color:#176872;font-size:11px;font-style:normal;font-weight:700}
+.real-interview-setup-card em i{font-size:17px;font-style:normal;line-height:1}
+
 .app-live-call {
   flex: 0 0 50px;
   width: 50px;

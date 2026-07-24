@@ -8,6 +8,7 @@ import {
   ConversationOrchestrator,
   omniWebsocketURL,
   parseJobMetadata,
+  standardTTSVoiceForRealtimeVoice,
 } from "../src/worker.js";
 import {
   QwenOmniRealtimeModel,
@@ -15,6 +16,7 @@ import {
 } from "../src/providers/qwen-omni-realtime.js";
 import { boundedTextSegments } from "../src/worker.js";
 import { streamCommittedTurn } from "../src/worker.js";
+import { interviewCardFromScenarioInput } from "../src/omni-orchestrator.js";
 
 test("worker metadata prefers job data and falls back to participant token metadata", () => {
   const job = JSON.stringify({
@@ -29,6 +31,18 @@ test("worker metadata prefers job data and falls back to participant token metad
   });
   assert.equal(parseJobMetadata(job, participant).actor_user_id, "job-user");
   assert.equal(parseJobMetadata("", participant).actor_user_id, "participant-user");
+  assert.equal(parseJobMetadata(JSON.stringify({
+    actor_user_id: "job-user",
+    thread_id: "thread-1",
+    live_session_id: "live-1",
+    voice: "Mione",
+  })).voice, "Mione");
+  assert.throws(() => parseJobMetadata(JSON.stringify({
+    actor_user_id: "job-user",
+    thread_id: "thread-1",
+    live_session_id: "live-1",
+    voice: "unsupported",
+  })), /Invalid option/);
   assert.throws(() => parseJobMetadata("", ""), /metadata is missing/);
 });
 
@@ -43,6 +57,34 @@ test("live runtime is pinned to the end-to-end Qwen Omni realtime model", () => 
     omniWebsocketURL({ DASHSCOPE_WORKSPACE_ID: "workspace-1" }),
     "wss://workspace-1.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime",
   );
+});
+
+test("ordinary TTS follows the realtime voice setting through a supported voice mapping", () => {
+  assert.equal(standardTTSVoiceForRealtimeVoice("Tina"), "longanhuan_v3.6");
+  assert.equal(standardTTSVoiceForRealtimeVoice("Jennifer"), "loongeva_v3.6");
+  assert.equal(standardTTSVoiceForRealtimeVoice("Mione"), "loongeva_v3.6");
+  assert.equal(standardTTSVoiceForRealtimeVoice("Aiden"), "loongjohn");
+  assert.equal(standardTTSVoiceForRealtimeVoice("Ethan"), "longjielidou_v3.6");
+  assert.equal(standardTTSVoiceForRealtimeVoice("Raymond"), "longjielidou_v3.6");
+  assert.equal(standardTTSVoiceForRealtimeVoice(undefined), "longanhuan_v3.6");
+});
+
+test("interview requests create a setup card while other scenarios do not", () => {
+  assert.deepEqual(interviewCardFromScenarioInput({
+    type: "interview",
+    title: "Go backend interview",
+    target_role: "Go Backend Engineer",
+    goal: "Practice system design",
+  }), {
+    title: "Go backend interview",
+    target_role: "Go Backend Engineer",
+    goal: "Practice system design",
+  });
+  assert.equal(interviewCardFromScenarioInput({
+    type: "meeting",
+    title: "Weekly sync",
+    goal: "Practice project updates",
+  }), undefined);
 });
 
 test("worker registers provider capabilities for every custom voice node", () => {
@@ -166,6 +208,49 @@ test("audio buffer bounds completed upload idempotency entries", async () => {
   buffer.append("1", new Uint8Array([1, 0]));
   await buffer.commit("1", "message-1b");
   assert.equal(uploads, 4);
+});
+
+test("audio assessment runs after linking and does not discard a saved recording on failure", async () => {
+  const sequence: string[] = [];
+  const successful = new TurnAudioBuffer({
+    maxBytes: 8,
+    upload: async () => {
+      sequence.push("upload");
+      return "attachment-1";
+    },
+    link: async () => {
+      sequence.push("link");
+      return { ID: "message-1" };
+    },
+    assess: async (_audio, messageID, referenceText) => {
+      sequence.push(`assess:${messageID}:${referenceText}`);
+      return {
+        ID: messageID,
+        learning_assessment: { provider: "xunfei.suntone", pronunciation: 88 },
+      };
+    },
+  });
+  successful.append("turn-1", new Uint8Array([1, 0]));
+  const assessed = await successful.commit("turn-1", "message-1", "hello");
+  assert.deepEqual(sequence, ["upload", "link", "assess:message-1:hello"]);
+  assert.equal(
+    (assessed?.assessmentMessage?.learning_assessment as Record<string, unknown>)
+      .pronunciation,
+    88,
+  );
+
+  const failing = new TurnAudioBuffer({
+    maxBytes: 8,
+    upload: async () => "attachment-2",
+    link: async () => ({ ID: "message-2" }),
+    assess: async () => {
+      throw new Error("quota exhausted");
+    },
+  });
+  failing.append("turn-2", new Uint8Array([1, 0]));
+  const linked = await failing.commit("turn-2", "message-2", "hello");
+  assert.equal(linked?.message?.ID, "message-2");
+  assert.equal(linked?.assessmentError, "quota exhausted");
 });
 
 test("committed turn streams speech and publishes only canonical message events", async () => {

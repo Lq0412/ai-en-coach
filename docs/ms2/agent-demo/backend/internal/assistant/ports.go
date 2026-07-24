@@ -358,5 +358,6 @@ type ConversationStore interface {
 	AppendMessage(context.Context, AssistantMessage) error
 	GetMessageByClientMessageID(context.Context, string, string) (AssistantMessage, error)
 	LinkMessageAttachment(context.Context, string, AttachmentReference) (AssistantMessage, error)
+	UpdateMessageAssessment(context.Context, string, LearningAssessment) (AssistantMessage, error)
 	ListMessages(context.Context, string) ([]AssistantMessage, error)
 }

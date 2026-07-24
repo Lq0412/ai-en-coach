@@ -36,8 +36,9 @@ func (p *MockPlanner) Plan(_ context.Context, request PlanRequest) (Plan, error)
 	if state.ActiveQuestion != "" {
 		if isInterviewStopRequest(text) {
 			return Plan{
-				Intent: "end_interview",
-				Steps:  []PlanStep{{ToolName: "review.generate_feedback", Arguments: map[string]any{"reason": "user_requested_stop"}}},
+				Intent:    "end_interview",
+				RouteType: "tool_plan",
+				Steps:     []PlanStep{{ToolName: "review.generate_feedback", Arguments: map[string]any{"reason": "user_requested_stop"}}},
 			}, nil
 		}
 		last := state.ShouldCompleteAfterNextTurn(time.Now())
@@ -46,7 +47,8 @@ func (p *MockPlanner) Plan(_ context.Context, request PlanRequest) (Plan, error)
 			lastTool = "review.generate_feedback"
 		}
 		return Plan{
-			Intent: "submit_interview_answer",
+			Intent:    "submit_interview_answer",
+			RouteType: "tool_plan",
 			Steps: []PlanStep{
 				{ToolName: "conversation.submit_turn", Arguments: map[string]any{
 					"answer_text": request.UserMessage, "interaction_mode": "TEXT",
@@ -59,25 +61,29 @@ func (p *MockPlanner) Plan(_ context.Context, request PlanRequest) (Plan, error)
 
 	if strings.Contains(text, "错题") || strings.Contains(text, "mistake") || strings.Contains(text, "复练") {
 		return Plan{
-			Intent: "view_saved_mistakes",
-			Steps:  []PlanStep{{ToolName: "review.list_mistakes", Arguments: map[string]any{"limit": 3, "status": ""}}},
+			Intent:    "view_saved_mistakes",
+			RouteType: "tool_plan",
+			Steps:     []PlanStep{{ToolName: "review.list_mistakes", Arguments: map[string]any{"limit": 3, "status": ""}}},
 		}, nil
 	}
 	if strings.Contains(text, "历史") || strings.Contains(text, "history") || strings.Contains(text, "记录") || strings.Contains(text, "最近面试") {
 		return Plan{
-			Intent: "view_practice_history",
-			Steps:  []PlanStep{{ToolName: "review.list_history", Arguments: map[string]any{"limit": 3}}},
+			Intent:    "view_practice_history",
+			RouteType: "tool_plan",
+			Steps:     []PlanStep{{ToolName: "review.list_history", Arguments: map[string]any{"limit": 3}}},
 		}, nil
 	}
 	if strings.Contains(text, "复盘") || strings.Contains(text, "反馈") || strings.Contains(text, "review") {
 		return Plan{
-			Intent: "review_latest_practice",
-			Steps:  []PlanStep{{ToolName: "review.generate_feedback", Arguments: map[string]any{}}},
+			Intent:    "review_latest_practice",
+			RouteType: "tool_plan",
+			Steps:     []PlanStep{{ToolName: "review.generate_feedback", Arguments: map[string]any{}}},
 		}, nil
 	}
 	if isOralFreePracticeRequest(text) {
 		return Plan{
-			Intent: "oral_free_practice",
+			Intent:    "oral_free_practice",
+			RouteType: "conversation",
 			Steps: []PlanStep{{
 				ToolName: "conversation.generate_reply",
 				Arguments: map[string]any{
@@ -105,7 +111,8 @@ func (p *MockPlanner) Plan(_ context.Context, request PlanRequest) (Plan, error)
 			return scenarioPracticePlan(variant, true), nil
 		}
 		return Plan{
-			Intent: "start_mock_interview",
+			Intent:    "start_mock_interview",
+			RouteType: "tool_plan",
 			Steps: []PlanStep{
 				{ToolName: "preparation.get_confirmed_context", Arguments: map[string]any{"scenario": "PROGRAMMER_INTERVIEW"}},
 				{ToolName: "practice.create_plan", Arguments: map[string]any{
@@ -119,7 +126,8 @@ func (p *MockPlanner) Plan(_ context.Context, request PlanRequest) (Plan, error)
 	}
 
 	return Plan{
-		Intent: "free_conversation",
+		Intent:    "free_conversation",
+		RouteType: "conversation",
 		Steps: []PlanStep{{
 			ToolName: "conversation.generate_reply",
 			Arguments: map[string]any{
@@ -134,6 +142,7 @@ func scenarioPracticePlan(variant string, interview bool) Plan {
 	spec, _ := FindScenarioSpec(variant)
 	plan := Plan{
 		Intent:          "scenario_practice",
+		RouteType:       "tool_plan",
 		Scenario:        spec.Scenario,
 		ScenarioVariant: variant,
 		KnowledgeTags:   append([]string(nil), spec.KnowledgeTags...),
@@ -1197,7 +1206,12 @@ func hasExplicitTargetRole(message string) bool {
 
 func interviewRequirementQuestionPlan() Plan {
 	return Plan{
-		Intent: "clarify_interview_requirements",
+		Intent:    "clarify_interview_requirements",
+		RouteType: "clarification",
+		MissingSlots: []MissingSlot{{
+			Name:     "target_role",
+			Question: "你想练 Go 后端、Java 后端、前端，还是其他岗位的英文面试？",
+		}},
 		Steps: []PlanStep{{
 			ToolName:  "conversation.generate_reply",
 			Arguments: map[string]any{},

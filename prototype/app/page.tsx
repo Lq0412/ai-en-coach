@@ -1,8 +1,6 @@
-import ComingSoonDialog from "./ComingSoonDialog";
 import EarlyAccessDialog from "./EarlyAccessDialog";
 import InterviewDemo from "./InterviewDemo";
 
-const comingSoonHref = "#coming-soon";
 const earlyAccessHref = "#early-access";
 
 const flowingTasks = [
@@ -25,7 +23,7 @@ const journeyStages = [
     type: "雅思口语",
     copy: "“陪我练一次 IELTS Part 2，重点看我能不能讲满两分钟。”",
     action: "准备下一次口语考试",
-    href: comingSoonHref,
+    href: earlyAccessHref,
   },
   {
     index: "02",
@@ -33,7 +31,7 @@ const journeyStages = [
     type: "英文面试",
     copy: "“我下周面试后端开发工程师，想练系统设计和技术取舍。”",
     action: "准备下一场面试",
-    href: comingSoonHref,
+    href: earlyAccessHref,
   },
   {
     index: "03",
@@ -41,7 +39,7 @@ const journeyStages = [
     type: "海外日常",
     copy: "“明天要去医院，我怕听不懂医生的追问。”",
     action: "说一件马上要办的事",
-    href: comingSoonHref,
+    href: earlyAccessHref,
   },
   {
     index: "04",
@@ -49,7 +47,7 @@ const journeyStages = [
     type: "国际职场",
     copy: "“我要向海外客户解释项目延期，但不能承诺新的日期。”",
     action: "准备下一次工作沟通",
-    href: comingSoonHref,
+    href: earlyAccessHref,
   },
 ];
 
@@ -60,7 +58,7 @@ const productFeatures = [
     title: "先理解你，不急着开练",
     copy: "“把岗位 JD 和简历给我。我先确认这轮更可能考什么，再安排准备顺序。”",
     status: "了解你",
-    href: comingSoonHref,
+    href: earlyAccessHref,
     action: "看老师如何追问",
   },
   {
@@ -69,7 +67,7 @@ const productFeatures = [
     title: "先教会你，再邀请实战",
     copy: "结合 JD 和真实项目，先教回答结构和关键表达，带着跟读，再换成你自己的经历。",
     status: "教你练",
-    href: comingSoonHref,
+    href: earlyAccessHref,
     action: "看一次口语练习",
   },
   {
@@ -78,7 +76,7 @@ const productFeatures = [
     title: "面试官接管真实追问",
     copy: "进入独立场景后，老师暂时退场，面试官围绕刚才的回答连续深挖。",
     status: "模拟实战",
-    href: comingSoonHref,
+    href: earlyAccessHref,
     action: "体验面试模拟",
   },
   {
@@ -87,7 +85,7 @@ const productFeatures = [
     title: "模拟结束，陪你复盘",
     copy: "回到老师主页，引用刚才的回答指出问题，再陪你把同一道题重新说好。",
     status: "陪你复盘",
-    href: comingSoonHref,
+    href: earlyAccessHref,
     action: "看老师如何复盘",
   },
   {
@@ -96,7 +94,7 @@ const productFeatures = [
     title: "真实面试回来，继续一起准备",
     copy: "老师主动询问现实结果，接住命中的题和新出现的问题，自然开始下一轮。",
     status: "回到现实",
-    href: comingSoonHref,
+    href: earlyAccessHref,
     action: "看看现实如何回来",
   },
 ];
@@ -303,7 +301,6 @@ export default function Home() {
       </section>
 
       <EarlyAccessDialog />
-      <ComingSoonDialog />
 
       <footer>
         <a className="brand" href="#top"><span className="brand-mark" aria-hidden="true">S</span><span>SpeakUp</span></a>

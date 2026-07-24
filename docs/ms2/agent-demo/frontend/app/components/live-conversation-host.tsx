@@ -20,6 +20,7 @@ import {
   type LiveRoomPort,
   type LiveSessionCredentials,
   type LiveStatus,
+  type RealtimeVoice,
 } from "../lib/livekit-session";
 
 type LiveConversationHostProps = {
@@ -212,6 +213,9 @@ export function LiveConversationHost({
             await flow.start({
               actor_user_id: String(message.payload.actor_user_id),
               thread_id: String(message.payload.thread_id),
+              ...(message.payload.voice
+                ? { voice: String(message.payload.voice) as RealtimeVoice }
+                : {}),
             });
           } else if (message.type === "live.intent.resume") {
             if (message.payload.live_session_id === flow.liveSessionID) {

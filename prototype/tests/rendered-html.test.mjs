@@ -51,7 +51,6 @@ test("presents SpeakUp as a long-term Agent teacher connected to real outcomes",
   assert.doesNotMatch(html, /scenario-flow-viewport/);
   assert.doesNotMatch(html, /href="\/pages\/prototype\.html/);
   assert.match(html, /href="#early-access"/);
-  assert.match(html, /敬请期待/);
   assert.match(html, /下一场重要的英文沟通/);
   assert.match(html, /越用越懂你/);
   assert.match(html, /把岗位 JD 和简历发给我/);
@@ -79,11 +78,9 @@ test("presents SpeakUp as a long-term Agent teacher connected to real outcomes",
   assert.doesNotMatch(html, /一次面试任务，.*Agent 的四种能力/s);
   assert.doesNotMatch(html, /同一个 Agent，.*接住不同的真实任务/s);
   assert.doesNotMatch(html, /class="feature-card"/);
-  assert.match(html, /id="coming-soon"/);
   assert.match(html, /id="early-access"/);
   assert.match(html, /<dialog/);
-  assert.match(html, /method="dialog"/);
-  assert.match(html, /href="#coming-soon"/);
+  assert.doesNotMatch(html, /id="coming-soon"|href="#coming-soon"/);
   assert.doesNotMatch(html, /验证入口|方向验证|产品行为占位|待验证|产品验证门户|体验现有原型/);
   assert.doesNotMatch(html, /portal-task-intake\.jpg|portal-task-brief\.jpg/);
   assert.doesNotMatch(html, /portal-career-history\.jpg|portal-career-context\.jpg|portal-interview-plan\.jpg/);
@@ -198,6 +195,9 @@ test("uses one consistent font system across the portal", async () => {
 test("opens the original information collection form from primary calls to action", async () => {
   const source = await readFile(new URL("app/EarlyAccessDialog.tsx", root), "utf8");
   assert.match(source, /dialog\.showModal\(\)/);
+  assert.match(source, /document\.addEventListener\("click"/);
+  assert.match(source, /trackPortalEvent\("page_view"\)/);
+  assert.match(source, /trackPortalEvent\("cta_click"/);
   assert.match(source, /fetch\("\/api\/waitlist"/);
   assert.match(source, /name="scenario"/);
   assert.match(source, /name="urgency"/);
@@ -207,11 +207,39 @@ test("opens the original information collection form from primary calls to actio
   assert.match(source, /name="consent"/);
 });
 
-test("uses native dialog behavior for the coming-soon prompt", async () => {
-  const source = await readFile(new URL("app/ComingSoonDialog.tsx", root), "utf8");
-  assert.match(source, /dialog\.showModal\(\)/);
-  assert.match(source, /document\.addEventListener\("click"/);
-  assert.match(source, /<form method="dialog">/);
+test("keeps contact data behind a password-protected admin API", async () => {
+  const [
+    summary,
+    exportRoute,
+    auth,
+    schema,
+    environment,
+    dashboard,
+    viteConfig,
+    nginxConfig,
+  ] = await Promise.all([
+    readFile(new URL("app/api/admin/summary/route.ts", root), "utf8"),
+    readFile(new URL("app/api/admin/export/route.ts", root), "utf8"),
+    readFile(new URL("lib/admin-auth.ts", root), "utf8"),
+    readFile(new URL("db/schema.ts", root), "utf8"),
+    readFile(new URL(".env.example", root), "utf8"),
+    readFile(new URL("app/admin/AdminDashboard.tsx", root), "utf8"),
+    readFile(new URL("vite.config.ts", root), "utf8"),
+    readFile(new URL("deploy/xe3-speakup-portal.conf", root), "utf8"),
+  ]);
+  assert.match(summary, /isAdminRequest/);
+  assert.match(exportRoute, /isAdminRequest/);
+  assert.match(auth, /PORTAL_ADMIN_PASSWORD/);
+  assert.match(auth, /SHA-256/);
+  assert.match(environment, /^PORTAL_ADMIN_PASSWORD=\s*$/m);
+  assert.match(dashboard, /function lockDashboard\(\)[\s\S]*?setPassword\(""\)/);
+  assert.doesNotMatch(viteConfig, /PORTAL_ADMIN_PASSWORD/);
+  assert.match(nginxConfig, /limit_req zone=speakup_portal_waitlist/);
+  assert.match(nginxConfig, /limit_req zone=speakup_portal_admin/);
+  assert.match(nginxConfig, /client_max_body_size/);
+  assert.match(schema, /portal_events/);
+  assert.match(schema, /portal_waitlist/);
+  assert.doesNotMatch(schema, /ip_address|user_agent/);
 });
 
 test("loads only the current prototype extension assets", async () => {

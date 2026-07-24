@@ -56,31 +56,37 @@ export default function EarlyAccessDialog() {
 
     const form = event.currentTarget;
     const data = new FormData(form);
-    const response = await fetch("/api/waitlist", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        sessionId: getPortalSessionId(),
-        scenario: data.get("scenario"),
-        urgency: data.get("urgency"),
-        targetRole: data.get("targetRole"),
-        challenge: data.get("challenge"),
-        contact: data.get("contact"),
-        website: data.get("website"),
-        consent: data.get("consent") === "on",
-        attribution: getPortalAttribution(),
-      }),
-    });
+    try {
+      const response = await fetch("/api/waitlist", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: getPortalSessionId(),
+          scenario: data.get("scenario"),
+          urgency: data.get("urgency"),
+          targetRole: data.get("targetRole"),
+          challenge: data.get("challenge"),
+          contact: data.get("contact"),
+          website: data.get("website"),
+          consent: data.get("consent") === "on",
+          attribution: getPortalAttribution(),
+        }),
+      });
+      const result = await response.json().catch(() => ({})) as {
+        error?: string;
+      };
+      if (!response.ok) {
+        setStatus("error");
+        setErrorMessage(result.error || "提交失败，请稍后再试。");
+        return;
+      }
 
-    const result = await response.json() as { error?: string };
-    if (!response.ok) {
+      setStatus("success");
+      form.reset();
+    } catch {
       setStatus("error");
-      setErrorMessage(result.error || "提交失败，请稍后再试。");
-      return;
+      setErrorMessage("网络连接失败，请检查网络后重试。");
     }
-
-    setStatus("success");
-    form.reset();
   }
 
   return (

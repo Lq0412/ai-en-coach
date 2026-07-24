@@ -43,6 +43,7 @@ func TestLiveSessionIssuesScopedShortLivedTokenAndIsIdempotent(t *testing.T) {
 	})
 	command := StartLiveSessionCommand{
 		ActorUserID: DemoUserID, ThreadID: DemoThreadID, IdempotencyKey: "start-1",
+		Voice: "Jennifer",
 	}
 	first, err := service.StartLiveSession(context.Background(), command)
 	if err != nil {
@@ -91,7 +92,8 @@ func TestLiveSessionIssuesScopedShortLivedTokenAndIsIdempotent(t *testing.T) {
 	if metadata["actor_user_id"] != DemoUserID ||
 		metadata["thread_id"] != DemoThreadID ||
 		metadata["live_session_id"] != first.Session.ID ||
-		len(metadata) != 3 {
+		metadata["voice"] != "Jennifer" ||
+		len(metadata) != 4 {
 		t.Fatalf("token metadata is not minimally scoped: %#v", metadata)
 	}
 	for _, sensitive := range []string{
@@ -106,6 +108,29 @@ func TestLiveSessionIssuesScopedShortLivedTokenAndIsIdempotent(t *testing.T) {
 	}
 	if first.ExpiresAt.Sub(first.IssuedAt) > 10*time.Minute+time.Second {
 		t.Fatalf("token is not short lived: %#v", first)
+	}
+}
+
+func TestLiveSessionVoiceDefaultsAndRejectsUnsupportedValues(t *testing.T) {
+	service := NewService(Dependencies{
+		ConversationStore: NewMemoryConversationStore(),
+		LiveKit:           testLiveKitConfig(),
+	})
+	started, err := service.StartLiveSession(context.Background(), StartLiveSessionCommand{
+		ActorUserID: DemoUserID, ThreadID: DemoThreadID, IdempotencyKey: "voice-default",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if started.Session.Voice != defaultOmniRealtimeVoice {
+		t.Fatalf("default voice=%q", started.Session.Voice)
+	}
+	_, err = service.StartLiveSession(context.Background(), StartLiveSessionCommand{
+		ActorUserID: DemoUserID, ThreadID: DemoThreadID,
+		IdempotencyKey: "voice-invalid", Voice: "unknown",
+	})
+	if !errors.Is(err, ErrUnsupportedRealtimeVoice) {
+		t.Fatalf("unsupported voice error=%v", err)
 	}
 }
 
@@ -163,6 +188,11 @@ func TestCommitOmniLiveTurnPersistsCanonicalPairIdempotently(t *testing.T) {
 		LiveSessionID: started.Session.ID, TurnID: "turn-omni-1",
 		ClientMessageID: "client-omni-1", UserTranscript: "Hello",
 		AssistantTranscript: "Hi, nice to meet you.",
+		InterviewSetup: &InterviewSetupCard{
+			Title:      "Backend Engineer interview",
+			TargetRole: "Backend Engineer",
+			Goal:       "Practice system design and project deep dives",
+		},
 	}
 	first, err := service.CommitOmniLiveTurn(context.Background(), command)
 	if err != nil {
@@ -174,6 +204,11 @@ func TestCommitOmniLiveTurnPersistsCanonicalPairIdempotently(t *testing.T) {
 	}
 	if first.UserMessage.ID == "" || first.AssistantMessage.ID == "" {
 		t.Fatalf("missing canonical messages: %#v", first)
+	}
+	if first.AssistantMessage.Kind != "interview_setup_card" ||
+		first.AssistantMessage.InterviewSetup == nil ||
+		first.AssistantMessage.InterviewSetup.TargetRole != "Backend Engineer" {
+		t.Fatalf("missing interview setup card: %#v", first.AssistantMessage)
 	}
 	if second.UserMessage.ID != first.UserMessage.ID ||
 		second.AssistantMessage.ID != first.AssistantMessage.ID {

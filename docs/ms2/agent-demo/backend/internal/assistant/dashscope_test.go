@@ -678,7 +678,7 @@ func TestLoadDashScopeConfigUsesChinaPublicURLs(t *testing.T) {
 	}
 	if config.ASRModel != "qwen3-asr-flash-realtime" ||
 		config.TTSModel != "qwen-audio-3.0-tts-flash" ||
-		config.TTSVoice != "longanlingxi" ||
+		config.TTSVoice != "longanhuan_v3.6" ||
 		config.EmbeddingModel != "text-embedding-v4" {
 		t.Fatalf("unexpected China model defaults: %#v", config)
 	}

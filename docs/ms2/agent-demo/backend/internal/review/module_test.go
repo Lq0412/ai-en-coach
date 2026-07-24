@@ -177,6 +177,60 @@ func TestSavedMistakeLifecycle(t *testing.T) {
 	}
 }
 
+func TestGetMistakeContextResolvesVisibleQuestionRef(t *testing.T) {
+	state := assistant.NewDemoState()
+	seedCompletedSession(t, state, "session-qref", "AI Application Developer", "Feedback", []string{
+		"I improved retrieval metrics but missed the scenario.",
+		"I used caching.",
+	})
+	service := NewService(state, nil)
+	mistake, err := service.SaveMistake(context.Background(), SaveMistakeCommand{SessionID: "session-qref", QuestionIndex: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	contextByRef, err := service.GetMistakeContext(context.Background(), MistakeContextQuery{QuestionRef: "Q1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contextByRef.Mistake.ID != mistake.ID {
+		t.Fatalf("Q1 resolved to wrong mistake: %#v", contextByRef.Mistake)
+	}
+
+	contextByCompatID, err := service.GetMistakeContext(context.Background(), MistakeContextQuery{MistakeID: "Q1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contextByCompatID.Mistake.ID != mistake.ID {
+		t.Fatalf("compat Q1 mistake_id resolved to wrong mistake: %#v", contextByCompatID.Mistake)
+	}
+}
+
+func TestMistakeQuestionRefAmbiguityRequiresSession(t *testing.T) {
+	state := assistant.NewDemoState()
+	seedCompletedSession(t, state, "session-a", "AI Application Developer", "Feedback", []string{"I optimized queries."})
+	seedCompletedSession(t, state, "session-b", "AI Application Developer", "Feedback", []string{"I added an index."})
+	service := NewService(state, nil)
+	first, err := service.SaveMistake(context.Background(), SaveMistakeCommand{SessionID: "session-a", QuestionIndex: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.SaveMistake(context.Background(), SaveMistakeCommand{SessionID: "session-b", QuestionIndex: 0}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := service.GetMistakeContext(context.Background(), MistakeContextQuery{QuestionRef: "Q1"}); err == nil {
+		t.Fatal("expected ambiguous Q1 error")
+	}
+	contextBySession, err := service.GetMistakeContext(context.Background(), MistakeContextQuery{QuestionRef: "第一题", SessionID: "session-a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contextBySession.Mistake.ID != first.ID {
+		t.Fatalf("session-scoped Q1 resolved to wrong mistake: %#v", contextBySession.Mistake)
+	}
+}
+
 func TestShortSavedMistakeRepracticeStillProducesFeedback(t *testing.T) {
 	state := assistant.NewDemoState()
 	seedCompletedSession(t, state, "session-short", "AI Application Developer", "Feedback", []string{

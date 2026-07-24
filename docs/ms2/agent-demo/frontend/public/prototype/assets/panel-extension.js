@@ -5,6 +5,24 @@ Object.assign(state,{
   panelActiveIndex:state.panelActiveIndex||0
 });
 
+const REALTIME_VOICE_STORAGE_KEY='speakup-realtime-voice';
+const REALTIME_VOICE_OPTIONS=[
+  {id:'Tina',name:'甜甜 Tina',detail:'甜暖自然 · 中英文'},
+  {id:'Jennifer',name:'Jennifer',detail:'电影质感 · 美式英语'},
+  {id:'Mione',name:'敏儿 Mione',detail:'成熟知性 · 英式英语'},
+  {id:'Aiden',name:'艾登 Aiden',detail:'阳光亲切 · 美式英语'},
+  {id:'Ethan',name:'晨煦 Ethan',detail:'温暖活力 · 中英文'},
+  {id:'Raymond',name:'林川野 Raymond',detail:'清亮自然 · 中英文'}
+];
+function savedRealtimeVoice(){
+  try{
+    const saved=localStorage.getItem(REALTIME_VOICE_STORAGE_KEY);
+    if(REALTIME_VOICE_OPTIONS.some(item=>item.id===saved))return saved;
+  }catch(_){}
+  return 'Tina';
+}
+state.agentOutputVoice=savedRealtimeVoice();
+
 const PANEL_QUESTIONS=[
   {speaker:0,label:'开场与动机',text:'Please introduce yourself and explain why you are interested in this role.'},
   {speaker:1,label:'经历深挖',text:'Which project best demonstrates your fit, and what did you personally own?'},
@@ -525,6 +543,7 @@ window.addEventListener('click',event=>{
   else if(action==='panel-resume'||action==='panel-report'){event.preventDefault();event.stopImmediatePropagation();const session=panelSessionList().find(x=>x.id===el.dataset.sessionId);alignBindSession(session);views.sessions=panelSessionsView;state.interviewPhase='ai';state.route=action==='panel-report'?'report':'practice';render()}
   else if(action==='ms1-answer'&&activeSession()?.interviewMode==='panel'){event.preventDefault();event.stopImmediatePropagation();if(state.interviewPhase==='ai'){state.interviewPhase='user';state.currentTranscript=PANEL_SAMPLE_ANSWERS[activeSession().currentTurn]||'';state.answerError='';render()}else if(state.interviewPhase==='user')panelSubmitAnswer()}
   else if(action==='select-role-voice'){event.preventDefault();event.stopImmediatePropagation();state.roleVoice=el.dataset.voice;state.roleVoiceOpen=false;render();toast('已更新 Bob 的角色音色')}
+  else if(action==='select-realtime-voice'){event.preventDefault();event.stopImmediatePropagation();const voice=el.dataset.voice;if(!REALTIME_VOICE_OPTIONS.some(item=>item.id===voice))return;state.agentOutputVoice=voice;try{localStorage.setItem(REALTIME_VOICE_STORAGE_KEY,voice)}catch(_){}render();toast('音色已保存，普通播报立即生效')}
   else if(action==='open-app-menu'){event.preventDefault();event.stopImmediatePropagation();state.appMenuOpen=true;render()}
   else if(action==='close-app-menu'){event.preventDefault();event.stopImmediatePropagation();state.appMenuOpen=false;state.appAccountOpen=false;render()}
   else if(action==='toggle-history-plan'){event.preventDefault();event.stopImmediatePropagation();state.historyExpandedPlanId=state.historyExpandedPlanId===el.dataset.planId?'':el.dataset.planId;render()}
@@ -607,9 +626,13 @@ go=function(route){
 };
 
 const authenticatedSettingsView=views.settings;
-views.settings=()=>authenticatedSettingsView()
-  .replace('<span>登录邮箱</span>','<span>演示身份</span>')
-  .replace(/<button class="secondary btn-wide" data-action="logout">退出登录<\/button>/,'');
+views.settings=()=>{
+  const voiceSettings=`<section class="settings-voice-card"><header><span><b>AI 回复音色</b><small>同时用于端到端通话和普通 ASR + TTS 播报</small></span><em>${esc(REALTIME_VOICE_OPTIONS.find(item=>item.id===state.agentOutputVoice)?.name||'甜甜 Tina')}</em></header><div class="settings-voice-grid">${REALTIME_VOICE_OPTIONS.map(item=>`<button class="${state.agentOutputVoice===item.id?'active':''}" data-action="select-realtime-voice" data-voice="${item.id}" aria-pressed="${state.agentOutputVoice===item.id}"><i aria-hidden="true"></i><span><b>${esc(item.name)}</b><small>${esc(item.detail)}</small></span>${state.agentOutputVoice===item.id?'<strong>✓</strong>':''}</button>`).join('')}</div></section>`;
+  return authenticatedSettingsView()
+    .replace('<span>登录邮箱</span>','<span>演示身份</span>')
+    .replace('<div class="profile-card settings-links">',`${voiceSettings}<div class="profile-card settings-links">`)
+    .replace(/<button class="secondary btn-wide" data-action="logout">退出登录<\/button>/,'');
+};
 
 alignPersist();
 state.route='agent-chat';

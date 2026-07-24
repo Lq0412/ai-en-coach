@@ -1,6 +1,7 @@
 package assistant
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -64,6 +65,7 @@ type LiveSession struct {
 	ThreadID            string            `json:"thread_id"`
 	RoomName            string            `json:"room_name"`
 	ParticipantIdentity string            `json:"participant_identity"`
+	Voice               string            `json:"voice"`
 	Mode                ConversationMode  `json:"mode"`
 	Status              LiveSessionStatus `json:"status"`
 	PartialTurnID       string            `json:"partial_turn_id,omitempty"`
@@ -374,19 +376,69 @@ type ConfirmationRequest struct {
 }
 
 type Plan struct {
-	Intent          string
-	Scenario        string   `json:"Scenario,omitempty"`
-	ScenarioVariant string   `json:"ScenarioVariant,omitempty"`
-	KnowledgeTags   []string `json:"KnowledgeTags,omitempty"`
-	Steps           []PlanStep
-	Confidence      float64  `json:"Confidence,omitempty"`
-	MissingSlots    []string `json:"MissingSlots,omitempty"`
-	Reason          string   `json:"Reason,omitempty"`
+	Intent             string
+	RouteType          string              `json:"RouteType,omitempty"`
+	Scenario           string              `json:"Scenario,omitempty"`
+	ScenarioVariant    string              `json:"ScenarioVariant,omitempty"`
+	KnowledgeTags      []string            `json:"KnowledgeTags,omitempty"`
+	Steps              []PlanStep          `json:"Steps,omitempty"`
+	MissingSlots       []MissingSlot       `json:"MissingSlots,omitempty"`
+	Ambiguity          *Ambiguity          `json:"Ambiguity,omitempty"`
+	UnsupportedRequest *UnsupportedRequest `json:"UnsupportedRequest,omitempty"`
+	Confidence         float64             `json:"Confidence,omitempty"`
+	Reason             string              `json:"Reason,omitempty"`
 }
 
 type PlanStep struct {
 	ToolName  string
 	Arguments map[string]any
+}
+
+type MissingSlot struct {
+	Name     string `json:"Name"`
+	Question string `json:"Question,omitempty"`
+}
+
+type Ambiguity struct {
+	Candidates []string `json:"Candidates"`
+	Question   string   `json:"Question"`
+}
+
+type UnsupportedRequest struct {
+	RequestedCapability string `json:"RequestedCapability"`
+	ClosestPackage      string `json:"ClosestPackage"`
+	Message             string `json:"Message"`
+}
+
+func (plan *Plan) UnmarshalJSON(data []byte) error {
+	type planAlias Plan
+	var raw struct {
+		planAlias
+		MissingSlots json.RawMessage `json:"MissingSlots"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*plan = Plan(raw.planAlias)
+	if len(raw.MissingSlots) == 0 || string(raw.MissingSlots) == "null" {
+		return nil
+	}
+	var objectSlots []MissingSlot
+	if err := json.Unmarshal(raw.MissingSlots, &objectSlots); err == nil {
+		plan.MissingSlots = objectSlots
+		return nil
+	}
+	var stringSlots []string
+	if err := json.Unmarshal(raw.MissingSlots, &stringSlots); err != nil {
+		return err
+	}
+	plan.MissingSlots = make([]MissingSlot, 0, len(stringSlots))
+	for _, slot := range stringSlots {
+		if name := strings.TrimSpace(slot); name != "" {
+			plan.MissingSlots = append(plan.MissingSlots, MissingSlot{Name: name})
+		}
+	}
+	return nil
 }
 
 type ToolResult struct {
@@ -395,19 +447,59 @@ type ToolResult struct {
 
 // AssistantMessage 仅服务于 Demo UI；它不改变 XE3-ESL assistant 核心契约。
 type AssistantMessage struct {
-	ID              string
-	Role            string
-	Content         string
-	ClientMessageID string                 `json:"client_message_id,omitempty"`
-	LiveSessionID   string                 `json:"live_session_id,omitempty"`
-	TurnID          string                 `json:"turn_id,omitempty"`
-	Mode            ConversationMode       `json:"mode,omitempty"`
-	Kind            string                 `json:"kind,omitempty"`
-	Report          *InterviewReportCard   `json:"report,omitempty"`
-	History         *InterviewHistoryCards `json:"history,omitempty"`
-	Mistakes        *MistakeCards          `json:"mistakes,omitempty"`
-	Attachments     []AttachmentReference  `json:"attachments,omitempty"`
-	CreatedAt       time.Time
+	ID                 string
+	Role               string
+	Content            string
+	ClientMessageID    string                 `json:"client_message_id,omitempty"`
+	LiveSessionID      string                 `json:"live_session_id,omitempty"`
+	TurnID             string                 `json:"turn_id,omitempty"`
+	Mode               ConversationMode       `json:"mode,omitempty"`
+	Kind               string                 `json:"kind,omitempty"`
+	Report             *InterviewReportCard   `json:"report,omitempty"`
+	History            *InterviewHistoryCards `json:"history,omitempty"`
+	Mistakes           *MistakeCards          `json:"mistakes,omitempty"`
+	InterviewSetup     *InterviewSetupCard    `json:"interview_setup,omitempty"`
+	Attachments        []AttachmentReference  `json:"attachments,omitempty"`
+	LearningAssessment *LearningAssessment    `json:"learning_assessment,omitempty"`
+	CreatedAt          time.Time
+}
+
+type InterviewSetupCard struct {
+	Title      string `json:"title"`
+	TargetRole string `json:"target_role"`
+	Goal       string `json:"goal"`
+}
+
+type LearningAssessment struct {
+	Provider      string              `json:"provider"`
+	Overall       float64             `json:"overall,omitempty"`
+	Fluency       float64             `json:"fluency,omitempty"`
+	Pronunciation float64             `json:"pronunciation,omitempty"`
+	Integrity     float64             `json:"integrity,omitempty"`
+	Rhythm        float64             `json:"rhythm,omitempty"`
+	Tone          float64             `json:"tone,omitempty"`
+	Speed         float64             `json:"speed,omitempty"`
+	Words         []PronunciationWord `json:"words,omitempty"`
+	Explanations  []string            `json:"explanations,omitempty"`
+}
+
+type PronunciationWord struct {
+	Word          string                 `json:"word"`
+	Overall       float64                `json:"overall,omitempty"`
+	Pronunciation float64                `json:"pronunciation,omitempty"`
+	Tone          float64                `json:"tone,omitempty"`
+	ReadType      int                    `json:"read_type,omitempty"`
+	Start         int                    `json:"start,omitempty"`
+	End           int                    `json:"end,omitempty"`
+	Phonemes      []PronunciationPhoneme `json:"phonemes,omitempty"`
+}
+
+type PronunciationPhoneme struct {
+	Phoneme       string  `json:"phoneme"`
+	Phone         string  `json:"phone,omitempty"`
+	Pronunciation float64 `json:"pronunciation,omitempty"`
+	Start         int     `json:"start,omitempty"`
+	End           int     `json:"end,omitempty"`
 }
 
 type InterviewReportCard struct {

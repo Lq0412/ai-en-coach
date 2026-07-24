@@ -11,6 +11,7 @@ services:
     environment:
       PORTAL_ADMIN_PASSWORD: ${PORTAL_ADMIN_PASSWORD:?请设置管理看板密码}
       PORTAL_SQLITE_PATH: /app/.wrangler/portal.sqlite
+      VINEXT_TRUSTED_HOSTS: speak-up.top,www.speak-up.top
     ports:
       - "127.0.0.1:18082:3000"
     volumes:

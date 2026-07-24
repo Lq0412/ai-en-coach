@@ -116,6 +116,52 @@ func TestReviewMistakeToolsSaveListAndRepractice(t *testing.T) {
 	}
 }
 
+func TestReviewMistakeToolsResolveQuestionRef(t *testing.T) {
+	ctx := context.Background()
+	state := assistant.NewDemoState()
+	registry := NewRegistry(state, &answerCoachCaptureGenerator{})
+	executeReviewFlow(t, ctx, registry)
+	if _, err := registry.Execute(ctx, assistant.ToolInvocation{ToolName: "review.generate_feedback", Arguments: map[string]any{}}); err != nil {
+		t.Fatal(err)
+	}
+	sessionID := state.State().Sessions[0].ID
+	saved, err := registry.Execute(ctx, assistant.ToolInvocation{
+		ToolName: "review.save_mistake",
+		Arguments: map[string]any{
+			"practice_session_id": sessionID,
+			"question_index":      0,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	card := saved.Output["card"].(map[string]any)
+
+	contextByRef, err := registry.Execute(ctx, assistant.ToolInvocation{
+		ToolName:  "review.get_mistake_context",
+		Arguments: map[string]any{"question_ref": "Q1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mistake := contextByRef.Output["mistake"].(map[string]any)
+	if mistake["id"] != card["mistake_id"] {
+		t.Fatalf("Q1 resolved to wrong mistake: %#v", contextByRef.Output)
+	}
+
+	contextByCompatID, err := registry.Execute(ctx, assistant.ToolInvocation{
+		ToolName:  "review.get_mistake_context",
+		Arguments: map[string]any{"mistake_id": "Q1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	mistake = contextByCompatID.Output["mistake"].(map[string]any)
+	if mistake["id"] != card["mistake_id"] {
+		t.Fatalf("compat Q1 mistake_id resolved to wrong mistake: %#v", contextByCompatID.Output)
+	}
+}
+
 func executeReviewFlow(t *testing.T, ctx context.Context, registry *Registry) {
 	t.Helper()
 	execute := func(tool string, arguments map[string]any) {

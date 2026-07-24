@@ -25,6 +25,16 @@ export type LiveSessionCredentials = {
   live_session: { live_session_id: string; [key: string]: unknown };
 };
 
+export const REALTIME_VOICES = [
+  "Tina",
+  "Jennifer",
+  "Mione",
+  "Aiden",
+  "Ethan",
+  "Raymond",
+] as const;
+export type RealtimeVoice = typeof REALTIME_VOICES[number];
+
 type RecordValue = Record<string, unknown>;
 
 const isRecord = (value: unknown): value is RecordValue =>
@@ -69,6 +79,8 @@ const LIVE_EVENT_TYPES = new Set([
   "turn.failed",
   "attachment.linked",
   "attachment.failed",
+  "assessment.completed",
+  "assessment.failed",
   "latency.point",
 ]);
 
@@ -87,7 +99,7 @@ export function isLiveEvent(value: unknown): value is RecordValue {
   if (value.type === "transcript.partial") {
     return boundedString(value.transcript, 4_000);
   }
-  if (value.type === "turn.failed") {
+  if (value.type === "turn.failed" || value.type === "assessment.failed") {
     return boundedString(value.error, 500);
   }
   if (value.type === "assistant.delta") {
@@ -97,7 +109,7 @@ export function isLiveEvent(value: unknown): value is RecordValue {
     return boundedString(value.stage, 100) &&
       boundedString(value.error, 500);
   }
-  if (["turn.user_committed", "turn.assistant_committed", "attachment.linked"].includes(String(value.type))) {
+  if (["turn.user_committed", "turn.assistant_committed", "attachment.linked", "assessment.completed"].includes(String(value.type))) {
     return isRecord(value.message) &&
       boundedString(value.message.ID) &&
       value.message.client_message_id === value.client_message_id;
@@ -122,9 +134,11 @@ export function decodeLiveDataEvent(data: Uint8Array): RecordValue | null {
 function validIntentPayload(type: string, payload: unknown): boolean {
   if (!isRecord(payload)) return false;
   if (type === "live.intent.start") {
-    return hasExactKeys(payload, ["actor_user_id", "thread_id"]) &&
+    return hasExactKeys(payload, ["actor_user_id", "thread_id"], ["voice"]) &&
       boundedString(payload.actor_user_id) &&
-      boundedString(payload.thread_id);
+      boundedString(payload.thread_id) &&
+      (payload.voice === undefined ||
+        REALTIME_VOICES.includes(payload.voice as RealtimeVoice));
   }
   if (["live.intent.resume", "live.intent.end"].includes(type)) {
     return hasExactKeys(payload, ["actor_user_id", "live_session_id"]) &&
@@ -182,7 +196,11 @@ export function isTrustedMessageEvent(
 }
 
 export type LiveSessionAPI = {
-  start(input: { actor_user_id: string; thread_id: string }): Promise<LiveSessionCredentials>;
+  start(input: {
+    actor_user_id: string;
+    thread_id: string;
+    voice?: RealtimeVoice;
+  }): Promise<LiveSessionCredentials>;
   resume(liveSessionID: string, actorUserID: string): Promise<LiveSessionCredentials>;
   end(liveSessionID: string, actorUserID: string): Promise<void>;
 };
@@ -323,10 +341,14 @@ export function createLiveSessionAPI(
     return response.json() as Promise<unknown>;
   };
   return {
-    start: async ({ actor_user_id, thread_id }) =>
+    start: async ({ actor_user_id, thread_id, voice }) =>
       parseLiveSessionCredentials(await json(
         `/v1/assistant/threads/${encodeURIComponent(thread_id)}/live-sessions`,
-        { actor_user_id, idempotency_key: crypto.randomUUID() },
+        {
+          actor_user_id,
+          idempotency_key: crypto.randomUUID(),
+          ...(voice ? { voice } : {}),
+        },
       )),
     resume: async (liveSessionID, actorUserID) =>
       parseLiveSessionCredentials(await json(
@@ -376,7 +398,11 @@ export class LiveCallFlow {
     return this.#state;
   }
 
-  async start(input: { actor_user_id: string; thread_id: string }): Promise<void> {
+  async start(input: {
+    actor_user_id: string;
+    thread_id: string;
+    voice?: RealtimeVoice;
+  }): Promise<void> {
     this.#actorUserID = input.actor_user_id;
     this.#emit("connecting");
     try {

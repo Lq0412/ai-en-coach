@@ -16,6 +16,7 @@ import { z } from "zod";
 import { GoLLM } from "./providers/go-llm.js";
 import { GoSTT } from "./providers/go-stt.js";
 import { GoTTS, pcm16AudioFrames } from "./providers/go-tts.js";
+import { GoRealtimeContext } from "./providers/go-realtime-context.js";
 import {
   configuredTimeoutMS,
   safeErrorMessage,
@@ -32,11 +33,30 @@ const JobMetadata = z.object({
   actor_user_id: z.string().min(1),
   thread_id: z.string().min(1),
   live_session_id: z.string().min(1),
+  voice: z.enum(["Tina", "Jennifer", "Mione", "Aiden", "Ethan", "Raymond"]).optional(),
 });
 
 export type WorkerJobMetadata = z.infer<typeof JobMetadata>;
 
 export const TTS_AUDIO_FRAME_BRIDGE_READY = true;
+
+export const standardTTSVoiceForRealtimeVoice = (
+  voice: WorkerJobMetadata["voice"],
+): string => {
+  switch (voice) {
+    case "Jennifer":
+    case "Mione":
+      return "loongeva_v3.6";
+    case "Aiden":
+      return "loongjohn";
+    case "Ethan":
+    case "Raymond":
+      return "longjielidou_v3.6";
+    case "Tina":
+    default:
+      return "longanhuan_v3.6";
+  }
+};
 
 export const parseJobMetadata = (
   metadata: string,
@@ -255,7 +275,7 @@ export async function* streamCommittedTurn({
     )
     .then((result) => {
       const attachmentTask = audio
-        .commit(turn.turnID, result.userMessage.ID)
+        .commit(turn.turnID, result.userMessage.ID, turn.transcript)
         .then(async (linked) => {
           if (!linked?.message) return;
           if (linked.message.client_message_id !== turn.clientMessageID) {
@@ -267,6 +287,19 @@ export async function* streamCommittedTurn({
               message: linked.message,
             }),
           );
+          if (linked.assessmentMessage) {
+            await publish(
+              context.event(turn, "assessment.completed", {
+                message: linked.assessmentMessage,
+              }),
+            );
+          } else if (linked.assessmentError) {
+            await publish(
+              context.event(turn, "assessment.failed", {
+                error: linked.assessmentError,
+              }),
+            );
+          }
         })
         .catch(async (error: unknown) => {
           try {
@@ -359,7 +392,11 @@ export class ConversationOrchestrator {
       baseURL: goBaseURL,
       idleTimeoutMS: Math.max(providerTimeoutMS, 45_000),
     });
-    this.tts = new GoTTS({ baseURL: goBaseURL, timeoutMS: providerTimeoutMS });
+    this.tts = new GoTTS({
+      baseURL: goBaseURL,
+      timeoutMS: providerTimeoutMS,
+      voice: standardTTSVoiceForRealtimeVoice(metadata.voice),
+    });
     this.committer = new TurnCommitter(
       new GoLLM({ baseURL: goBaseURL, timeoutMS: providerTimeoutMS }),
     );
@@ -570,12 +607,15 @@ const worker = defineAgent({
       : (await job.waitForParticipant()).metadata;
     const metadata = parseJobMetadata(job.job.metadata, participantMetadata);
     const websocketURL = omniWebsocketURL(process.env);
+    const realtimeContextClient = new GoRealtimeContext(goBaseURL);
+    const realtimeContext = await realtimeContextClient.load(metadata);
+    const voice = metadata.voice ?? process.env.DASHSCOPE_OMNI_VOICE?.trim();
     await new OmniConversationOrchestrator(job, metadata, goBaseURL, {
       apiKey,
       websocketURL,
-      ...(process.env.DASHSCOPE_OMNI_VOICE?.trim()
-        ? { voice: process.env.DASHSCOPE_OMNI_VOICE.trim() }
-        : {}),
+      realtimeContext,
+      realtimeContextClient,
+      ...(voice ? { voice } : {}),
     }).start();
   },
 });

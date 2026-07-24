@@ -1,6 +1,7 @@
 package assistant
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,17 +16,18 @@ import (
 )
 
 type HTTPHandler struct {
-	logger      *log.Logger
-	service     *Service
-	store       *MemoryConversationStore
-	tools       DemoReadAPI
-	preparation CandidatePreparationAPI
-	coach       AnswerCoachService
-	language    LanguageAssistanceGenerator
-	repractice  RepracticeFeedbackGenerator
-	transcriber Transcriber
-	synthesizer SpeechSynthesizer
-	models      map[string]string
+	logger        *log.Logger
+	service       *Service
+	store         *MemoryConversationStore
+	tools         DemoReadAPI
+	preparation   CandidatePreparationAPI
+	coach         AnswerCoachService
+	language      LanguageAssistanceGenerator
+	repractice    RepracticeFeedbackGenerator
+	transcriber   Transcriber
+	synthesizer   SpeechSynthesizer
+	pronunciation PronunciationAssessor
+	models        map[string]string
 }
 
 func NewHTTPHandler(
@@ -42,23 +44,25 @@ func NewHTTPHandler(
 	models map[string]string,
 ) *HTTPHandler {
 	return &HTTPHandler{
-		logger:      logger,
-		service:     service,
-		store:       store,
-		tools:       tools,
-		preparation: preparation,
-		coach:       coach,
-		language:    language,
-		repractice:  repractice,
-		transcriber: transcriber,
-		synthesizer: synthesizer,
-		models:      models,
+		logger:        logger,
+		service:       service,
+		store:         store,
+		tools:         tools,
+		preparation:   preparation,
+		coach:         coach,
+		language:      language,
+		repractice:    repractice,
+		transcriber:   transcriber,
+		synthesizer:   synthesizer,
+		pronunciation: newPronunciationAssessmentClientFromEnv(),
+		models:        models,
 	}
 }
 
 func (h *HTTPHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /health", h.health)
 	mux.HandleFunc("GET /v1/assistant/threads/{thread_id}", h.getThread)
+	mux.HandleFunc("GET /v1/assistant/threads/{thread_id}/realtime-context", h.getRealtimeContext)
 	mux.HandleFunc("POST /v1/assistant/threads/{thread_id}/tasks", h.startTask)
 	mux.HandleFunc("POST /v1/assistant/threads/{thread_id}/tasks/stream", h.streamTask)
 	mux.HandleFunc("POST /v1/assistant/threads/{thread_id}/live-sessions", h.startLiveSession)
@@ -83,6 +87,7 @@ func (h *HTTPHandler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /v1/review/mistakes/{mistake_id}/repractice", h.submitSavedMistakeRepractice)
 	mux.HandleFunc("POST /v1/assistant/attachments", h.uploadAttachment)
 	mux.HandleFunc("POST /v1/assistant/messages/{message_id}/attachments", h.linkMessageAttachment)
+	mux.HandleFunc("PUT /v1/assistant/messages/{message_id}/assessment", h.updateMessageAssessment)
 	mux.HandleFunc("GET /v1/assistant/attachments/{attachment_id}/content", h.getAttachmentContent)
 	mux.HandleFunc("DELETE /v1/assistant/attachments/{attachment_id}", h.deleteAttachment)
 	mux.HandleFunc("GET /v1/preparation/profile", h.getCandidateProfile)
@@ -103,15 +108,17 @@ func (h *HTTPHandler) Register(mux *http.ServeMux) {
 type liveSessionRequest struct {
 	ActorUserID    string `json:"actor_user_id"`
 	IdempotencyKey string `json:"idempotency_key,omitempty"`
+	Voice          string `json:"voice,omitempty"`
 }
 
 type omniLiveTurnRequest struct {
-	ActorUserID         string `json:"actor_user_id"`
-	ThreadID            string `json:"thread_id"`
-	TurnID              string `json:"turn_id"`
-	ClientMessageID     string `json:"client_message_id"`
-	UserTranscript      string `json:"user_transcript"`
-	AssistantTranscript string `json:"assistant_transcript"`
+	ActorUserID         string              `json:"actor_user_id"`
+	ThreadID            string              `json:"thread_id"`
+	TurnID              string              `json:"turn_id"`
+	ClientMessageID     string              `json:"client_message_id"`
+	UserTranscript      string              `json:"user_transcript"`
+	AssistantTranscript string              `json:"assistant_transcript"`
+	InterviewSetup      *InterviewSetupCard `json:"interview_setup,omitempty"`
 }
 
 func (h *HTTPHandler) commitOmniLiveTurn(w http.ResponseWriter, r *http.Request) {
@@ -125,6 +132,7 @@ func (h *HTTPHandler) commitOmniLiveTurn(w http.ResponseWriter, r *http.Request)
 		LiveSessionID: r.PathValue("live_session_id"), TurnID: request.TurnID,
 		ClientMessageID: request.ClientMessageID, UserTranscript: request.UserTranscript,
 		AssistantTranscript: request.AssistantTranscript,
+		InterviewSetup:      request.InterviewSetup,
 	})
 	if err != nil {
 		h.writeError(w, err)
@@ -141,7 +149,7 @@ func (h *HTTPHandler) startLiveSession(w http.ResponseWriter, r *http.Request) {
 	}
 	credentials, err := h.service.StartLiveSession(r.Context(), StartLiveSessionCommand{
 		ActorUserID: request.ActorUserID, ThreadID: r.PathValue("thread_id"),
-		IdempotencyKey: request.IdempotencyKey,
+		IdempotencyKey: request.IdempotencyKey, Voice: request.Voice,
 	})
 	if err != nil {
 		h.writeError(w, err)
@@ -628,7 +636,73 @@ func (h *HTTPHandler) linkMessageAttachment(w http.ResponseWriter, r *http.Reque
 		h.writeError(w, err)
 		return
 	}
+	if h.pronunciation != nil &&
+		strings.HasPrefix(strings.ToLower(attachments[0].MediaType), "audio/") &&
+		strings.TrimSpace(message.Content) != "" {
+		audio, _, _, contentErr := h.preparation.AttachmentContent(request.AttachmentID)
+		if contentErr != nil {
+			h.logger.Printf("load recording for pronunciation assessment: %v", contentErr)
+		} else {
+			assessment, assessmentErr := h.pronunciation.Assess(r.Context(), audio, message.Content)
+			if assessmentErr != nil {
+				h.logger.Printf("assess message %s pronunciation: %v", message.ID, assessmentErr)
+			} else if assessed, updateErr := h.store.UpdateMessageAssessment(
+				r.Context(), message.ID, assessment,
+			); updateErr != nil {
+				h.logger.Printf("persist message %s pronunciation assessment: %v", message.ID, updateErr)
+			} else {
+				message = assessed
+			}
+		}
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"message": message})
+}
+
+func (h *HTTPHandler) updateMessageAssessment(w http.ResponseWriter, r *http.Request) {
+	var assessment LearningAssessment
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&assessment); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "valid assessment JSON is required"})
+		return
+	}
+	assessment.Provider = strings.TrimSpace(assessment.Provider)
+	if assessment.Provider == "" || len(assessment.Provider) > 80 ||
+		len(assessment.Words) > 512 || len(assessment.Explanations) > 32 ||
+		!validAssessmentScore(assessment.Overall) ||
+		!validAssessmentScore(assessment.Fluency) ||
+		!validAssessmentScore(assessment.Pronunciation) ||
+		!validAssessmentScore(assessment.Integrity) ||
+		!validAssessmentScore(assessment.Rhythm) ||
+		!validAssessmentScore(assessment.Tone) {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "assessment is invalid"})
+		return
+	}
+	for _, word := range assessment.Words {
+		if len(word.Phonemes) > 64 ||
+			!validAssessmentScore(word.Overall) ||
+			!validAssessmentScore(word.Pronunciation) ||
+			!validAssessmentScore(word.Tone) {
+			writeJSON(w, http.StatusBadRequest, map[string]any{"error": "assessment word is invalid"})
+			return
+		}
+		for _, phoneme := range word.Phonemes {
+			if !validAssessmentScore(phoneme.Pronunciation) {
+				writeJSON(w, http.StatusBadRequest, map[string]any{"error": "assessment phoneme is invalid"})
+				return
+			}
+		}
+	}
+	message, err := h.store.UpdateMessageAssessment(
+		r.Context(), r.PathValue("message_id"), assessment,
+	)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"message": message})
+}
+
+func validAssessmentScore(score float64) bool {
+	return score >= 0 && score <= 100
 }
 
 func (h *HTTPHandler) getAttachmentContent(w http.ResponseWriter, r *http.Request) {
@@ -640,10 +714,8 @@ func (h *HTTPHandler) getAttachmentContent(w http.ResponseWriter, r *http.Reques
 	disposition := mime.FormatMediaType("inline", map[string]string{"filename": name})
 	w.Header().Set("Content-Type", mediaType)
 	w.Header().Set("Content-Disposition", disposition)
-	w.Header().Set("Content-Length", fmt.Sprint(len(data)))
 	w.Header().Set("Cache-Control", "private, max-age=3600")
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(data)
+	http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(data))
 }
 
 func (h *HTTPHandler) deleteAttachment(w http.ResponseWriter, r *http.Request) {
@@ -745,6 +817,23 @@ func (h *HTTPHandler) getThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, h.store.Snapshot(h.tools.State()))
+}
+
+func (h *HTTPHandler) getRealtimeContext(w http.ResponseWriter, r *http.Request) {
+	actor := strings.TrimSpace(r.URL.Query().Get("actor_user_id"))
+	if actor == "" {
+		actor = DemoUserID
+	}
+	result, err := h.service.BuildRealtimeContext(
+		r.Context(),
+		actor,
+		r.PathValue("thread_id"),
+	)
+	if err != nil {
+		h.writeError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (h *HTTPHandler) startTask(w http.ResponseWriter, r *http.Request) {
@@ -1198,6 +1287,8 @@ func (h *HTTPHandler) writeError(w http.ResponseWriter, err error) {
 	} else if errors.Is(err, ErrActiveInterview) {
 		status = http.StatusConflict
 	} else if errors.Is(err, ErrNoActiveQuestion) {
+		status = http.StatusBadRequest
+	} else if errors.Is(err, ErrUnsupportedRealtimeVoice) {
 		status = http.StatusBadRequest
 	}
 	payload := map[string]any{"error": err.Error()}

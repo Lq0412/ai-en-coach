@@ -12,6 +12,9 @@ const OUTPUT_FRAME_SAMPLES = 480;
 type JSONValue = Record<string, unknown>;
 
 export type QwenOmniCallbacks = {
+  onInputAudio?: (pcm16Mono16K: Uint8Array) => void | Promise<void>;
+  onSpeechStarted?: () => void | Promise<void>;
+  onSpeechStopped?: () => void | Promise<void>;
   onInputPartial?: (transcript: string) => void | Promise<void>;
   onInputFinal?: (transcript: string) => void | Promise<void>;
   onAssistantDelta?: (delta: string) => void | Promise<void>;
@@ -51,6 +54,28 @@ const normalizedRealtimeURL = (baseURL: string): string => {
   return url.toString();
 };
 
+export const qwenRealtimeTools = (tools: llm.ToolContext): JSONValue[] =>
+  Object.values(tools.functionTools).map((tool) => ({
+    type: "function",
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: llm.oaiParams(tool.parameters),
+    },
+  }));
+
+export const qwenFunctionCall = (event: JSONValue): llm.FunctionCall | undefined => {
+  const callID = String(event.call_id ?? "").trim();
+  const name = String(event.name ?? "").trim();
+  if (!callID || !name) return undefined;
+  return llm.FunctionCall.create({
+    id: String(event.item_id ?? randomUUID()),
+    callId: callID,
+    name,
+    args: String(event.arguments ?? "{}"),
+  });
+};
+
 export class QwenOmniRealtimeModel extends llm.RealtimeModel {
   readonly options: QwenOmniRealtimeOptions;
   #sessions = new Set<QwenOmniRealtimeSession>();
@@ -66,7 +91,7 @@ export class QwenOmniRealtimeModel extends llm.RealtimeModel {
       manualFunctionCalls: false,
       midSessionChatCtxUpdate: false,
       midSessionInstructionsUpdate: true,
-      midSessionToolsUpdate: false,
+      midSessionToolsUpdate: true,
       perResponseToolChoice: false,
     });
     this.options = options;
@@ -103,6 +128,7 @@ export class QwenOmniRealtimeSession extends llm.RealtimeSession {
   #socket: WebSocket;
   #chatCtx = llm.ChatContext.empty();
   #tools = llm.ToolContext.empty();
+  #sentToolOutputs = new Set<string>();
   #instructions: string;
   #resampler?: AudioResampler;
   #queuedMessages: string[] = [];
@@ -155,11 +181,27 @@ export class QwenOmniRealtimeSession extends llm.RealtimeSession {
   }
 
   override async updateChatCtx(chatCtx: llm.ChatContext): Promise<void> {
+    for (const item of chatCtx.items) {
+      if (item.type !== "function_call_output" || this.#sentToolOutputs.has(item.callId)) {
+        continue;
+      }
+      this.#sentToolOutputs.add(item.callId);
+      this.#send({
+        event_id: randomUUID(),
+        type: "conversation.item.create",
+        item: {
+          type: "function_call_output",
+          call_id: item.callId,
+          output: item.output,
+        },
+      });
+    }
     this.#chatCtx = chatCtx.copy();
   }
 
   override async updateTools(tools: llm.ToolContext): Promise<void> {
     this.#tools = tools.copy();
+    this.#sendSessionUpdate();
   }
 
   override updateOptions(_options: { toolChoice?: llm.ToolChoice | null }): void {}
@@ -175,6 +217,7 @@ export class QwenOmniRealtimeSession extends llm.RealtimeSession {
         : (this.#resampler ??= new AudioResampler(frame.sampleRate, INPUT_SAMPLE_RATE, 1)).push(frame);
     for (const output of frames) {
       const bytes = Buffer.from(output.data.buffer, output.data.byteOffset, output.data.byteLength);
+      void this.#options.callbacks?.onInputAudio?.(bytes);
       this.#send({
         event_id: randomUUID(),
         type: "input_audio_buffer.append",
@@ -250,6 +293,7 @@ export class QwenOmniRealtimeSession extends llm.RealtimeSession {
         input_audio_format: "pcm16",
         output_audio_format: "pcm16",
         input_audio_transcription: { model: "qwen3-asr-flash-realtime" },
+        tools: qwenRealtimeTools(this.#tools),
         turn_detection: {
           type: "semantic_vad",
           create_response: true,
@@ -280,10 +324,12 @@ export class QwenOmniRealtimeSession extends llm.RealtimeSession {
     }
     const type = String(event.type ?? "");
     if (type === "input_audio_buffer.speech_started") {
+      void this.#options.callbacks?.onSpeechStarted?.();
       this.emit("input_speech_started", {});
       return;
     }
     if (type === "input_audio_buffer.speech_stopped") {
+      void this.#options.callbacks?.onSpeechStopped?.();
       this.emit("input_speech_stopped", { userTranscriptionEnabled: true });
       return;
     }
@@ -329,6 +375,16 @@ export class QwenOmniRealtimeSession extends llm.RealtimeSession {
     if (type === "response.audio.done") {
       const item = this.#responseFor(event)?.item;
       if (item) this.#closeAudio(item);
+      return;
+    }
+    if (type === "response.function_call_arguments.done") {
+      const response = this.#responseFor(event);
+      const call = qwenFunctionCall(event);
+      if (!response || !call) {
+        this.#emitError(new Error("DashScope realtime returned an invalid tool call"), false);
+        return;
+      }
+      response.functionController.enqueue(call);
       return;
     }
     if (type === "response.done") {

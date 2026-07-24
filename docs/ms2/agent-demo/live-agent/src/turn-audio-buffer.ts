@@ -6,11 +6,18 @@ export type TurnAudioBufferOptions = {
     messageID: string,
     attachmentID: string,
   ) => Promise<Record<string, unknown> | void>;
+  assess?: (
+    audio: Uint8Array,
+    messageID: string,
+    referenceText: string,
+  ) => Promise<Record<string, unknown>>;
 };
 
 export type LinkedTurnAudio = {
   attachmentID: string;
   message?: Record<string, unknown>;
+  assessmentMessage?: Record<string, unknown>;
+  assessmentError?: string;
 };
 
 type BufferedTurn = {
@@ -54,6 +61,7 @@ export class TurnAudioBuffer {
   commit(
     turnID: string,
     messageID: string,
+    referenceText = "",
   ): Promise<LinkedTurnAudio | undefined> {
     const existing = this.#commits.get(turnID);
     if (existing) return existing;
@@ -71,6 +79,19 @@ export class TurnAudioBuffer {
       }
       const attachmentID = await this.#options.upload(audio);
       const message = await this.#options.link(messageID, attachmentID);
+      let assessmentMessage: Record<string, unknown> | undefined;
+      let assessmentError: string | undefined;
+      if (this.#options.assess && referenceText.trim()) {
+        try {
+          assessmentMessage = await this.#options.assess(
+            audio,
+            messageID,
+            referenceText,
+          );
+        } catch (error) {
+          assessmentError = error instanceof Error ? error.message : String(error);
+        }
+      }
       this.#turns.delete(turnID);
       this.#completed.push(turnID);
       while (this.#completed.length > this.#maxRecentCommits) {
@@ -80,6 +101,8 @@ export class TurnAudioBuffer {
       return {
         attachmentID,
         ...(message ? { message } : {}),
+        ...(assessmentMessage ? { assessmentMessage } : {}),
+        ...(assessmentError ? { assessmentError } : {}),
       };
     })().catch((error: unknown) => {
       this.#commits.delete(turnID);

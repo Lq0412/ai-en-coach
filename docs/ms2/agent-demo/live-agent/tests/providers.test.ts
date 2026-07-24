@@ -4,6 +4,10 @@ import test from "node:test";
 import { GoLLM } from "../src/providers/go-llm.js";
 import { GoSTT, type WebSocketLike } from "../src/providers/go-stt.js";
 import { GoTTS, pcm16AudioFrames } from "../src/providers/go-tts.js";
+import {
+  createGoTurnAudioBuffer,
+  pcm16Mono16KToWAV,
+} from "../src/providers/go-audio-recording.js";
 import { TurnCommitter } from "../src/turn-committer.js";
 
 const sseResponse = (blocks: string[]) =>
@@ -11,6 +15,52 @@ const sseResponse = (blocks: string[]) =>
     status: 200,
     headers: { "content-type": "text/event-stream" },
   });
+
+test("realtime user PCM is stored as WAV and linked to its canonical message", async () => {
+  const pcm = new Uint8Array([1, 0, 2, 0]);
+  const wav = pcm16Mono16KToWAV(pcm);
+  assert.equal(new TextDecoder().decode(wav.slice(0, 4)), "RIFF");
+  assert.equal(new DataView(wav.buffer).getUint32(24, true), 16_000);
+  assert.equal(new TextDecoder().decode(wav.slice(36, 40)), "data");
+  assert.deepEqual([...wav.slice(44)], [...pcm]);
+
+  const requests: Array<{ url: string; init?: RequestInit }> = [];
+  const audio = createGoTurnAudioBuffer(
+    "http://go.test/",
+    async (input, init) => {
+      const url = String(input);
+      requests.push({ url, ...(init ? { init } : {}) });
+      if (url.endsWith("/v1/assistant/attachments")) {
+        const file = (init?.body as FormData).get("file") as Blob;
+        const uploaded = new Uint8Array(await file.arrayBuffer());
+        assert.equal(new TextDecoder().decode(uploaded.slice(0, 4)), "RIFF");
+        assert.deepEqual([...uploaded.slice(44)], [...pcm]);
+        return Response.json({ attachment: { id: "attachment-1" } });
+      }
+      assert.deepEqual(JSON.parse(String(init?.body)), {
+        attachment_id: "attachment-1",
+      });
+      return Response.json({
+        message: {
+          ID: "message-user-1",
+          client_message_id: "client-1",
+          attachments: [{ id: "attachment-1", mediaType: "audio/wav" }],
+        },
+      });
+    },
+  );
+  audio.append("turn-1", pcm);
+  const linked = await audio.commit("turn-1", "message-user-1");
+  assert.equal(linked?.attachmentID, "attachment-1");
+  assert.equal(linked?.message?.ID, "message-user-1");
+  assert.deepEqual(
+    requests.map((request) => request.url),
+    [
+      "http://go.test/v1/assistant/attachments",
+      "http://go.test/v1/assistant/messages/message-user-1/attachments",
+    ],
+  );
+});
 
 test("Go LLM streams one canonical user message before assistant deltas", async () => {
   const requests: Record<string, unknown>[] = [];
@@ -120,11 +170,13 @@ test("turn committer bounds completed idempotency entries", async () => {
 test("Go TTS requests fixed PCM24K and frames split PCM16 samples correctly", async () => {
   const tts = new GoTTS({
     baseURL: "http://go.test",
+    voice: "loongjohn",
     fetch: async (_input, init) => {
       assert.deepEqual(JSON.parse(String(init?.body)), {
         text: "Hello",
         format: "pcm",
         sample_rate: 24000,
+        voice: "loongjohn",
       });
       return new Response(new Uint8Array([1, 0, 2, 0, 3, 0]), {
         status: 200,

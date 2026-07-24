@@ -1,7 +1,33 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { LiveCallFlow } from "../app/lib/livekit-session.ts";
+import {
+  LiveCallFlow,
+  createLiveSessionAPI,
+} from "../app/lib/livekit-session.ts";
+
+test("selected realtime voice is sent when the server session is created", async () => {
+  let request;
+  const api = createLiveSessionAPI("http://agent.test", async (input, init) => {
+    request = new Request(input, init);
+    return new Response(JSON.stringify({
+      server_url: "wss://live.test",
+      participant_token: "token-1",
+      live_session: { live_session_id: "live-1" },
+    }), { status: 201 });
+  });
+
+  await api.start({
+    actor_user_id: "demo-user",
+    thread_id: "thread-1",
+    voice: "Jennifer",
+  });
+
+  const body = await request.json();
+  assert.equal(body.actor_user_id, "demo-user");
+  assert.equal(body.voice, "Jennifer");
+  assert.equal(typeof body.idempotency_key, "string");
+});
 
 test("start, mute, resume, and end release the room and microphone", async () => {
   const calls = [];

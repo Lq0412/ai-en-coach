@@ -17,8 +17,26 @@ import (
 
 var ErrLiveVoiceUnavailable = errors.New("assistant: live voice unavailable")
 var ErrLiveSessionEnded = errors.New("assistant: live session already ended")
+var ErrUnsupportedRealtimeVoice = errors.New("assistant: unsupported realtime voice")
 
 const defaultLiveKitTokenTTL = 10 * time.Minute
+const defaultOmniRealtimeVoice = "Tina"
+
+var supportedOmniRealtimeVoices = map[string]struct{}{
+	"Tina": {}, "Jennifer": {}, "Mione": {},
+	"Aiden": {}, "Ethan": {}, "Raymond": {},
+}
+
+func normalizeOmniRealtimeVoice(voice string) (string, error) {
+	voice = strings.TrimSpace(voice)
+	if voice == "" {
+		return defaultOmniRealtimeVoice, nil
+	}
+	if _, supported := supportedOmniRealtimeVoices[voice]; !supported {
+		return "", ErrUnsupportedRealtimeVoice
+	}
+	return voice, nil
+}
 
 type LiveKitConfig struct {
 	Enabled   bool
@@ -61,6 +79,7 @@ type StartLiveSessionCommand struct {
 	ActorUserID    string
 	ThreadID       string
 	IdempotencyKey string
+	Voice          string
 }
 
 type ResumeLiveSessionCommand struct {
@@ -81,6 +100,7 @@ type CommitOmniLiveTurnCommand struct {
 	ClientMessageID     string
 	UserTranscript      string
 	AssistantTranscript string
+	InterviewSetup      *InterviewSetupCard
 }
 
 type CommittedOmniLiveTurn struct {
@@ -174,6 +194,16 @@ func (s *Service) CommitOmniLiveTurn(
 			return CommittedOmniLiveTurn{}, fmt.Errorf("assistant: omni live turn %s is required", field)
 		}
 	}
+	if command.InterviewSetup != nil {
+		command.InterviewSetup.Title = strings.TrimSpace(command.InterviewSetup.Title)
+		command.InterviewSetup.TargetRole = strings.TrimSpace(command.InterviewSetup.TargetRole)
+		command.InterviewSetup.Goal = strings.TrimSpace(command.InterviewSetup.Goal)
+		if command.InterviewSetup.Title == "" ||
+			command.InterviewSetup.TargetRole == "" ||
+			command.InterviewSetup.Goal == "" {
+			return CommittedOmniLiveTurn{}, errors.New("assistant: interview setup card fields are required")
+		}
+	}
 	session, err := s.live.get(command.LiveSessionID)
 	if err != nil {
 		return CommittedOmniLiveTurn{}, err
@@ -218,11 +248,20 @@ func (s *Service) CommitOmniLiveTurn(
 		}
 	}
 	if result.AssistantMessage.ID == "" {
-		result.AssistantMessage, err = s.appendMessageWithAttachments(
-			ctx, "assistant", strings.TrimSpace(command.AssistantTranscript), nil,
-			command.ClientMessageID, command.LiveSessionID, command.TurnID,
-			ConversationModeLive,
-		)
+		result.AssistantMessage = AssistantMessage{
+			ID: nextID("message"), Role: "assistant",
+			Content:         strings.TrimSpace(command.AssistantTranscript),
+			ClientMessageID: command.ClientMessageID,
+			LiveSessionID:   command.LiveSessionID,
+			TurnID:          command.TurnID, Mode: ConversationModeLive,
+			CreatedAt: time.Now().UTC(),
+		}
+		if command.InterviewSetup != nil {
+			card := *command.InterviewSetup
+			result.AssistantMessage.Kind = "interview_setup_card"
+			result.AssistantMessage.InterviewSetup = &card
+		}
+		err = s.dependencies.ConversationStore.AppendMessage(ctx, result.AssistantMessage)
 		if err != nil {
 			return CommittedOmniLiveTurn{}, err
 		}
@@ -236,6 +275,10 @@ func (s *Service) CommitOmniLiveTurn(
 func (coordinator *liveSessionCoordinator) start(command StartLiveSessionCommand) (LiveSessionCredentials, error) {
 	if !coordinator.config.available() {
 		return LiveSessionCredentials{}, ErrLiveVoiceUnavailable
+	}
+	voice, err := normalizeOmniRealtimeVoice(command.Voice)
+	if err != nil {
+		return LiveSessionCredentials{}, err
 	}
 	coordinator.mu.Lock()
 	defer coordinator.mu.Unlock()
@@ -253,6 +296,7 @@ func (coordinator *liveSessionCoordinator) start(command StartLiveSessionCommand
 		ID: id, ThreadID: command.ThreadID,
 		RoomName:            "speakup-" + id,
 		ParticipantIdentity: command.ActorUserID + ":" + id,
+		Voice:               voice,
 		Mode:                ConversationModeLive, Status: LiveSessionStatusConnecting,
 		CreatedAt: now, UpdatedAt: now,
 	}
@@ -306,6 +350,7 @@ func (coordinator *liveSessionCoordinator) credentialsLocked(session LiveSession
 		"actor_user_id":   strings.SplitN(session.ParticipantIdentity, ":", 2)[0],
 		"thread_id":       session.ThreadID,
 		"live_session_id": session.ID,
+		"voice":           session.Voice,
 	})
 	if err != nil {
 		return LiveSessionCredentials{}, fmt.Errorf("assistant: create livekit metadata: %w", err)

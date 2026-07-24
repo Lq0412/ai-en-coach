@@ -6,6 +6,7 @@ import {
 
 export type GoTTSOptions = {
   baseURL: string;
+  voice?: string;
   fetch?: typeof globalThis.fetch;
   timeoutMS?: number;
   scheduler?: TimeoutScheduler;
@@ -18,11 +19,13 @@ export class GoTTS {
 
   #baseURL: string;
   #fetch: typeof globalThis.fetch;
+  #voice: string | undefined;
   #timeoutMS: number;
   #scheduler: TimeoutScheduler | undefined;
 
   constructor(options: GoTTSOptions) {
     this.#baseURL = options.baseURL.replace(/\/$/, "");
+    this.#voice = options.voice?.trim() || undefined;
     this.#fetch = options.fetch ?? globalThis.fetch;
     this.#timeoutMS = options.timeoutMS ?? 30_000;
     this.#scheduler = options.scheduler;
@@ -47,6 +50,7 @@ export class GoTTS {
           text,
           format: "pcm",
           sample_rate: this.sampleRate,
+          ...(this.#voice ? { voice: this.#voice } : {}),
         }),
         signal: deadline.signal,
       });
