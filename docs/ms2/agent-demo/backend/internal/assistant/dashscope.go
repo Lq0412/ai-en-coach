@@ -114,11 +114,9 @@ func (p *DashScopeProvider) Plan(ctx context.Context, request PlanRequest) (Plan
 	}
 	system := `You are the planner for SpeakUp, an English interview practice application.
 Return one JSON object only, without markdown:
-{"Intent":"intent_name","Scenario":"scenario_name","ScenarioVariant":"scenario_variant","KnowledgeTags":[],"Steps":[{"ToolName":"tool.name","Arguments":{}}],"Confidence":0.0,"MissingSlots":[],"Reason":"brief routing reason"}
+{"RouteType":"tool_plan|clarification|ambiguous|unsupported|conversation","Steps":[{"ToolName":"tool.name","Arguments":{}}],"MissingSlots":[{"Name":"slot_name","Question":"short user-facing question"}],"Ambiguity":{"Candidates":["tool.name"],"Question":"short user-facing question"},"UnsupportedRequest":{"RequestedCapability":"capability","ClosestPackage":"package","Message":"brief limitation"},"Scenario":"scenario_name","ScenarioVariant":"scenario_variant","KnowledgeTags":[],"Confidence":0.0,"Reason":"brief routing reason"}
 
-You are an intent router. You may only choose an Intent from the Intent Catalog below, and every tool sequence must exactly match one AllowedPlanShapes entry for that intent.
-Intent Catalog:
-` + RenderPlannerPromptCatalog() + `
+You are a tool router. Choose operations from the Operation Catalog. Do not return Intent.
 
 Tool Package and Operation Catalog:
 ` + RenderPlannerToolCatalog() + `
@@ -127,25 +125,32 @@ Scenario Catalog:
 ` + RenderPlannerScenarioCatalog() + `
 
 Argument rules:
-- If the user asks to practice a concrete scenario such as Go interview, Java interview, restaurant ordering, or apartment rental, prefer Intent scenario_practice with a ScenarioVariant from the Scenario Catalog.
-- For scenario_practice, never invent a ScenarioVariant. Use go_backend_interview for Go/Golang backend interview and java_backend_interview for Java backend interview.
-- If the user asks to prepare for or casually practice an unsupported real-life/business situation, such as meeting a US client, choose oral_free_practice or free_conversation with conversation.generate_reply instead of scenario_practice.
+- RouteType tool_plan means one unique supported tool sequence can run.
+- RouteType conversation means ordinary chat, English help, oral preparation, or lightweight role-play handled by conversation.generate_reply only.
+- RouteType clarification means required arguments are missing; ask exactly one short question via conversation.generate_reply.
+- RouteType ambiguous means several operations may match; ask the user to choose via conversation.generate_reply.
+- RouteType unsupported means the user requested a formal capability that no operation supports; use conversation.generate_reply to explain and offer a lightweight alternative.
+- If the user asks to practice a concrete supported scenario such as Go interview, Java interview, restaurant ordering, or apartment rental, use ScenarioVariant from the Scenario Catalog.
+- Never invent a ScenarioVariant. Use go_backend_interview for Go/Golang backend interview and java_backend_interview for Java backend interview.
+- If the user asks to prepare for or casually practice an unsupported real-life/business situation, such as meeting a US client, use RouteType conversation with conversation.generate_reply instead of scenario.retrieve_knowledge.
+- If the user explicitly asks to create or start a formal unsupported scenario simulation, use RouteType unsupported with conversation.generate_reply.
 - Only use scenario_practice when the requested ScenarioVariant appears exactly in the Scenario Catalog.
 - Planner may return KnowledgeTags for explanation, but backend Scenario Catalog is authoritative.
-- For start_mock_interview, set preparation.get_confirmed_context scenario to "PROGRAMMER_INTERVIEW".
-- For start_mock_interview, set practice.create_plan role to the user's requested target role. Use max_turns=0 and duration_minutes=15 by default.
+- For supported formal interview practice, use scenario.retrieve_knowledge, preparation.get_confirmed_context, practice.create_plan, practice.start_session, conversation.generate_next_question.
+- Set preparation.get_confirmed_context scenario to "PROGRAMMER_INTERVIEW".
+- Set practice.create_plan role to the user's requested target role. Use max_turns=0 and duration_minutes=15 by default.
 - max_turns=0 means no fixed question count; the session ends when time expires or the user asks to stop.
 - If the user explicitly requests a hard question cap, copy it within 1-100 turns; duration remains within 5-60 minutes.
-- Never use a generic default role when the role is missing; use clarify_interview_requirements and MissingSlots ["target_role"].
+- Never use a generic default role when the role is missing; use RouteType clarification and MissingSlots [{"Name":"target_role","Question":"你想练 Go 后端、Java 后端、前端，还是其他岗位的英文面试？"}].
 - For submit_interview_answer, copy the user message exactly into answer_text and set interaction_mode to "TEXT".
 - If the user explicitly asks to end or stop an active interview, use end_interview with reason "user_requested_stop".
-- For oral_free_practice, use conversation.generate_reply and do not create a PracticeSession.
+- For oral free practice, use conversation.generate_reply and do not create a PracticeSession.
 - For review.get_mistake_context and review.submit_mistake_repractice, use question_ref for visible labels like Q1, Q3, 第1题. Do not put Q1 into mistake_id unless the user supplied an actual saved-mistake-* id.
 - If operational state contains interview_requirement=pending_target_role, treat the user's next role or job-direction answer as continuation of the interview request.
 - Interaction mode is an authoritative UI signal. When interaction_mode=conversation, never use submit_interview_answer even if an unfinished interview exists.
 - When interaction_mode=interview and a session is active, use submit_interview_answer unless the user clearly asks to stop.
-- Greetings, ordinary chat, English questions, and technical discussion use free_conversation unless the user asks for casual speaking practice.
-- Never invent tools or combine tools from different intents.`
+- Greetings, ordinary chat, English questions, and technical discussion use RouteType conversation.
+- Never invent tools, arguments, scenario variants, backend IDs, or unsupported state changes.`
 	content, err := p.chat(ctx, system, fmt.Sprintf(
 		"Operational state:\n%s\nInteraction mode: %s\n\nComplete ordered thread messages (JSON):\n%s\n\nThe final user message to plan:\n%s",
 		request.ContextSummary,
@@ -160,6 +165,7 @@ Argument rules:
 	if err := json.Unmarshal([]byte(stripJSONFence(content)), &plan); err != nil {
 		return Plan{}, fmt.Errorf("decode planner JSON: %w", err)
 	}
+	NormalizePlanForCatalog(&plan, request.UserMessage)
 	if err := validatePlan(plan); err != nil {
 		return Plan{}, err
 	}

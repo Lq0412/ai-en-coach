@@ -193,11 +193,13 @@ func (s *Service) startTask(ctx context.Context, command StartTaskCommand) (Task
 	if s.dependencies.Runtime != nil {
 		state = s.dependencies.Runtime.State()
 	}
+	NormalizePlanForCatalog(&plan, visibleMessage)
 	plan = s.enforceStateGuards(plan, StartTaskCommand{
 		UserMessage:     visibleMessage,
 		InteractionMode: interactionMode,
 	}, state)
-	NormalizeScenarioPlan(&plan, visibleMessage)
+	NormalizePlanForCatalog(&plan, visibleMessage)
+	plan = normalizeUnsupportedPreparationRoute(plan, visibleMessage)
 	if plan.Intent == "submit_interview_answer" {
 		for index := range plan.Steps {
 			if plan.Steps[index].ToolName == "conversation.submit_turn" {
@@ -212,25 +214,26 @@ func (s *Service) startTask(ctx context.Context, command StartTaskCommand) (Task
 	if plan.Intent == "start_mock_interview" {
 		normalizeInterviewPlan(&plan)
 		applyUserRequestedRole(&plan, visibleMessage)
-		NormalizeScenarioPlan(&plan, visibleMessage)
+		NormalizePlanForCatalog(&plan, visibleMessage)
 	}
 	if plan.Intent == "scenario_practice" && plan.Scenario == "interview" {
 		normalizeInterviewPlan(&plan)
 		applyUserRequestedRole(&plan, visibleMessage)
-		NormalizeScenarioPlan(&plan, visibleMessage)
+		NormalizePlanForCatalog(&plan, visibleMessage)
 		ensureScenarioInterviewCreatePlan(&plan, visibleMessage)
 	}
 	if plan.Intent == "clarify_interview_requirements" {
 		for index := range plan.Steps {
 			if plan.Steps[index].ToolName == "conversation.generate_reply" {
 				plan.Steps[index].Arguments["user_message"] = contextContent
-				plan.Steps[index].Arguments["context_summary"] = "用户已经表达模拟面试意图，但目标岗位不足以创建面试卡片。请只用一个简短问题询问目标岗位或职位方向，不要声称已经创建或启动面试。"
+				plan.Steps[index].Arguments["context_summary"] = routeReplyContextSummary(plan, "用户已经表达模拟面试意图，但目标岗位不足以创建面试卡片。请只用一个简短问题询问目标岗位或职位方向，不要声称已经创建或启动面试。")
 				plan.Steps[index].Arguments["conversation_messages"] = messages
 			}
 		}
 	}
 	if plan.Intent == "free_conversation" || plan.Intent == "oral_free_practice" {
 		conversationSummary := conversationReplyContextSummary(plan, thread.ContextSummary)
+		conversationSummary = routeReplyContextSummary(plan, conversationSummary)
 		if interactionMode == "conversation" && state.ActiveQuestion != "" {
 			conversationSummary = strings.Join(nonEmptyStrings(
 				conversationSummary,
@@ -401,7 +404,8 @@ func (s *Service) enforceStateGuards(plan Plan, command StartTaskCommand, state 
 
 func freeConversationPlan() Plan {
 	return Plan{
-		Intent: "free_conversation",
+		Intent:    "free_conversation",
+		RouteType: "conversation",
 		Steps: []PlanStep{{
 			ToolName:  "conversation.generate_reply",
 			Arguments: map[string]any{},
@@ -411,7 +415,8 @@ func freeConversationPlan() Plan {
 
 func oralFreePracticePlan() Plan {
 	return Plan{
-		Intent: "oral_free_practice",
+		Intent:    "oral_free_practice",
+		RouteType: "conversation",
 		Steps: []PlanStep{{
 			ToolName:  "conversation.generate_reply",
 			Arguments: map[string]any{},
@@ -434,6 +439,29 @@ func conversationReplyContextSummary(plan Plan, fallback string) string {
 	return fallback
 }
 
+func routeReplyContextSummary(plan Plan, fallback string) string {
+	parts := nonEmptyStrings(fallback)
+	switch plan.RouteType {
+	case "clarification":
+		for _, slot := range plan.MissingSlots {
+			if strings.TrimSpace(slot.Question) != "" {
+				parts = append(parts, "需要反问缺失信息："+strings.TrimSpace(slot.Question))
+			} else if strings.TrimSpace(slot.Name) != "" {
+				parts = append(parts, "需要反问缺失信息："+strings.TrimSpace(slot.Name))
+			}
+		}
+	case "ambiguous":
+		if plan.Ambiguity != nil {
+			parts = append(parts, "用户请求存在多个可能能力；只询问用户选择，不执行状态变化："+strings.TrimSpace(plan.Ambiguity.Question))
+		}
+	case "unsupported":
+		if plan.UnsupportedRequest != nil {
+			parts = append(parts, "用户请求当前没有正式工具支持；不要创建 PracticeSession，不要调用场景工具；说明限制并提供口头准备或轻量 role-play："+strings.TrimSpace(plan.UnsupportedRequest.Message))
+		}
+	}
+	return strings.Join(nonEmptyStrings(parts...), "；")
+}
+
 func nonEmptyStrings(values ...string) []string {
 	nonEmpty := make([]string, 0, len(values))
 	for _, value := range values {
@@ -452,7 +480,8 @@ func unsupportedScenarioFallbackPlan(userMessage, variant string) Plan {
 		contextSummary = unsupportedScenarioUnavailableContext(variant)
 	}
 	return Plan{
-		Intent: intent,
+		Intent:    intent,
+		RouteType: routeTypeFromLegacyIntent(intent),
 		Steps: []PlanStep{{
 			ToolName: "conversation.generate_reply",
 			Arguments: map[string]any{
@@ -462,13 +491,38 @@ func unsupportedScenarioFallbackPlan(userMessage, variant string) Plan {
 	}
 }
 
+func normalizeUnsupportedPreparationRoute(plan Plan, userMessage string) Plan {
+	if plan.RouteType != "unsupported" || isExplicitUnsupportedScenarioSessionRequest(userMessage) {
+		return plan
+	}
+	capability := strings.TrimSpace(plan.Reason)
+	if plan.UnsupportedRequest != nil && strings.TrimSpace(plan.UnsupportedRequest.RequestedCapability) != "" {
+		capability = strings.TrimSpace(plan.UnsupportedRequest.RequestedCapability)
+	}
+	if capability == "" {
+		capability = "informal_real_world_preparation"
+	}
+	return Plan{
+		Intent:    "oral_free_practice",
+		RouteType: "conversation",
+		Steps: []PlanStep{{
+			ToolName: "conversation.generate_reply",
+			Arguments: map[string]any{
+				"context_summary": unsupportedScenarioPreparationContext(capability),
+				"reply_policy":    "business_meeting_preparation",
+			},
+		}},
+		Confidence: plan.Confidence,
+		Reason:     "用户想做真实沟通前的口头准备，没有明确要求创建正式结构化场景",
+	}
+}
+
 func unsupportedScenarioPreparationContext(variant string) string {
 	return strings.Join([]string{
-		"用户想为当前尚未接入正式工具的真实沟通场景做英文准备",
+		"用户想为真实沟通场景做英文准备",
 		"不要创建 PracticeSession，不要调用场景工具，不要说请求失败",
 		"直接口头陪用户准备：给出简短开场句、关键表达、可练习的问题，并邀请用户先用英文说一版",
-		"如果用户后续明确要求创建正式场景模拟，再说明当前还没有这个场景工具",
-		"unsupported_scenario_variant=" + strings.TrimSpace(variant),
+		"requested_preparation=" + strings.TrimSpace(variant),
 	}, "；")
 }
 
@@ -528,8 +582,9 @@ func (s *Service) planVisibleMistakeReference(ctx context.Context, threadID, use
 			args["question_ref"] = questionRef
 		}
 		return Plan{
-			Intent: "view_mistake_context",
-			Steps:  []PlanStep{{ToolName: "review.get_mistake_context", Arguments: args}},
+			Intent:    "view_mistake_context",
+			RouteType: "tool_plan",
+			Steps:     []PlanStep{{ToolName: "review.get_mistake_context", Arguments: args}},
 		}, true
 	}
 	return Plan{}, false
@@ -586,7 +641,8 @@ func interviewAnswerPlan(last bool) Plan {
 		lastTool = "review.generate_feedback"
 	}
 	return Plan{
-		Intent: "submit_interview_answer",
+		Intent:    "submit_interview_answer",
+		RouteType: "tool_plan",
 		Steps: []PlanStep{
 			{ToolName: "conversation.submit_turn", Arguments: map[string]any{}},
 			{ToolName: "practice.apply_turn_outcome", Arguments: map[string]any{"answer_validity": "VALID"}},
@@ -597,8 +653,9 @@ func interviewAnswerPlan(last bool) Plan {
 
 func endInterviewPlan(reason string) Plan {
 	return Plan{
-		Intent: "end_interview",
-		Steps:  []PlanStep{{ToolName: "review.generate_feedback", Arguments: map[string]any{"reason": reason}}},
+		Intent:    "end_interview",
+		RouteType: "tool_plan",
+		Steps:     []PlanStep{{ToolName: "review.generate_feedback", Arguments: map[string]any{"reason": reason}}},
 	}
 }
 

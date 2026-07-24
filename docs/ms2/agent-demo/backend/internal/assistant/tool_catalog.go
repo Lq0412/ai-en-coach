@@ -79,7 +79,7 @@ func OperationCatalog() []OperationSpec {
 			Summary:     "检索场景练习知识",
 			Description: "按 ScenarioVariant 获取后端维护的场景知识和追问指导。",
 			Parameters: []OperationParameter{
-				{Name: "scenario_variant", Type: "string", Description: "场景变体 ID，例如 go_backend_interview"},
+				{Name: "scenario_variant", Type: "string", Description: "场景变体 ID，例如 go_backend_interview", Required: true},
 				{Name: "tags", Type: "array<string>", Description: "知识标签，由后端 Scenario Catalog 归一化"},
 			},
 			Risk: "read",
@@ -88,17 +88,21 @@ func OperationCatalog() []OperationSpec {
 			Name: "preparation.get_confirmed_context", Package: "preparation",
 			Summary:     "读取确认过的候选人背景",
 			Description: "获取用于练习计划和面试题生成的候选人、简历和目标岗位上下文。",
-			Parameters:  []OperationParameter{{Name: "scenario", Type: "string", Description: "场景名称，例如 PROGRAMMER_INTERVIEW"}},
-			Risk:        "read",
+			Parameters: []OperationParameter{
+				{Name: "scenario", Type: "string", Description: "场景名称，例如 PROGRAMMER_INTERVIEW", Required: true},
+				{Name: "target_role", Type: "string", Description: "目标岗位，例如 Java Backend Engineer"},
+			},
+			Risk: "read",
 		},
 		{
 			Name: "practice.create_plan", Package: "practice",
 			Summary:     "创建练习计划",
 			Description: "根据目标岗位、题数和时长创建 PracticePlan。该操作会产生用户可见状态变更，启动前需要确认。",
 			Parameters: []OperationParameter{
-				{Name: "role", Type: "string", Description: "目标岗位，例如 Go Backend Engineer"},
+				{Name: "role", Type: "string", Description: "目标岗位，例如 Go Backend Engineer", Required: true},
 				{Name: "max_turns", Type: "integer", Description: "最大有效回答数；0 表示不固定题数"},
 				{Name: "duration_minutes", Type: "integer", Description: "练习时长，默认 15 分钟"},
+				{Name: "scenario_id", Type: "string", Description: "后端场景变体 ID，例如 java_backend_interview"},
 			},
 			Risk: "user_visible_change",
 		},
@@ -129,6 +133,7 @@ func OperationCatalog() []OperationSpec {
 				{Name: "user_message", Type: "string", Description: "用户本轮消息"},
 				{Name: "context_summary", Type: "string", Description: "线程或场景上下文摘要"},
 				{Name: "conversation_messages", Type: "array<object>", Description: "完整有序对话上下文"},
+				{Name: "reply_policy", Type: "string", Description: "回复策略，例如 ask_missing_slots、ask_user_to_choose、unsupported_formal_scenario、business_meeting_preparation"},
 			},
 			Risk: "read",
 		},
@@ -137,8 +142,8 @@ func OperationCatalog() []OperationSpec {
 			Summary:     "提交当前面试回答",
 			Description: "仅在面试模式且存在 ActiveQuestion 时，把用户输入记录为当前问题的回答。",
 			Parameters: []OperationParameter{
-				{Name: "answer_text", Type: "string", Description: "用户回答文本"},
-				{Name: "interaction_mode", Type: "string", Description: "交互模式", Enum: []string{"TEXT", "VOICE"}},
+				{Name: "answer_text", Type: "string", Description: "用户回答文本", Required: true},
+				{Name: "interaction_mode", Type: "string", Description: "交互模式", Required: true, Enum: []string{"TEXT", "VOICE"}},
 			},
 			Risk: "write",
 		},
@@ -256,6 +261,22 @@ func ValidatePlanAgainstToolCatalog(plan Plan) error {
 		for _, parameter := range operation.Parameters {
 			if parameter.Required && !planStepHasNonEmptyArgument(step, parameter.Name) {
 				return fmt.Errorf("planner returned %s without required argument %q", step.ToolName, parameter.Name)
+			}
+		}
+		for _, parameter := range operation.Parameters {
+			if len(parameter.Enum) == 0 || !planStepHasNonEmptyArgument(step, parameter.Name) {
+				continue
+			}
+			value := strings.TrimSpace(fmt.Sprint(step.Arguments[parameter.Name]))
+			valid := false
+			for _, allowed := range parameter.Enum {
+				if value == allowed {
+					valid = true
+					break
+				}
+			}
+			if !valid {
+				return fmt.Errorf("planner returned unsupported value %q for %s.%s", value, step.ToolName, parameter.Name)
 			}
 		}
 	}

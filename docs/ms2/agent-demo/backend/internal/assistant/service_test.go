@@ -212,8 +212,94 @@ func TestUnsupportedScenarioFallsBackToPreparationChat(t *testing.T) {
 		t.Fatalf("unexpected fallback calls: %#v", snapshot.ToolCalls)
 	}
 	summary := fmt.Sprint(snapshot.ToolCalls[0].Arguments["context_summary"])
-	if !strings.Contains(summary, "尚未接入正式工具") || !strings.Contains(summary, "不要创建 PracticeSession") {
+	if !strings.Contains(summary, "真实沟通场景做英文准备") || !strings.Contains(summary, "不要创建 PracticeSession") {
 		t.Fatalf("missing unsupported preparation context: %s", summary)
+	}
+}
+
+func TestRouteConversationIgnoresDeprecatedIntentPlaceholder(t *testing.T) {
+	store := assistant.NewMemoryConversationStore()
+	tools := assistant.NewDemoState()
+	service := assistant.NewService(assistant.Dependencies{
+		Planner: staticPlanner{plan: assistant.Plan{
+			Intent:    "deprecated_compatibility_intent",
+			RouteType: "conversation",
+			Steps: []assistant.PlanStep{{
+				ToolName:  "conversation.generate_reply",
+				Arguments: map[string]any{"reply_policy": "business_meeting_preparation"},
+			}},
+		}},
+		Tools:             demomodules.NewRegistry(tools, nil),
+		ConversationStore: store,
+		Runtime:           tools,
+		Attachments:       tools,
+		Resetter:          tools,
+	})
+
+	run, err := service.StartTask(context.Background(), assistant.StartTaskCommand{
+		ActorUserID:    assistant.DemoUserID,
+		ThreadID:       assistant.DemoThreadID,
+		UserMessage:    "我明天要见美国客户了，帮我准备一下",
+		IdempotencyKey: "business-prep-route",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Intent != "free_conversation" || run.Status != assistant.TaskRunStatusCompleted {
+		t.Fatalf("unexpected route conversation run: %#v", run)
+	}
+	state := tools.State()
+	if state.CurrentSessionID != "" || state.ActiveQuestion != "" {
+		t.Fatalf("route conversation changed practice state: %#v", state)
+	}
+	snapshot := store.Snapshot(state)
+	if len(snapshot.ToolCalls) != 1 || snapshot.ToolCalls[0].ToolName != "conversation.generate_reply" {
+		t.Fatalf("unexpected route conversation calls: %#v", snapshot.ToolCalls)
+	}
+}
+
+func TestUnsupportedRouteForInformalBusinessPreparationDowngradesToConversation(t *testing.T) {
+	store := assistant.NewMemoryConversationStore()
+	tools := assistant.NewDemoState()
+	service := assistant.NewService(assistant.Dependencies{
+		Planner: staticPlanner{plan: assistant.Plan{
+			RouteType: "unsupported",
+			Steps: []assistant.PlanStep{{
+				ToolName:  "conversation.generate_reply",
+				Arguments: map[string]any{},
+			}},
+			UnsupportedRequest: &assistant.UnsupportedRequest{
+				RequestedCapability: "formal business meeting simulation with US client",
+				ClosestPackage:      "conversation",
+				Message:             "No formal scenario.",
+			},
+		}},
+		Tools:             demomodules.NewRegistry(tools, nil),
+		ConversationStore: store,
+		Runtime:           tools,
+		Attachments:       tools,
+		Resetter:          tools,
+	})
+
+	run, err := service.StartTask(context.Background(), assistant.StartTaskCommand{
+		ActorUserID:    assistant.DemoUserID,
+		ThreadID:       assistant.DemoThreadID,
+		UserMessage:    "我明天要见美国客户了，帮我准备一下",
+		IdempotencyKey: "business-prep-downgrade",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Intent != "oral_free_practice" || run.Status != assistant.TaskRunStatusCompleted {
+		t.Fatalf("unexpected downgraded run: %#v", run)
+	}
+	snapshot := store.Snapshot(tools.State())
+	if len(snapshot.ToolCalls) != 1 || snapshot.ToolCalls[0].ToolName != "conversation.generate_reply" {
+		t.Fatalf("unexpected tool calls: %#v", snapshot.ToolCalls)
+	}
+	summary := fmt.Sprint(snapshot.ToolCalls[0].Arguments["context_summary"])
+	if !strings.Contains(summary, "直接口头陪用户准备") || strings.Contains(summary, "当前还没有") || strings.Contains(summary, "尚未接入") {
+		t.Fatalf("unexpected preparation context: %s", summary)
 	}
 }
 
@@ -372,6 +458,48 @@ func TestStartInterviewRoleUsesExplicitUserMessageOverPlannerRole(t *testing.T) 
 	}
 	if targetRoleFromTestPlan(plan) != "Go Backend Engineer" {
 		t.Fatalf("planner role was not corrected: %#v", plan)
+	}
+}
+
+func TestStartTaskCompletesPlannerJavaInterviewPlanMissingNextQuestion(t *testing.T) {
+	store := assistant.NewMemoryConversationStore()
+	tools := assistant.NewDemoState()
+	service := assistant.NewService(assistant.Dependencies{
+		Planner: staticPlanner{plan: assistant.Plan{
+			Intent:          "scenario_practice",
+			RouteType:       "tool_plan",
+			Scenario:        "interview",
+			ScenarioVariant: "java_backend_interview",
+			Steps: []assistant.PlanStep{
+				{ToolName: "scenario.retrieve_knowledge", Arguments: map[string]any{"scenario_variant": "java_backend_interview"}},
+				{ToolName: "practice.create_plan", Arguments: map[string]any{"role": "Java Backend Engineer"}},
+			},
+		}},
+		Tools:             demomodules.NewRegistry(tools, nil),
+		ConversationStore: store,
+		Runtime:           tools,
+		Attachments:       tools,
+		Resetter:          tools,
+	})
+
+	run, err := service.StartTask(context.Background(), assistant.StartTaskCommand{
+		ActorUserID:    assistant.DemoUserID,
+		ThreadID:       assistant.DemoThreadID,
+		UserMessage:    "java面试吧",
+		IdempotencyKey: "java-missing-next-question",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Status != assistant.TaskRunStatusAwaitingConfirm {
+		t.Fatalf("run should wait for confirmation, got %#v", run)
+	}
+	plan, err := store.GetPlan(context.Background(), run.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !planHasStep(plan, "practice.start_session") || !planHasStep(plan, "conversation.generate_next_question") {
+		t.Fatalf("service did not complete interview start chain: %#v", plan.Steps)
 	}
 }
 
@@ -1244,4 +1372,13 @@ func seedAssistantCompletedSession(t *testing.T, tools *assistant.DemoState, id,
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+func planHasStep(plan assistant.Plan, toolName string) bool {
+	for _, step := range plan.Steps {
+		if step.ToolName == toolName {
+			return true
+		}
+	}
+	return false
 }
