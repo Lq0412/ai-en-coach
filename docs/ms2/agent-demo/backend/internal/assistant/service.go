@@ -169,15 +169,24 @@ func (s *Service) startTask(ctx context.Context, command StartTaskCommand) (Task
 	if command.Mode == ConversationModeLive && interactionMode == "conversation" {
 		plan = freeConversationPlan()
 	} else {
-		plan, err = s.dependencies.Planner.Plan(ctx, PlanRequest{
-			ThreadID:        thread.ID,
-			UserMessage:     visibleMessage,
-			ContextSummary:  contextSummary,
-			Messages:        messages,
-			InteractionMode: interactionMode,
-		})
-		if err != nil {
-			return TaskRun{}, fmt.Errorf("plan task: %w", err)
+		var planned bool
+		plan, planned = s.planVisibleMistakeReference(ctx, thread.ID, visibleMessage)
+		if !planned {
+			plan, err = s.dependencies.Planner.Plan(ctx, PlanRequest{
+				ThreadID:        thread.ID,
+				UserMessage:     visibleMessage,
+				ContextSummary:  contextSummary,
+				Messages:        messages,
+				InteractionMode: interactionMode,
+			})
+			if err != nil {
+				var unsupportedScenario UnsupportedScenarioVariantError
+				if errors.As(err, &unsupportedScenario) {
+					plan = unsupportedScenarioFallbackPlan(visibleMessage, unsupportedScenario.Variant)
+				} else {
+					return TaskRun{}, fmt.Errorf("plan task: %w", err)
+				}
+			}
 		}
 	}
 	state := RuntimeSnapshot{}
@@ -221,9 +230,12 @@ func (s *Service) startTask(ctx context.Context, command StartTaskCommand) (Task
 		}
 	}
 	if plan.Intent == "free_conversation" || plan.Intent == "oral_free_practice" {
-		conversationSummary := thread.ContextSummary
+		conversationSummary := conversationReplyContextSummary(plan, thread.ContextSummary)
 		if interactionMode == "conversation" && state.ActiveQuestion != "" {
-			conversationSummary = "自由对话中；interview_paused=true；当前消息不是面试回答，不得继续提问、催促回答或计入 Turn"
+			conversationSummary = strings.Join(nonEmptyStrings(
+				conversationSummary,
+				"自由对话中；interview_paused=true；当前消息不是面试回答，不得继续提问、催促回答或计入 Turn",
+			), "；")
 		}
 		if plan.Intent == "oral_free_practice" {
 			conversationSummary = oralPracticeContextSummary(conversationSummary, interactionMode == "conversation" && state.ActiveQuestion != "")
@@ -405,6 +417,167 @@ func oralFreePracticePlan() Plan {
 			Arguments: map[string]any{},
 		}},
 	}
+}
+
+func conversationReplyContextSummary(plan Plan, fallback string) string {
+	for _, step := range plan.Steps {
+		if step.ToolName != "conversation.generate_reply" {
+			continue
+		}
+		if value := strings.TrimSpace(fmt.Sprint(step.Arguments["context_summary"])); value != "" && value != "<nil>" {
+			if strings.TrimSpace(fallback) == "" {
+				return value
+			}
+			return strings.Join([]string{value, "上一轮上下文：" + strings.TrimSpace(fallback)}, "；")
+		}
+	}
+	return fallback
+}
+
+func nonEmptyStrings(values ...string) []string {
+	nonEmpty := make([]string, 0, len(values))
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			nonEmpty = append(nonEmpty, strings.TrimSpace(value))
+		}
+	}
+	return nonEmpty
+}
+
+func unsupportedScenarioFallbackPlan(userMessage, variant string) Plan {
+	intent := "oral_free_practice"
+	contextSummary := unsupportedScenarioPreparationContext(variant)
+	if isExplicitUnsupportedScenarioSessionRequest(userMessage) {
+		intent = "free_conversation"
+		contextSummary = unsupportedScenarioUnavailableContext(variant)
+	}
+	return Plan{
+		Intent: intent,
+		Steps: []PlanStep{{
+			ToolName: "conversation.generate_reply",
+			Arguments: map[string]any{
+				"context_summary": contextSummary,
+			},
+		}},
+	}
+}
+
+func unsupportedScenarioPreparationContext(variant string) string {
+	return strings.Join([]string{
+		"用户想为当前尚未接入正式工具的真实沟通场景做英文准备",
+		"不要创建 PracticeSession，不要调用场景工具，不要说请求失败",
+		"直接口头陪用户准备：给出简短开场句、关键表达、可练习的问题，并邀请用户先用英文说一版",
+		"如果用户后续明确要求创建正式场景模拟，再说明当前还没有这个场景工具",
+		"unsupported_scenario_variant=" + strings.TrimSpace(variant),
+	}, "；")
+}
+
+func unsupportedScenarioUnavailableContext(variant string) string {
+	return strings.Join([]string{
+		"用户明确要求创建或开始一个当前尚未支持的正式场景模拟",
+		"不要创建 PracticeSession，不要调用场景工具，不要说请求失败",
+		"简短说明目前还没有这个正式场景模拟工具，但可以先口头陪用户准备或做轻量 role-play",
+		"unsupported_scenario_variant=" + strings.TrimSpace(variant),
+	}, "；")
+}
+
+func isExplicitUnsupportedScenarioSessionRequest(message string) bool {
+	normalized := strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(message)), ""))
+	if normalized == "" {
+		return false
+	}
+	hasScenarioToken := strings.Contains(normalized, "场景") ||
+		strings.Contains(normalized, "模拟") ||
+		strings.Contains(normalized, "session") ||
+		strings.Contains(normalized, "正式")
+	if !hasScenarioToken {
+		return false
+	}
+	for _, token := range []string{
+		"创建", "新建", "启动", "开始", "开一场", "create", "start", "launch",
+	} {
+		if strings.Contains(normalized, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Service) planVisibleMistakeReference(ctx context.Context, threadID, userMessage string) (Plan, bool) {
+	listPosition, hasListPosition := visibleMistakeListPosition(userMessage)
+	questionRef, hasQuestionRef := visibleQuestionRef(userMessage)
+	if !hasListPosition && !hasQuestionRef {
+		return Plan{}, false
+	}
+	messages, err := s.dependencies.ConversationStore.ListMessages(ctx, threadID)
+	if err != nil {
+		return Plan{}, false
+	}
+	for index := len(messages) - 1; index >= 0 && index >= len(messages)-8; index-- {
+		message := messages[index]
+		if message.Role != "assistant" || message.Kind != "mistake_cards" || message.Mistakes == nil || len(message.Mistakes.Items) == 0 {
+			continue
+		}
+		args := map[string]any{}
+		if hasListPosition {
+			if listPosition < 0 || listPosition >= len(message.Mistakes.Items) {
+				return Plan{}, false
+			}
+			args["mistake_id"] = message.Mistakes.Items[listPosition].MistakeID
+		} else {
+			args["question_ref"] = questionRef
+		}
+		return Plan{
+			Intent: "view_mistake_context",
+			Steps:  []PlanStep{{ToolName: "review.get_mistake_context", Arguments: args}},
+		}, true
+	}
+	return Plan{}, false
+}
+
+func visibleMistakeListPosition(message string) (int, bool) {
+	normalized := strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(message)), ""))
+	if normalized == "" {
+		return 0, false
+	}
+	positions := []struct {
+		tokens []string
+		index  int
+	}{
+		{tokens: []string{"第一道", "第一个", "第一条", "第1道", "第1个", "第1条", "firstone", "thefirst"}, index: 0},
+		{tokens: []string{"第二道", "第二个", "第二条", "第2道", "第2个", "第2条", "secondone"}, index: 1},
+		{tokens: []string{"第三道", "第三个", "第三条", "第3道", "第3个", "第3条", "thirdone"}, index: 2},
+	}
+	for _, position := range positions {
+		for _, token := range position.tokens {
+			if strings.Contains(normalized, token) {
+				return position.index, true
+			}
+		}
+	}
+	return 0, false
+}
+
+func visibleQuestionRef(message string) (string, bool) {
+	normalized := strings.ToLower(strings.Join(strings.Fields(strings.TrimSpace(message)), ""))
+	refs := []struct {
+		tokens []string
+		ref    string
+	}{
+		{tokens: []string{"q1", "question1", "第1题", "第一题"}, ref: "Q1"},
+		{tokens: []string{"q2", "question2", "第2题", "第二题"}, ref: "Q2"},
+		{tokens: []string{"q3", "question3", "第3题", "第三题"}, ref: "Q3"},
+		{tokens: []string{"q4", "question4", "第4题", "第四题"}, ref: "Q4"},
+		{tokens: []string{"q5", "question5", "第5题", "第五题"}, ref: "Q5"},
+	}
+	for _, item := range refs {
+		for _, token := range item.tokens {
+			if strings.Contains(normalized, token) {
+				return item.ref, true
+			}
+		}
+	}
+	return "", false
 }
 
 func interviewAnswerPlan(last bool) Plan {
@@ -999,16 +1172,16 @@ func attachmentContext(message string, attachments []Attachment) string {
 func composeResponse(intent string, result map[string]any) string {
 	switch intent {
 	case "free_conversation", "oral_free_practice", "scenario_practice", "clarify_interview_requirements":
-		return fmt.Sprint(result["summary"])
+		return stringResult(result, "summary", "我没太理解你的意思。你可以换个说法，或者直接告诉我想练口语、面试、复盘还是看错题。")
 	case "start_mock_interview":
-		return fmt.Sprintf("面试开始。%v", result["content"])
+		return "面试开始。" + stringResult(result, "content", "我们先从第一题开始。")
 	case "submit_interview_answer":
 		if content, ok := result["content"].(string); ok {
 			return content
 		}
-		return fmt.Sprintf("面试完成。%v", result["summary"])
+		return "面试完成。" + stringResult(result, "summary", "我已经记录这次回答。")
 	case "end_interview":
-		return fmt.Sprintf("面试结束。%v", result["summary"])
+		return "面试结束。" + stringResult(result, "summary", "这轮练习已结束。")
 	case "view_practice_history":
 		items, _ := result["items"].([]map[string]any)
 		if len(items) == 0 {
@@ -1033,9 +1206,33 @@ func composeResponse(intent string, result map[string]any) string {
 			return "错题本里还没有保存的题目。你可以先在面试报告里把想复练的题加入错题。"
 		}
 		return fmt.Sprintf("已找到 %d 道最近错题。", len(items))
+	case "view_mistake_context":
+		mistake, _ := result["mistake"].(map[string]any)
+		question := stringResult(mistake, "question_text", "")
+		if question == "" {
+			return "我没找到这道错题。你可以说 Q1、Q3，或点开错题卡片再练。"
+		}
+		return "好，我们练这道错题：\n" + question + "\n\n你可以直接用英文回答，我会按面试回答帮你改。"
+	case "submit_mistake_repractice":
+		return stringResult(result, "summary", "我已经收到这次复练回答。")
 	default:
-		return fmt.Sprint(result["summary"])
+		return stringResult(result, "summary", "我没太理解你的意思。你可以换个说法，或者直接告诉我想做什么。")
 	}
+}
+
+func stringResult(values map[string]any, key, fallback string) string {
+	if values == nil {
+		return fallback
+	}
+	value, ok := values[key]
+	if !ok || value == nil {
+		return fallback
+	}
+	text := strings.TrimSpace(fmt.Sprint(value))
+	if text == "" || text == "<nil>" {
+		return fallback
+	}
+	return text
 }
 
 func targetRoleFromPlan(plan Plan) string {

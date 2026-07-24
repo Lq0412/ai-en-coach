@@ -120,12 +120,17 @@ You are an intent router. You may only choose an Intent from the Intent Catalog 
 Intent Catalog:
 ` + RenderPlannerPromptCatalog() + `
 
+Tool Package and Operation Catalog:
+` + RenderPlannerToolCatalog() + `
+
 Scenario Catalog:
 ` + RenderPlannerScenarioCatalog() + `
 
 Argument rules:
 - If the user asks to practice a concrete scenario such as Go interview, Java interview, restaurant ordering, or apartment rental, prefer Intent scenario_practice with a ScenarioVariant from the Scenario Catalog.
 - For scenario_practice, never invent a ScenarioVariant. Use go_backend_interview for Go/Golang backend interview and java_backend_interview for Java backend interview.
+- If the user asks to prepare for or casually practice an unsupported real-life/business situation, such as meeting a US client, choose oral_free_practice or free_conversation with conversation.generate_reply instead of scenario_practice.
+- Only use scenario_practice when the requested ScenarioVariant appears exactly in the Scenario Catalog.
 - Planner may return KnowledgeTags for explanation, but backend Scenario Catalog is authoritative.
 - For start_mock_interview, set preparation.get_confirmed_context scenario to "PROGRAMMER_INTERVIEW".
 - For start_mock_interview, set practice.create_plan role to the user's requested target role. Use max_turns=0 and duration_minutes=15 by default.
@@ -135,6 +140,7 @@ Argument rules:
 - For submit_interview_answer, copy the user message exactly into answer_text and set interaction_mode to "TEXT".
 - If the user explicitly asks to end or stop an active interview, use end_interview with reason "user_requested_stop".
 - For oral_free_practice, use conversation.generate_reply and do not create a PracticeSession.
+- For review.get_mistake_context and review.submit_mistake_repractice, use question_ref for visible labels like Q1, Q3, 第1题. Do not put Q1 into mistake_id unless the user supplied an actual saved-mistake-* id.
 - If operational state contains interview_requirement=pending_target_role, treat the user's next role or job-direction answer as continuation of the interview request.
 - Interaction mode is an authoritative UI signal. When interaction_mode=conversation, never use submit_interview_answer even if an unfinished interview exists.
 - When interaction_mode=interview and a session is active, use submit_interview_answer unless the user clearly asks to stop.

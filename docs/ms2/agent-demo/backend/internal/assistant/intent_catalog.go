@@ -18,6 +18,14 @@ type IntentSpec struct {
 	Preconditions        []string
 }
 
+type UnsupportedScenarioVariantError struct {
+	Variant string
+}
+
+func (e UnsupportedScenarioVariantError) Error() string {
+	return fmt.Sprintf("planner returned unsupported scenario_variant %q", e.Variant)
+}
+
 func IntentCatalog() []IntentSpec {
 	return []IntentSpec{
 		{
@@ -211,6 +219,9 @@ func ValidatePlanAgainstCatalog(plan Plan) error {
 	if plan.Intent == "" || len(plan.Steps) == 0 {
 		return errors.New("planner returned an empty plan")
 	}
+	if err := ValidatePlanAgainstToolCatalog(plan); err != nil {
+		return err
+	}
 	spec, ok := FindIntentSpec(plan.Intent)
 	if !ok {
 		return fmt.Errorf("planner returned unsupported intent %q", plan.Intent)
@@ -283,8 +294,10 @@ func validateRequiredSlots(plan Plan, spec IntentSpec) error {
 			}
 		case "mistake_id":
 			if !planHasNonEmptyArgument(plan, "review.get_mistake_context", "mistake_id") &&
-				!planHasNonEmptyArgument(plan, "review.submit_mistake_repractice", "mistake_id") {
-				return fmt.Errorf("planner returned %q without required mistake_id argument", plan.Intent)
+				!planHasNonEmptyArgument(plan, "review.get_mistake_context", "question_ref") &&
+				!planHasNonEmptyArgument(plan, "review.submit_mistake_repractice", "mistake_id") &&
+				!planHasNonEmptyArgument(plan, "review.submit_mistake_repractice", "question_ref") {
+				return fmt.Errorf("planner returned %q without required mistake reference", plan.Intent)
 			}
 		}
 	}
@@ -307,7 +320,7 @@ func validateScenarioPlan(plan Plan) error {
 	}
 	spec, ok := FindScenarioSpec(plan.ScenarioVariant)
 	if !ok {
-		return fmt.Errorf("planner returned unsupported scenario_variant %q", plan.ScenarioVariant)
+		return UnsupportedScenarioVariantError{Variant: plan.ScenarioVariant}
 	}
 	if strings.TrimSpace(plan.Scenario) != "" && strings.TrimSpace(plan.Scenario) != spec.Scenario {
 		return fmt.Errorf("planner returned scenario %q for variant %q, want %q", plan.Scenario, spec.ID, spec.Scenario)
