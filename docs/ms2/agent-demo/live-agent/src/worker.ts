@@ -2,8 +2,10 @@ import {
   ServerOptions,
   cli,
   defineAgent,
+  llm,
   normalizeLanguage,
   stt,
+  tts,
   voice,
   type JobContext,
 } from "@livekit/agents";
@@ -14,7 +16,14 @@ import { z } from "zod";
 import { GoLLM } from "./providers/go-llm.js";
 import { GoSTT } from "./providers/go-stt.js";
 import { GoTTS, pcm16AudioFrames } from "./providers/go-tts.js";
-import { SessionContext } from "./session-context.js";
+import {
+  configuredTimeoutMS,
+  safeErrorMessage,
+} from "./resilience.js";
+import {
+  SessionContext,
+  type TurnContext,
+} from "./session-context.js";
 import { TurnAudioBuffer } from "./turn-audio-buffer.js";
 import { TurnCommitter } from "./turn-committer.js";
 
@@ -53,6 +62,76 @@ const speechEvent = (type: stt.SpeechEventType, text: string): stt.SpeechEvent =
     },
   ],
 });
+
+class HookBackedGoSTT extends stt.STT {
+  readonly label = "go-stt";
+
+  constructor() {
+    super({
+      streaming: true,
+      interimResults: true,
+      alignedTranscript: false,
+    });
+  }
+
+  override get provider(): string {
+    return "go";
+  }
+
+  override get model(): string {
+    return "qwen3-asr-flash-realtime";
+  }
+
+  protected override async _recognize(): Promise<stt.SpeechEvent> {
+    throw new Error("Go STT is only available through the streaming agent hook");
+  }
+
+  override stream(): stt.SpeechStream {
+    throw new Error("Go STT streaming is provided by the agent sttNode hook");
+  }
+}
+
+class HookBackedGoLLM extends llm.LLM {
+  override label(): string {
+    return "go-llm";
+  }
+
+  override get provider(): string {
+    return "go";
+  }
+
+  override get model(): string {
+    return "qwen";
+  }
+
+  override chat(): llm.LLMStream {
+    throw new Error("Go LLM is only available through the agent llmNode hook");
+  }
+}
+
+class HookBackedGoTTS extends tts.TTS {
+  override label = "go-tts";
+
+  constructor() {
+    super(24_000, 1, { streaming: true });
+  }
+
+  override get provider(): string {
+    return "go";
+  }
+
+  override get model(): string {
+    return "qwen3-tts-flash-realtime";
+  }
+
+  override synthesize(): tts.ChunkedStream {
+    throw new Error("Go TTS is only available through the agent ttsNode hook");
+  }
+
+  override stream(): tts.SynthesizeStream {
+    throw new Error("Go TTS streaming is provided by the agent ttsNode hook");
+  }
+}
 
 const pcmBytes = (frame: AudioFrame): Uint8Array =>
   new Uint8Array(frame.data.buffer, frame.data.byteOffset, frame.data.byteLength).slice();
@@ -131,6 +210,7 @@ type CommittedTurnStreamOptions = {
   committer: TurnCommitter;
   audio: TurnAudioBuffer;
   publish: (event: Record<string, unknown>) => Promise<void>;
+  onBackgroundTask?: (task: Promise<void>) => void;
 };
 
 export async function* streamCommittedTurn({
@@ -138,6 +218,7 @@ export async function* streamCommittedTurn({
   committer,
   audio,
   publish,
+  onBackgroundTask,
 }: CommittedTurnStreamOptions): AsyncGenerator<string> {
   const turn = context.takeFinalizedTurn();
   if (!turn?.transcript) {
@@ -148,35 +229,60 @@ export async function* streamCommittedTurn({
   let wake: (() => void) | undefined;
   let completed = false;
   let failure: unknown;
+  let speechTurnQueued = false;
+  const operation = new AbortController();
   const committed = committer
-    .commit(turn, {
-      onUserCommitted: async (message) => {
-        await publish(context.event(turn, "turn.user_committed", { message }));
+    .commit(
+      turn,
+      {
+        onUserCommitted: async (message) => {
+          await publish(context.event(turn, "turn.user_committed", { message }));
+          await publish(context.latencyEvent(turn, "turn.persisted"));
+        },
+        onAssistantDelta: async (delta) => {
+          deltas.push(delta);
+          wake?.();
+          wake = undefined;
+        },
+        onAssistantCommitted: async (message) => {
+          await publish(
+            context.event(turn, "turn.assistant_committed", { message }),
+          );
+        },
       },
-      onAssistantDelta: async (delta) => {
-        deltas.push(delta);
-        wake?.();
-        wake = undefined;
-        await publish(context.event(turn, "assistant.delta", { delta }));
-      },
-      onAssistantCommitted: async (message) => {
-        await publish(
-          context.event(turn, "turn.assistant_committed", { message }),
-        );
-      },
-    })
-    .then(async (result) => {
-      const linked = await audio.commit(turn.turnID, result.userMessage.ID);
-      if (linked?.message) {
-        if (linked.message.client_message_id !== turn.clientMessageID) {
-          throw new Error("linked recording message correlation mismatch");
-        }
-        await publish(
-          context.event(turn, "attachment.linked", {
-            attachment_id: linked.attachmentID,
-            message: linked.message,
-          }),
-        );
+      operation.signal,
+    )
+    .then((result) => {
+      const attachmentTask = audio
+        .commit(turn.turnID, result.userMessage.ID)
+        .then(async (linked) => {
+          if (!linked?.message) return;
+          if (linked.message.client_message_id !== turn.clientMessageID) {
+            throw new Error("linked recording message correlation mismatch");
+          }
+          await publish(
+            context.event(turn, "attachment.linked", {
+              attachment_id: linked.attachmentID,
+              message: linked.message,
+            }),
+          );
+        })
+        .catch(async (error: unknown) => {
+          try {
+            await publish(
+              context.event(turn, "attachment.failed", {
+                stage: "attachment.upload",
+                error: safeErrorMessage(error),
+              }),
+            );
+          } catch {
+            // The canonical text turn remains successful even if observation fails.
+          }
+        });
+      if (onBackgroundTask) {
+        onBackgroundTask(attachmentTask);
+      } else {
+        void attachmentTask;
       }
       completed = true;
       wake?.();
@@ -190,7 +296,7 @@ export async function* streamCommittedTurn({
       try {
         await publish(
           context.event(turn, "turn.failed", {
-            error: error instanceof Error ? error.message : String(error),
+            error: safeErrorMessage(error),
           }),
         );
       } catch {
@@ -203,6 +309,10 @@ export async function* streamCommittedTurn({
     while (!completed || deltas.length > 0) {
       const delta = deltas.shift();
       if (delta !== undefined) {
+        if (!speechTurnQueued) {
+          speechTurnQueued = true;
+          context.queueSpeechTurn(turn);
+        }
         yield delta;
       } else if (!completed) {
         await new Promise<void>((resolve) => {
@@ -213,6 +323,10 @@ export async function* streamCommittedTurn({
     await committed;
     if (failure) throw failure;
   } finally {
+    if (!completed) {
+      operation.abort(new Error("Go LLM turn interrupted"));
+      await committed.catch(() => undefined);
+    }
     context.completeTurn(turn.turnID);
   }
 }
@@ -226,16 +340,28 @@ export class ConversationOrchestrator {
 
   #job: JobContext;
 
-  constructor(job: JobContext, metadata: WorkerJobMetadata, goBaseURL: string) {
+  constructor(
+    job: JobContext,
+    metadata: WorkerJobMetadata,
+    goBaseURL: string,
+    providerTimeoutMS = configuredTimeoutMS(
+      process.env.LIVE_AGENT_PROVIDER_TIMEOUT_MS,
+    ),
+  ) {
     this.#job = job;
     this.context = new SessionContext({
       actorUserID: metadata.actor_user_id,
       threadID: metadata.thread_id,
       liveSessionID: metadata.live_session_id,
     });
-    this.stt = new GoSTT({ baseURL: goBaseURL });
-    this.tts = new GoTTS({ baseURL: goBaseURL });
-    this.committer = new TurnCommitter(new GoLLM({ baseURL: goBaseURL }));
+    this.stt = new GoSTT({
+      baseURL: goBaseURL,
+      idleTimeoutMS: Math.max(providerTimeoutMS, 45_000),
+    });
+    this.tts = new GoTTS({ baseURL: goBaseURL, timeoutMS: providerTimeoutMS });
+    this.committer = new TurnCommitter(
+      new GoLLM({ baseURL: goBaseURL, timeoutMS: providerTimeoutMS }),
+    );
     this.audio = new TurnAudioBuffer(attachmentCallbacks(goBaseURL));
   }
 
@@ -252,10 +378,13 @@ export class ConversationOrchestrator {
           resumeFalseInterruption: true,
         },
         preemptiveGeneration: {
-          enabled: true,
+          enabled: false,
           preemptiveTts: false,
         },
       },
+      stt: new HookBackedGoSTT(),
+      llm: new HookBackedGoLLM(),
+      tts: new HookBackedGoTTS(),
       sttNode: (_hook, audio) => this.#transcribe(audio),
       llmNode: () => this.#generateReply(),
       ttsNode: (_hook, text) => this.#synthesize(text),
@@ -274,7 +403,7 @@ export class ConversationOrchestrator {
           resumeFalseInterruption: true,
         },
         preemptiveGeneration: {
-          enabled: true,
+          enabled: false,
           preemptiveTts: false,
         },
       },
@@ -330,6 +459,9 @@ export class ConversationOrchestrator {
           yield speechEvent(stt.SpeechEventType.INTERIM_TRANSCRIPT, event.transcript);
         } else {
           context.finalizeTranscript(event.transcript);
+          await this.#publish(
+            context.latencyEvent(turn, "transcript.committed"),
+          );
           yield speechEvent(stt.SpeechEventType.FINAL_TRANSCRIPT, event.transcript);
           yield speechEvent(stt.SpeechEventType.END_OF_SPEECH, event.transcript);
         }
@@ -341,7 +473,7 @@ export class ConversationOrchestrator {
         context.completeTurn(turn.turnID);
         void this.#publish(
           context.event(turn, "turn.failed", {
-            error: error instanceof Error ? error.message : String(error),
+            error: safeErrorMessage(error),
           }),
         );
       }
@@ -360,11 +492,29 @@ export class ConversationOrchestrator {
 
   async *#synthesize(text: AsyncIterable<string>): AsyncGenerator<AudioFrame> {
     const speech = this.context.startSpeech();
+    let turn: TurnContext | undefined;
+    let started = false;
     try {
       for await (const segment of boundedTextSegments(text)) {
-        yield* pcm16AudioFrames(this.tts.synthesize(segment, speech.signal));
+        turn ??= this.context.claimSpeechTurn();
+        for await (const frame of pcm16AudioFrames(
+          this.tts.synthesize(segment, speech.signal),
+        )) {
+          if (!started && turn) {
+            started = true;
+            await this.#publish(
+              this.context.latencyEvent(turn, "assistant.audio_first"),
+            );
+          }
+          yield frame;
+        }
       }
     } finally {
+      if (started && turn) {
+        await this.#publish(
+          this.context.latencyEvent(turn, "assistant.audio_stopped"),
+        ).catch(() => undefined);
+      }
       if (!speech.signal.aborted) {
         speech.abort(new Error("speech synthesis completed"));
       }
@@ -407,6 +557,9 @@ export async function* boundedTextSegments(
 
 const worker = defineAgent({
   entry: async (job) => {
+    if (!liveVoiceFeatureEnabled(process.env.LIVEKIT_VOICE_ENABLED)) {
+      throw new Error("Live voice worker is disabled");
+    }
     const goBaseURL = process.env.GO_BACKEND_URL ?? "http://127.0.0.1:8080";
     await job.connect();
     const participantMetadata = job.job.metadata.trim()
@@ -416,6 +569,9 @@ const worker = defineAgent({
     await new ConversationOrchestrator(job, metadata, goBaseURL).start();
   },
 });
+
+export const liveVoiceFeatureEnabled = (value: string | undefined): boolean =>
+  value === "1" || value?.toLowerCase() === "true";
 
 export default worker;
 

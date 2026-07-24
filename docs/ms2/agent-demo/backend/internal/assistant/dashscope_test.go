@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -380,9 +381,15 @@ func TestDashScopeRealtimeTranscriberForwardsPartialAndFinalText(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer connection.Close()
-		var session realtimeEvent
-		if err := connection.ReadJSON(&session); err != nil || session.Type != "session.update" {
+		var session map[string]any
+		if err := connection.ReadJSON(&session); err != nil || session["type"] != "session.update" {
 			t.Fatalf("unexpected session event: %#v err=%v", session, err)
+		}
+		turnDetection := session["session"].(map[string]any)["turn_detection"].(map[string]any)
+		if turnDetection["type"] != "server_vad" ||
+			turnDetection["threshold"] != float64(0) ||
+			turnDetection["silence_duration_ms"] != float64(400) {
+			t.Fatalf("unexpected turn detection: %#v", turnDetection)
 		}
 		_ = connection.WriteJSON(map[string]any{"type": "session.updated"})
 		deltaSent := false
@@ -399,13 +406,9 @@ func TestDashScopeRealtimeTranscriberForwardsPartialAndFinalText(t *testing.T) {
 					"type": "conversation.item.input_audio_transcription.delta", "delta": "你",
 				})
 			}
-			if event.Type == "input_audio_buffer.commit" {
+			if event.Type == "session.finish" {
 				break
 			}
-		}
-		var finish realtimeEvent
-		if err := connection.ReadJSON(&finish); err != nil || finish.Type != "session.finish" {
-			t.Fatalf("unexpected finish event: %#v err=%v", finish, err)
 		}
 		_ = connection.WriteJSON(map[string]any{
 			"type": "conversation.item.input_audio_transcription.completed", "transcript": "你好",
@@ -426,6 +429,55 @@ func TestDashScopeRealtimeTranscriberForwardsPartialAndFinalText(t *testing.T) {
 	}
 	if transcript.Text != "你好" || len(updates) != 2 || updates[0].Text != "你" || !updates[1].Completed {
 		t.Fatalf("unexpected realtime transcription: transcript=%#v updates=%#v", transcript, updates)
+	}
+}
+
+func TestDashScopeRealtimeTranscriberRefreshesWriteDeadline(t *testing.T) {
+	upgrader := websocket.Upgrader{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		connection, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer connection.Close()
+		var event realtimeEvent
+		if err := connection.ReadJSON(&event); err != nil || event.Type != "session.update" {
+			t.Fatalf("unexpected session event: %#v err=%v", event, err)
+		}
+		_ = connection.WriteJSON(map[string]any{"type": "session.updated"})
+		for {
+			if err := connection.ReadJSON(&event); err != nil {
+				t.Fatal(err)
+			}
+			if event.Type == "session.finish" {
+				break
+			}
+		}
+		_ = connection.WriteJSON(map[string]any{
+			"type": "conversation.item.input_audio_transcription.completed", "transcript": "still connected",
+		})
+		_ = connection.WriteJSON(map[string]any{"type": "session.finished"})
+	}))
+	defer server.Close()
+
+	reader, writer := io.Pipe()
+	go func() {
+		_, _ = writer.Write([]byte("first"))
+		time.Sleep(50 * time.Millisecond)
+		_, _ = writer.Write([]byte("second"))
+		_ = writer.Close()
+	}()
+	provider := testDashScopeProvider(server.URL)
+	provider.config.ASRWebSocketURL = "ws" + strings.TrimPrefix(server.URL, "http")
+	provider.writeTimeout = 20 * time.Millisecond
+	transcript, err := provider.StreamTranscribePCM(context.Background(), reader, func(TranscriptUpdate) error {
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if transcript.Text != "still connected" {
+		t.Fatalf("unexpected transcript: %#v", transcript)
 	}
 }
 

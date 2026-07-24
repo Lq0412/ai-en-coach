@@ -77,9 +77,10 @@ func LoadDashScopeConfig() (DashScopeConfig, error) {
 }
 
 type DashScopeProvider struct {
-	config DashScopeConfig
-	client *http.Client
-	dialer *websocket.Dialer
+	config       DashScopeConfig
+	client       *http.Client
+	dialer       *websocket.Dialer
+	writeTimeout time.Duration
 }
 
 const (
@@ -95,9 +96,10 @@ const (
 
 func NewDashScopeProvider(config DashScopeConfig) *DashScopeProvider {
 	return &DashScopeProvider{
-		config: config,
-		client: &http.Client{Timeout: 90 * time.Second},
-		dialer: websocket.DefaultDialer,
+		config:       config,
+		client:       &http.Client{Timeout: 90 * time.Second},
+		dialer:       websocket.DefaultDialer,
+		writeTimeout: 30 * time.Second,
 	}
 }
 
@@ -634,8 +636,7 @@ func (p *DashScopeProvider) StreamTranscribePCM(
 	}
 	defer connection.Close()
 	_ = connection.SetReadDeadline(time.Now().Add(10 * time.Minute))
-	_ = connection.SetWriteDeadline(time.Now().Add(30 * time.Second))
-	if err := connection.WriteJSON(asrSessionUpdate()); err != nil {
+	if err := p.writeRealtimeJSON(connection, asrSessionUpdate()); err != nil {
 		return TranscriptSnapshot{}, fmt.Errorf("initialize DashScope ASR: %w", err)
 	}
 	if err := waitForRealtimeEvent(connection, "session.updated"); err != nil {
@@ -697,7 +698,7 @@ func (p *DashScopeProvider) StreamTranscribePCM(
 	for {
 		count, readErr := pcm.Read(buffer)
 		if count > 0 {
-			if err := connection.WriteJSON(map[string]any{
+			if err := p.writeRealtimeJSON(connection, map[string]any{
 				"event_id": eventID(), "type": "input_audio_buffer.append",
 				"audio": base64.StdEncoding.EncodeToString(buffer[:count]),
 			}); err != nil {
@@ -711,10 +712,10 @@ func (p *DashScopeProvider) StreamTranscribePCM(
 			break
 		}
 	}
-	for _, eventType := range []string{"input_audio_buffer.commit", "session.finish"} {
-		if err := connection.WriteJSON(map[string]any{"event_id": eventID(), "type": eventType}); err != nil {
-			return TranscriptSnapshot{}, fmt.Errorf("finish DashScope ASR: %w", err)
-		}
+	if err := p.writeRealtimeJSON(connection, map[string]any{
+		"event_id": eventID(), "type": "session.finish",
+	}); err != nil {
+		return TranscriptSnapshot{}, fmt.Errorf("finish DashScope ASR: %w", err)
 	}
 	select {
 	case transcript := <-done:
@@ -724,6 +725,13 @@ func (p *DashScopeProvider) StreamTranscribePCM(
 	case <-ctx.Done():
 		return TranscriptSnapshot{}, ctx.Err()
 	}
+}
+
+func (p *DashScopeProvider) writeRealtimeJSON(connection *websocket.Conn, value any) error {
+	if err := connection.SetWriteDeadline(time.Now().Add(p.writeTimeout)); err != nil {
+		return err
+	}
+	return connection.WriteJSON(value)
 }
 
 func asrSessionUpdate() map[string]any {
@@ -737,7 +745,11 @@ func asrSessionUpdate() map[string]any {
 			"input_audio_transcription": map[string]any{
 				"language": "zh",
 			},
-			"turn_detection": nil,
+			"turn_detection": map[string]any{
+				"type":                "server_vad",
+				"threshold":           0.0,
+				"silence_duration_ms": 400,
+			},
 		},
 	}
 }

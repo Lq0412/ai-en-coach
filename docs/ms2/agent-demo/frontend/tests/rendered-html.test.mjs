@@ -81,7 +81,13 @@ test("prototype bridges the original interaction to the Go assistant", async () 
   assert.match(bridge, /queueStreamingSpeechDelta/);
   assert.match(bridge, /flushStreamingSpeech/);
   assert.match(bridge, /stopSpeechPlayback/);
-  assert.match(bridge, /real-voice-capture/);
+  assert.match(bridge, /real-recording-inline/);
+  assert.match(bridge, /class="real-agent-composer recording"/);
+  assert.match(bridge, /aria-label="开始录音"/);
+  assert.match(bridge, /aria-label="停止并发送录音"/);
+  assert.doesNotMatch(bridge, /class="real-live-entry"/);
+  assert.match(bridge, /class="app-live-call"/);
+  assert.match(bridge, /aria-label="开始实时通话"/);
   assert.match(bridge, /transcript\.delta/);
   assert.match(bridge, /interview_paused|interaction_mode/);
   assert.match(bridge, /context_limit_exceeded/);
@@ -125,13 +131,32 @@ test("prototype bridges the original interaction to the Go assistant", async () 
   assert.match(bridge, /已发送，等待 SpeakUp 回复/);
   assert.match(bridge, /语音播放失败，请稍后点击重读/);
   assert.doesNotMatch(bridge, /await uploadVoiceRecording\(recordingBlob\)[\s\S]{0,500}await sendMessage/);
-  assert.match(bridge, /const messageTask = sendMessage\(transcript\)/);
+  assert.match(bridge, /const messageTask = sendMessage\(\s*transcript,/);
   assert.match(bridge, /const recordingUpload = uploadVoiceRecording\(recordingBlob\)/);
+  assert.match(
+    bridge,
+    /voiceSubmissionInProgress = false;[\s\S]{0,500}const messageTask = sendMessage\(\s*transcript,/,
+  );
+  assert.match(
+    bridge,
+    /return consumeTaskStream\(response, liveIdentity, onUserCommitted\)/,
+  );
+  assert.match(bridge, /onUserCommitted\?\.\(canonicalUserMessage\)/);
+  assert.match(bridge, /Promise\.race\(\[userCommitted, messageTask\]\)/);
+  assert.doesNotMatch(bridge, /const canonicalUserMessage = await messageTask/);
   assert.match(bridge, /turn\.user_committed/);
   assert.match(bridge, /linkVoiceRecording/);
   assert.match(bridge, /startsWith\("audio\/"\)/);
   assert.match(bridge, /data-real-action="retry-voice-send"/);
   assert.match(bridge, /本次录音已保留/);
+  const resetConversation = bridge.match(
+    /async function resetConversation\(\) \{[\s\S]*?\n  \}\n\n  async function uploadAttachments/,
+  )?.[0];
+  assert.ok(resetConversation, "resetConversation implementation is missing");
+  assert.match(resetConversation, /optimisticUserMessage = null/);
+  assert.match(resetConversation, /failedVoiceRecordingBlob = null/);
+  assert.match(resetConversation, /failedVoiceMessageID = ""/);
+  assert.match(resetConversation, /fallbackRecordingBlob = null/);
   assert.doesNotMatch(bridge, /⭐|★|☆/);
   assert.match(bridge, /data-attachment-input/);
   assert.match(bridge, /accept="application\/pdf,image\/png,image\/jpeg,image\/webp"/);
@@ -270,7 +295,7 @@ test("defines realtime event, reconciliation, and latency bridge contracts", asy
   assert.match(bridge, /messageEvent\.origin\s*!==\s*window\.location\.origin/);
   assert.match(bridge, /role="status"\s+aria-live="polite"/);
   assert.match(bridge, /正在连接|正在聆听|正在思考|正在说话|正在重新连接/);
-  assert.match(bridge, /data-real-action="start-live-call"/);
+  assert.match(bridge, /action === "start-live-call"/);
   assert.match(bridge, /data-real-action="toggle-live-mute"/);
   assert.match(bridge, /data-real-action="end-live-call"/);
   assert.match(bridge, /streamingText \+= event\.delta/);
@@ -279,12 +304,8 @@ test("defines realtime event, reconciliation, and latency bridge contracts", asy
   assert.match(bridge, /is_demo:\s*true/);
   assert.match(bridge, /LIVE_FEATURE_ENABLED/);
   assert.match(styles, /\.real-live-call/);
-  assert.match(bridge, /live-entry-visible/);
   assert.match(bridge, /live-call-active/);
-  assert.match(
-    styles,
-    /\.real-agent-page\.live-entry-visible\s+\.real-agent-thread[\s\S]*?bottom:\s*228px/,
-  );
+  assert.doesNotMatch(styles, /\.real-live-entry/);
   assert.match(
     styles,
     /\.real-agent-page\.live-call-active\s+\.real-agent-thread[\s\S]*?bottom:\s*228px/,

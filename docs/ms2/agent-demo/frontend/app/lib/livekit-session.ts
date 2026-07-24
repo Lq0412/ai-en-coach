@@ -68,6 +68,7 @@ const LIVE_EVENT_TYPES = new Set([
   "turn.assistant_committed",
   "turn.failed",
   "attachment.linked",
+  "attachment.failed",
   "latency.point",
 ]);
 
@@ -91,6 +92,10 @@ export function isLiveEvent(value: unknown): value is RecordValue {
   }
   if (value.type === "assistant.delta") {
     return boundedString(value.delta, 4_000);
+  }
+  if (value.type === "attachment.failed") {
+    return boundedString(value.stage, 100) &&
+      boundedString(value.error, 500);
   }
   if (["turn.user_committed", "turn.assistant_committed", "attachment.linked"].includes(String(value.type))) {
     return isRecord(value.message) &&
@@ -188,6 +193,99 @@ export type LiveRoomPort = {
   disconnect(): Promise<void>;
 };
 
+type RecoveryTimer = ReturnType<typeof setTimeout>;
+
+type LiveRecoveryControllerOptions = {
+  recover: () => Promise<void>;
+  fallback: () => Promise<void>;
+  onState: (state: "reconnecting" | "failed", error?: string) => void;
+  reconnectWindowMS?: number;
+  failureGraceMS?: number;
+  schedule?: (callback: () => void, delayMS: number) => RecoveryTimer;
+  cancel?: (timer: RecoveryTimer) => void;
+};
+
+export class LiveRecoveryController {
+  #recover: () => Promise<void>;
+  #fallback: () => Promise<void>;
+  #onState: LiveRecoveryControllerOptions["onState"];
+  #reconnectWindowMS: number;
+  #failureGraceMS: number;
+  #schedule: NonNullable<LiveRecoveryControllerOptions["schedule"]>;
+  #cancel: NonNullable<LiveRecoveryControllerOptions["cancel"]>;
+  #timer: RecoveryTimer | null = null;
+  #attempted = false;
+  #recovering: Promise<void> | null = null;
+  #disposed = false;
+
+  constructor(options: LiveRecoveryControllerOptions) {
+    this.#recover = options.recover;
+    this.#fallback = options.fallback;
+    this.#onState = options.onState;
+    this.#reconnectWindowMS = options.reconnectWindowMS ?? 10_000;
+    this.#failureGraceMS = options.failureGraceMS ?? 2_500;
+    this.#schedule = options.schedule ?? setTimeout;
+    this.#cancel = options.cancel ?? clearTimeout;
+  }
+
+  markReconnecting(): void {
+    if (this.#disposed) return;
+    this.#onState("reconnecting");
+    this.#arm(() => void this.recoverNow(), this.#reconnectWindowMS);
+  }
+
+  recoverNow(): Promise<void> {
+    if (this.#disposed) return Promise.resolve();
+    if (this.#recovering) return this.#recovering;
+    if (this.#attempted) {
+      this.#scheduleFallback("实时连接恢复次数已用完");
+      return Promise.resolve();
+    }
+    this.#attempted = true;
+    this.#clearTimer();
+    this.#recovering = this.#recover()
+      .then(() => this.markHealthy())
+      .catch((error: unknown) => {
+        const message = error instanceof Error
+          ? error.message
+          : "实时连接恢复失败";
+        this.#onState("failed", message);
+        this.#scheduleFallback(message);
+      })
+      .finally(() => {
+        this.#recovering = null;
+      });
+    return this.#recovering;
+  }
+
+  markHealthy(): void {
+    this.#clearTimer();
+  }
+
+  dispose(): void {
+    this.#disposed = true;
+    this.#clearTimer();
+  }
+
+  #scheduleFallback(message: string): void {
+    this.#onState("failed", `${message}，即将回到普通模式`);
+    this.#arm(() => {
+      void this.#fallback().catch(() => undefined);
+    }, this.#failureGraceMS);
+  }
+
+  #arm(callback: () => void, delayMS: number): void {
+    this.#clearTimer();
+    this.#timer = this.#schedule(callback, delayMS);
+  }
+
+  #clearTimer(): void {
+    if (this.#timer === null) return;
+    this.#cancel(this.#timer);
+    this.#timer = null;
+  }
+}
+
 export function parseLiveSessionCredentials(value: unknown): LiveSessionCredentials {
   if (!isRecord(value) || !hasExactKeys(
     value,
@@ -274,6 +372,10 @@ export class LiveCallFlow {
     return this.#muted;
   }
 
+  get state(): LiveCallState {
+    return this.#state;
+  }
+
   async start(input: { actor_user_id: string; thread_id: string }): Promise<void> {
     this.#actorUserID = input.actor_user_id;
     this.#emit("connecting");
@@ -306,6 +408,9 @@ export class LiveCallFlow {
         this.#liveSessionID,
         this.#actorUserID,
       );
+      if (credentials.live_session.live_session_id !== this.#liveSessionID) {
+        throw new Error("实时通话恢复返回了不同的会话");
+      }
       await this.#connect(credentials);
     } catch (error) {
       await this.#cleanupRoom().catch(() => undefined);

@@ -31,7 +31,9 @@ export class SessionContext {
 
   #sequence = 0;
   #currentTurn: TurnContext | undefined;
+  #latestTurn: TurnContext | undefined;
   #finalizedTurns: TurnContext[] = [];
+  #speechTurns: TurnContext[] = [];
   #speech: AbortController | undefined;
   #state = "listening";
 
@@ -50,11 +52,16 @@ export class SessionContext {
       clientMessageID: ids.clientMessageID ?? randomUUID(),
       transcript: "",
     };
+    this.#latestTurn = this.#currentTurn;
     return this.#currentTurn;
   }
 
   get currentTurn(): TurnContext | undefined {
     return this.#currentTurn;
+  }
+
+  get latestTurn(): TurnContext | undefined {
+    return this.#latestTurn;
   }
 
   requireTurn(): TurnContext {
@@ -83,6 +90,16 @@ export class SessionContext {
     }
   }
 
+  queueSpeechTurn(turn: TurnContext): void {
+    if (!this.#speechTurns.some((queued) => queued.turnID === turn.turnID)) {
+      this.#speechTurns.push(turn);
+    }
+  }
+
+  claimSpeechTurn(): TurnContext | undefined {
+    return this.#speechTurns.shift();
+  }
+
   event(turn: TurnContext, type: string, payload: Record<string, unknown>): SessionEvent {
     this.#sequence += 1;
     return {
@@ -96,6 +113,22 @@ export class SessionContext {
       occurred_at: new Date().toISOString(),
       payload,
     };
+  }
+
+  latencyEvent(turn: TurnContext, stage: string): SessionEvent {
+    const event = this.event(turn, "latency.point", {});
+    event.payload.latency = {
+      thread_id: turn.threadID,
+      live_session_id: turn.liveSessionID,
+      turn_id: turn.turnID,
+      client_message_id: turn.clientMessageID,
+      mode: "live",
+      stage,
+      source: "worker",
+      occurred_at: event.occurred_at,
+      sequence: event.sequence,
+    };
+    return event;
   }
 
   startSpeech(): AbortController {

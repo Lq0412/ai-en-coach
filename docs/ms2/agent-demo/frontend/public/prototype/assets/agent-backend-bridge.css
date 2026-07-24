@@ -6,6 +6,46 @@
   background: #fff !important;
 }
 
+.app-live-call {
+  flex: 0 0 50px;
+  width: 50px;
+  height: 50px;
+  display: grid;
+  place-items: center;
+  margin-left: auto;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, .94);
+  box-shadow: 0 5px 18px rgba(30, 44, 46, .08);
+  cursor: pointer;
+}
+
+.app-live-call + .app-new-chat {
+  margin-left: 0;
+}
+
+.app-live-call > span {
+  height: 22px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.app-live-call i {
+  width: 3px;
+  height: 10px;
+  border-radius: 3px;
+  background: #176872;
+}
+
+.app-live-call i:nth-child(2) {
+  height: 20px;
+}
+
+.app-live-call i:nth-child(3) {
+  height: 14px;
+}
+
 .real-agent-thread {
   position: absolute;
   top: 64px;
@@ -1271,6 +1311,89 @@
   color: #b44738;
 }
 
+.real-agent-composer.recording,
+.real-agent-composer.processing {
+  grid-template-columns: 40px minmax(0, 1fr) 46px;
+  border-color: rgba(44, 132, 111, .18);
+}
+
+.real-agent-composer.recording {
+  background: rgba(247, 251, 249, .98);
+}
+
+.real-agent-composer.processing {
+  opacity: .82;
+}
+
+.real-recording-inline {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(86px, .7fr) minmax(0, 1.3fr);
+  align-items: center;
+  gap: 10px;
+  padding: 0 8px;
+}
+
+.real-recording-inline .real-live-wave {
+  height: 34px;
+  justify-content: flex-start;
+  gap: 3px;
+  overflow: hidden;
+}
+
+.real-recording-inline .real-live-wave i {
+  flex: 0 0 3px;
+}
+
+.real-recording-inline > span {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.real-recording-inline b {
+  color: #286e60;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.real-recording-inline small {
+  overflow: hidden;
+  color: #737c78;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.real-agent-composer .real-recording-cancel {
+  color: #777d7a;
+  font-size: 22px;
+}
+
+.real-agent-composer .real-mic.recording {
+  border-radius: 50%;
+  background: #176872;
+}
+
+.real-agent-composer .real-mic.recording i {
+  top: 14px;
+  left: 17px;
+  width: 12px;
+  height: 12px;
+  border: 0;
+  border-radius: 3px;
+  background: #fff;
+}
+
+.real-agent-composer .real-mic.recording i::before {
+  content: none;
+}
+
+.real-agent-composer .real-mic.processing {
+  cursor: wait;
+  opacity: .38;
+}
+
 .real-agent-composer .real-send {
   display: grid;
   place-items: center;
@@ -2073,37 +2196,6 @@
 .real-speaking-label i:nth-child(2) { height: 11px; animation-delay: .12s; }
 .real-speaking-label i:nth-child(3) { height: 8px; animation-delay: .24s; }
 
-.real-voice-capture {
-  position: absolute;
-  z-index: 60;
-  right: 20px;
-  bottom: 28px;
-  left: 20px;
-  display: grid;
-  gap: 11px;
-  padding: 16px;
-  border: 1px solid #dbeae5;
-  border-radius: 24px;
-  background: rgba(250, 252, 251, .98);
-  box-shadow: 0 12px 35px rgba(37, 70, 61, .16);
-}
-
-.real-practice-answer > .real-voice-capture {
-  position: static;
-}
-
-.real-voice-capture-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.real-voice-capture-head small {
-  margin-left: auto;
-  color: #5a716a;
-  font-size: 9px;
-}
-
 .real-live-dot {
   background: #d55347;
   box-shadow: 0 0 0 4px rgba(213, 83, 71, .12);
@@ -2128,27 +2220,6 @@
 
 .real-live-wave i:nth-child(3n) { animation-delay: .18s; }
 .real-live-wave i:nth-child(4n) { animation-delay: .34s; }
-
-.real-voice-capture p {
-  min-height: 42px;
-  margin: 0;
-  color: #303936;
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.real-voice-capture > div:last-child {
-  display: grid;
-  grid-template-columns: 1fr 1.5fr;
-  gap: 8px;
-}
-
-.real-voice-capture button {
-  min-height: 40px;
-  border: 0;
-  border-radius: 13px;
-  cursor: pointer;
-}
 
 .real-voice-answer {
   display: inline-flex;
@@ -2575,31 +2646,10 @@
   gap: 9px;
 }
 
-.real-live-entry {
-  position: absolute;
-  right: 20px;
-  bottom: 162px;
-  left: 20px;
-  min-height: 54px;
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 13px;
-  border: 1px solid #dfe7e4;
-  border-radius: 16px;
-  background: rgba(255, 255, 255, .96);
-  color: #202220;
-  text-align: left;
-  cursor: pointer;
-}
-
-.real-agent-page.live-entry-visible .real-agent-thread,
 .real-agent-page.live-call-active .real-agent-thread {
   bottom: 228px;
 }
 
-.real-live-entry > i,
 .real-live-call-status > i {
   width: 12px;
   height: 12px;
@@ -2608,30 +2658,19 @@
   box-shadow: 0 0 0 5px rgba(23, 104, 114, .1);
 }
 
-.real-live-entry span b,
-.real-live-entry span small,
 .real-live-call-status span b,
 .real-live-call-status span small {
   display: block;
 }
 
-.real-live-entry span b,
 .real-live-call-status span b {
   font-size: 13px;
 }
 
-.real-live-entry span small,
 .real-live-call-status span small {
   margin-top: 2px;
   color: #7c817e;
   font-size: 10px;
-}
-
-.real-live-entry em {
-  color: #176872;
-  font-size: 11px;
-  font-style: normal;
-  font-weight: 750;
 }
 
 .real-live-call {
@@ -2723,6 +2762,12 @@
 }
 
 @media (max-width: 380px) {
+  .app-live-call {
+    flex-basis: 46px;
+    width: 46px;
+    height: 46px;
+  }
+
   .real-agent-thread {
     right: 16px;
     left: 16px;
@@ -2735,13 +2780,11 @@
     grid-template-columns: 38px minmax(0, 1fr) 38px 40px;
   }
 
-  .real-live-entry,
   .real-live-call {
     right: 16px;
     left: 16px;
   }
 
-  .real-agent-page.live-entry-visible .real-agent-thread,
   .real-agent-page.live-call-active .real-agent-thread {
     bottom: 228px;
   }

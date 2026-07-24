@@ -165,15 +165,20 @@ func (s *Service) startTask(ctx context.Context, command StartTaskCommand) (Task
 			contextSummary = built.Summary
 		}
 	}
-	plan, err := s.dependencies.Planner.Plan(ctx, PlanRequest{
-		ThreadID:        thread.ID,
-		UserMessage:     visibleMessage,
-		ContextSummary:  contextSummary,
-		Messages:        messages,
-		InteractionMode: interactionMode,
-	})
-	if err != nil {
-		return TaskRun{}, fmt.Errorf("plan task: %w", err)
+	var plan Plan
+	if command.Mode == ConversationModeLive && interactionMode == "conversation" {
+		plan = freeConversationPlan()
+	} else {
+		plan, err = s.dependencies.Planner.Plan(ctx, PlanRequest{
+			ThreadID:        thread.ID,
+			UserMessage:     visibleMessage,
+			ContextSummary:  contextSummary,
+			Messages:        messages,
+			InteractionMode: interactionMode,
+		})
+		if err != nil {
+			return TaskRun{}, fmt.Errorf("plan task: %w", err)
+		}
 	}
 	state := RuntimeSnapshot{}
 	if s.dependencies.Runtime != nil {

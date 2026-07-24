@@ -1,3 +1,8 @@
+import {
+  createIdleDeadline,
+  type TimeoutScheduler,
+} from "../resilience.js";
+
 export type GoTranscriptEvent = {
   type: "partial" | "final";
   transcript: string;
@@ -21,6 +26,8 @@ export type WebSocketLike = {
 export type GoSTTOptions = {
   baseURL: string;
   openSocket?: (url: string) => WebSocketLike;
+  idleTimeoutMS?: number;
+  scheduler?: TimeoutScheduler;
 };
 
 class AsyncEventQueue<T> {
@@ -85,6 +92,8 @@ const transcriptFromPayload = (payload: Record<string, unknown>): string =>
 export class GoSTT {
   #url: string;
   #openSocket: (url: string) => WebSocketLike;
+  #idleTimeoutMS: number;
+  #scheduler: TimeoutScheduler | undefined;
 
   constructor(options: GoSTTOptions) {
     this.#url = websocketURL(options.baseURL);
@@ -96,22 +105,39 @@ export class GoSTT {
         }
         return new WebSocket(url);
       });
+    this.#idleTimeoutMS = options.idleTimeoutMS ?? 45_000;
+    this.#scheduler = options.scheduler;
   }
 
   async *stream(
     audio: AsyncIterable<Uint8Array>,
     signal?: AbortSignal,
   ): AsyncGenerator<GoTranscriptEvent> {
+    const deadline = createIdleDeadline(
+      signal,
+      this.#idleTimeoutMS,
+      "Go STT",
+      this.#scheduler,
+    );
+    const effectiveSignal = deadline.signal;
+    if (effectiveSignal.aborted) {
+      deadline.cleanup();
+      throw effectiveSignal.reason;
+    }
     const socket = this.#openSocket(this.#url);
     const events = new AsyncEventQueue<GoTranscriptEvent>();
     const opened = new Promise<void>((resolve, reject) => {
-      socket.addEventListener("open", () => resolve(), { once: true });
+      socket.addEventListener("open", () => {
+        deadline.touch();
+        resolve();
+      }, { once: true });
       socket.addEventListener("error", () => reject(new Error("Go STT websocket failed to open")), {
         once: true,
       });
     });
 
     const onMessage = (raw: Event | MessageEvent) => {
+      deadline.touch();
       void (async () => {
         try {
           const message = JSON.parse(
@@ -139,15 +165,16 @@ export class GoSTT {
     socket.addEventListener("error", onError);
 
     const onAbort = () => {
-      events.fail(signal?.reason ?? new Error("Go STT aborted"));
+      events.fail(effectiveSignal.reason ?? new Error("Go STT aborted"));
       socket.close(1000, "aborted");
     };
-    signal?.addEventListener("abort", onAbort, { once: true });
+    effectiveSignal.addEventListener("abort", onAbort, { once: true });
 
     const writer = (async () => {
       await opened;
       for await (const chunk of audio) {
-        if (signal?.aborted) throw signal.reason;
+        if (effectiveSignal.aborted) throw effectiveSignal.reason;
+        deadline.touch();
         socket.send(chunk);
       }
       socket.send(JSON.stringify({ type: "stop" }));
@@ -161,10 +188,11 @@ export class GoSTT {
       }
       await writer;
     } finally {
-      signal?.removeEventListener("abort", onAbort);
+      effectiveSignal.removeEventListener("abort", onAbort);
       socket.removeEventListener("message", onMessage);
       socket.removeEventListener("error", onError);
       socket.close(1000, "complete");
+      deadline.cleanup();
     }
   }
 }

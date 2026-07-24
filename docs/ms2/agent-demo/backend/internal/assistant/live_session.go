@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +16,7 @@ import (
 )
 
 var ErrLiveVoiceUnavailable = errors.New("assistant: live voice unavailable")
+var ErrLiveSessionEnded = errors.New("assistant: live session already ended")
 
 const defaultLiveKitTokenTTL = 10 * time.Minute
 
@@ -27,12 +29,20 @@ type LiveKitConfig struct {
 }
 
 func LoadLiveKitConfig() LiveKitConfig {
+	tokenTTL := defaultLiveKitTokenTTL
+	if seconds, err := strconv.Atoi(strings.TrimSpace(os.Getenv("LIVEKIT_TOKEN_TTL_SECONDS"))); err == nil &&
+		seconds > 0 {
+		tokenTTL = time.Duration(seconds) * time.Second
+	}
+	if tokenTTL > defaultLiveKitTokenTTL {
+		tokenTTL = defaultLiveKitTokenTTL
+	}
 	return LiveKitConfig{
 		Enabled:   strings.EqualFold(strings.TrimSpace(os.Getenv("LIVEKIT_VOICE_ENABLED")), "true") || os.Getenv("LIVEKIT_VOICE_ENABLED") == "1",
 		ServerURL: strings.TrimSpace(os.Getenv("LIVEKIT_URL")),
 		APIKey:    strings.TrimSpace(os.Getenv("LIVEKIT_API_KEY")),
 		APISecret: strings.TrimSpace(os.Getenv("LIVEKIT_API_SECRET")),
-		TokenTTL:  defaultLiveKitTokenTTL,
+		TokenTTL:  tokenTTL,
 	}
 }
 
@@ -41,6 +51,10 @@ func (config LiveKitConfig) available() bool {
 		strings.TrimSpace(config.ServerURL) != "" &&
 		strings.TrimSpace(config.APIKey) != "" &&
 		strings.TrimSpace(config.APISecret) != ""
+}
+
+func (config LiveKitConfig) Available() bool {
+	return config.available()
 }
 
 type StartLiveSessionCommand struct {
@@ -72,11 +86,15 @@ type liveSessionCoordinator struct {
 	config     LiveKitConfig
 	byID       map[string]LiveSession
 	byStartKey map[string]string
+	now        func() time.Time
 }
 
 func newLiveSessionCoordinator(config LiveKitConfig) *liveSessionCoordinator {
 	return &liveSessionCoordinator{
 		config: config, byID: map[string]LiveSession{}, byStartKey: map[string]string{},
+		now: func() time.Time {
+			return time.Now().UTC()
+		},
 	}
 }
 
@@ -134,9 +152,13 @@ func (coordinator *liveSessionCoordinator) start(command StartLiveSessionCommand
 	defer coordinator.mu.Unlock()
 	key := command.ActorUserID + ":" + command.ThreadID + ":" + command.IdempotencyKey
 	if id := coordinator.byStartKey[key]; id != "" {
-		return coordinator.credentialsLocked(coordinator.byID[id])
+		session := coordinator.byID[id]
+		if session.Status == LiveSessionStatusEnded {
+			return LiveSessionCredentials{}, ErrLiveSessionEnded
+		}
+		return coordinator.credentialsLocked(session)
 	}
-	now := time.Now().UTC()
+	now := coordinator.now()
 	id := nextID("live-session")
 	session := LiveSession{
 		ID: id, ThreadID: command.ThreadID,
@@ -163,7 +185,17 @@ func (coordinator *liveSessionCoordinator) get(id string) (LiveSession, error) {
 func (coordinator *liveSessionCoordinator) credentials(session LiveSession) (LiveSessionCredentials, error) {
 	coordinator.mu.Lock()
 	defer coordinator.mu.Unlock()
-	return coordinator.credentialsLocked(session)
+	current, ok := coordinator.byID[session.ID]
+	if !ok {
+		return LiveSessionCredentials{}, ErrNotFound
+	}
+	if current.Status == LiveSessionStatusEnded {
+		return LiveSessionCredentials{}, ErrLiveSessionEnded
+	}
+	current.Status = LiveSessionStatusReconnecting
+	current.UpdatedAt = coordinator.now()
+	coordinator.byID[current.ID] = current
+	return coordinator.credentialsLocked(current)
 }
 
 func (coordinator *liveSessionCoordinator) credentialsLocked(session LiveSession) (LiveSessionCredentials, error) {
@@ -189,7 +221,7 @@ func (coordinator *liveSessionCoordinator) credentialsLocked(session LiveSession
 	if err != nil {
 		return LiveSessionCredentials{}, fmt.Errorf("assistant: create livekit metadata: %w", err)
 	}
-	issuedAt := time.Now().UTC()
+	issuedAt := coordinator.now()
 	token, err := auth.NewAccessToken(coordinator.config.APIKey, coordinator.config.APISecret).
 		SetIdentity(session.ParticipantIdentity).
 		SetMetadata(string(metadata)).
@@ -213,7 +245,7 @@ func (coordinator *liveSessionCoordinator) recordPartial(sessionID, turnID strin
 		return ErrNotFound
 	}
 	session.PartialTurnID = strings.TrimSpace(turnID)
-	session.UpdatedAt = time.Now().UTC()
+	session.UpdatedAt = coordinator.now()
 	coordinator.byID[sessionID] = session
 	return nil
 }
@@ -235,7 +267,7 @@ func (coordinator *liveSessionCoordinator) commitTurn(sessionID, turnID string) 
 	if session.PartialTurnID == turnID {
 		session.PartialTurnID = ""
 	}
-	session.UpdatedAt = time.Now().UTC()
+	session.UpdatedAt = coordinator.now()
 	coordinator.byID[sessionID] = session
 	return nil
 }
@@ -249,7 +281,7 @@ func (coordinator *liveSessionCoordinator) end(sessionID string) (LiveSession, e
 	}
 	session.PartialTurnID = ""
 	session.Status = LiveSessionStatusEnded
-	session.UpdatedAt = time.Now().UTC()
+	session.UpdatedAt = coordinator.now()
 	coordinator.byID[sessionID] = session
 	return session, nil
 }

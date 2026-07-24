@@ -13,6 +13,7 @@
   "scripts": {
     "dev": "PATH=/usr/local/opt/node@24/bin:$PATH npm run dev --workspace frontend --",
     "backend": "PATH=/usr/local/opt/node@24/bin:$PATH npm run start --workspace backend",
+    "live-agent": "PATH=/usr/local/opt/node@24/bin:$PATH npm run start --workspace @speakup/live-agent --",
     "build": "PATH=/usr/local/opt/node@24/bin:$PATH npm run build --workspace frontend",
     "start": "PATH=/usr/local/opt/node@24/bin:$PATH npm run start --workspace frontend",
     "test": "PATH=/usr/local/opt/node@24/bin:$PATH npm run test --workspace frontend",
@@ -21,7 +22,7 @@
     "test:mem0": "PATH=/usr/local/opt/node@24/bin:$PATH npm run test:mem0 --workspace backend",
     "test:live-agent": "PATH=/usr/local/opt/node@24/bin:$PATH npm run test --workspace @speakup/live-agent",
     "typecheck:live-agent": "PATH=/usr/local/opt/node@24/bin:$PATH npm run typecheck --workspace @speakup/live-agent",
-    "test:all": "PATH=/usr/local/opt/node@24/bin:$PATH npm run test --workspace backend && PATH=/usr/local/opt/node@24/bin:$PATH npm run test --workspace frontend",
+    "test:all": "PATH=/usr/local/opt/node@24/bin:$PATH npm run test --workspace backend && PATH=/usr/local/opt/node@24/bin:$PATH npm run test --workspace frontend && PATH=/usr/local/opt/node@24/bin:$PATH npm run test --workspace @speakup/live-agent && PATH=/usr/local/opt/node@24/bin:$PATH npm run typecheck --workspace @speakup/live-agent",
     "test:soak": "PATH=/usr/local/opt/node@24/bin:$PATH npm run test:soak --workspace backend --",
     "lint": "PATH=/usr/local/opt/node@24/bin:$PATH npm run lint --workspace frontend",
     "db:generate": "PATH=/usr/local/opt/node@24/bin:$PATH npm run db:generate --workspace frontend"

@@ -2,6 +2,7 @@ package assistant
 
 import (
 	"context"
+	"errors"
 	"testing"
 )
 
@@ -11,6 +12,15 @@ func (liveTurnPlanner) Plan(context.Context, PlanRequest) (Plan, error) {
 	return freeConversationPlan(), nil
 }
 
+type unavailableLiveTurnPlanner struct {
+	calls int
+}
+
+func (planner *unavailableLiveTurnPlanner) Plan(context.Context, PlanRequest) (Plan, error) {
+	planner.calls++
+	return Plan{}, errors.New("planner should not run for live conversation")
+}
+
 type liveTurnTools struct{}
 
 func (liveTurnTools) Execute(context.Context, ToolInvocation) (ToolResult, error) {
@@ -18,6 +28,36 @@ func (liveTurnTools) Execute(context.Context, ToolInvocation) (ToolResult, error
 		"summary":      "Canonical assistant reply",
 		"user_message": "Canonical final transcript",
 	}}, nil
+}
+
+func TestLiveConversationSkipsPlanningRoundTrip(t *testing.T) {
+	planner := &unavailableLiveTurnPlanner{}
+	service := NewService(Dependencies{
+		Planner:           planner,
+		Tools:             liveTurnTools{},
+		ConversationStore: NewMemoryConversationStore(),
+	})
+
+	run, err := service.StartTask(context.Background(), StartTaskCommand{
+		ActorUserID:     DemoUserID,
+		ThreadID:        DemoThreadID,
+		UserMessage:     "你好",
+		IdempotencyKey:  "client-live-fast-path",
+		InteractionMode: "conversation",
+		ClientMessageID: "client-live-fast-path",
+		LiveSessionID:   "live-fast-path",
+		TurnID:          "turn-fast-path",
+		Mode:            ConversationModeLive,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if planner.calls != 0 {
+		t.Fatalf("planner calls = %d, want 0", planner.calls)
+	}
+	if run.Status != TaskRunStatusCompleted || run.Intent != "free_conversation" {
+		t.Fatalf("unexpected live conversation run: %#v", run)
+	}
 }
 
 func TestLiveTurnPersistsAndReplaysCanonicalMessagePair(t *testing.T) {

@@ -1,4 +1,8 @@
 import type { TurnContext } from "../session-context.js";
+import {
+  createDeadline,
+  type TimeoutScheduler,
+} from "../resilience.js";
 
 export type CanonicalUserMessage = {
   ID: string;
@@ -25,6 +29,8 @@ export type GoLLMCallbacks = {
 export type GoLLMOptions = {
   baseURL: string;
   fetch?: typeof globalThis.fetch;
+  timeoutMS?: number;
+  scheduler?: TimeoutScheduler;
 };
 
 type SSEBlock = {
@@ -80,10 +86,14 @@ const readSSE = async function* (
 export class GoLLM {
   #baseURL: string;
   #fetch: typeof globalThis.fetch;
+  #timeoutMS: number;
+  #scheduler: TimeoutScheduler | undefined;
 
   constructor(options: GoLLMOptions) {
     this.#baseURL = options.baseURL.replace(/\/$/, "");
     this.#fetch = options.fetch ?? globalThis.fetch;
+    this.#timeoutMS = options.timeoutMS ?? 30_000;
+    this.#scheduler = options.scheduler;
   }
 
   async streamTurn(
@@ -91,74 +101,89 @@ export class GoLLM {
     callbacks: GoLLMCallbacks = {},
     signal?: AbortSignal,
   ): Promise<GoLLMResult> {
-    const response = await this.#fetch(
-      `${this.#baseURL}/v1/assistant/threads/${encodeURIComponent(turn.threadID)}/tasks/stream`,
-      {
-        method: "POST",
-        headers: {
-          accept: "text/event-stream",
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          actor_user_id: turn.actorUserID,
-          user_message: turn.transcript,
-          interaction_mode: "conversation",
-          idempotency_key: turn.clientMessageID,
-          client_message_id: turn.clientMessageID,
-          live_session_id: turn.liveSessionID,
-          turn_id: turn.turnID,
-          mode: "live",
-        }),
-        ...(signal ? { signal } : {}),
-      },
+    const deadline = createDeadline(
+      signal,
+      this.#timeoutMS,
+      "Go LLM",
+      this.#scheduler,
     );
-    if (!response.ok) {
-      throw new Error(`Go task stream failed with HTTP ${response.status}`);
-    }
-
-    let userMessage: CanonicalUserMessage | undefined;
-    let assistantMessage: CanonicalAssistantMessage | undefined;
-    let assistantText = "";
-    let completed = false;
-    for await (const block of readSSE(response, signal)) {
-      const data = block.data as Record<string, unknown>;
-      if (block.event === "turn.user_committed") {
-        userMessage = data.message as CanonicalUserMessage;
-        await callbacks.onUserCommitted?.(userMessage);
-      } else if (block.event === "assistant.delta") {
-        if (!userMessage) {
-          throw new Error("assistant delta arrived before canonical user commit");
-        }
-        const delta = String(data.delta ?? "");
-        assistantText += delta;
-        await callbacks.onAssistantDelta?.(delta);
-      } else if (block.event === "turn.assistant_committed") {
-        if (!userMessage) {
-          throw new Error("assistant commit arrived before canonical user commit");
-        }
-        assistantMessage = data.message as CanonicalAssistantMessage;
-        await callbacks.onAssistantCommitted?.(assistantMessage);
-      } else if (block.event === "task.failed") {
-        throw new Error(String(data.error ?? data.message ?? "Go task failed"));
-      } else if (block.event === "task.completed") {
-        completed = true;
+    try {
+      if (deadline.signal.aborted) throw deadline.signal.reason;
+      const response = await this.#fetch(
+        `${this.#baseURL}/v1/assistant/threads/${encodeURIComponent(turn.threadID)}/tasks/stream`,
+        {
+          method: "POST",
+          headers: {
+            accept: "text/event-stream",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            actor_user_id: turn.actorUserID,
+            user_message: turn.transcript,
+            interaction_mode: "conversation",
+            idempotency_key: turn.clientMessageID,
+            client_message_id: turn.clientMessageID,
+            live_session_id: turn.liveSessionID,
+            turn_id: turn.turnID,
+            mode: "live",
+          }),
+          signal: deadline.signal,
+        },
+      );
+      if (!response.ok) {
+        throw new Error(`Go task stream failed with HTTP ${response.status}`);
       }
-    }
 
-    if (!completed) throw new Error("Go task stream ended before task.completed");
-    if (!userMessage?.ID) throw new Error("Go task stream omitted canonical user message");
-    if (!assistantMessage?.ID) {
-      throw new Error("Go task stream omitted canonical assistant message");
+      let userMessage: CanonicalUserMessage | undefined;
+      let assistantMessage: CanonicalAssistantMessage | undefined;
+      let assistantText = "";
+      let completed = false;
+      for await (const block of readSSE(response, deadline.signal)) {
+        const data = block.data as Record<string, unknown>;
+        if (block.event === "turn.user_committed") {
+          userMessage = data.message as CanonicalUserMessage;
+          await callbacks.onUserCommitted?.(userMessage);
+        } else if (block.event === "assistant.delta") {
+          if (!userMessage) {
+            throw new Error("assistant delta arrived before canonical user commit");
+          }
+          const delta = String(data.delta ?? "");
+          assistantText += delta;
+          await callbacks.onAssistantDelta?.(delta);
+        } else if (block.event === "turn.assistant_committed") {
+          if (!userMessage) {
+            throw new Error("assistant commit arrived before canonical user commit");
+          }
+          assistantMessage = data.message as CanonicalAssistantMessage;
+          await callbacks.onAssistantCommitted?.(assistantMessage);
+        } else if (block.event === "task.failed") {
+          throw new Error(String(data.error ?? data.message ?? "Go task failed"));
+        } else if (block.event === "task.completed") {
+          completed = true;
+        }
+      }
+
+      if (!completed) {
+        throw new Error("Go task stream ended before task.completed");
+      }
+      if (!userMessage?.ID) {
+        throw new Error("Go task stream omitted canonical user message");
+      }
+      if (!assistantMessage?.ID) {
+        throw new Error("Go task stream omitted canonical assistant message");
+      }
+      if (
+        userMessage.client_message_id !== turn.clientMessageID ||
+        assistantMessage.client_message_id !== turn.clientMessageID
+      ) {
+        throw new Error("Go task stream returned mismatched canonical correlation");
+      }
+      if (!assistantText) {
+        assistantText = String(assistantMessage.Content ?? "");
+      }
+      return { userMessage, assistantMessage, assistantText };
+    } finally {
+      deadline.cleanup();
     }
-    if (
-      userMessage.client_message_id !== turn.clientMessageID ||
-      assistantMessage.client_message_id !== turn.clientMessageID
-    ) {
-      throw new Error("Go task stream returned mismatched canonical correlation");
-    }
-    if (!assistantText) {
-      assistantText = String(assistantMessage.Content ?? "");
-    }
-    return { userMessage, assistantMessage, assistantText };
   }
 }

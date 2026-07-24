@@ -4,7 +4,7 @@ import test from "node:test";
 import { SessionContext } from "../src/session-context.js";
 import { TurnAudioBuffer } from "../src/turn-audio-buffer.js";
 import { TurnCommitter } from "../src/turn-committer.js";
-import { parseJobMetadata } from "../src/worker.js";
+import { ConversationOrchestrator, parseJobMetadata } from "../src/worker.js";
 import { boundedTextSegments } from "../src/worker.js";
 import { streamCommittedTurn } from "../src/worker.js";
 
@@ -22,6 +22,27 @@ test("worker metadata prefers job data and falls back to participant token metad
   assert.equal(parseJobMetadata(job, participant).actor_user_id, "job-user");
   assert.equal(parseJobMetadata("", participant).actor_user_id, "participant-user");
   assert.throws(() => parseJobMetadata("", ""), /metadata is missing/);
+});
+
+test("worker registers provider capabilities for every custom voice node", () => {
+  const orchestrator = new ConversationOrchestrator(
+    {} as never,
+    {
+      actor_user_id: "demo-user",
+      thread_id: "thread-1",
+      live_session_id: "live-1",
+    },
+    "http://127.0.0.1:8080",
+  );
+  const agent = orchestrator.createAgent();
+
+  assert.equal(agent.stt?.capabilities.streaming, true);
+  assert.equal(agent.stt?.capabilities.interimResults, true);
+  assert.equal(agent.stt?.provider, "go");
+  assert.equal(agent.llm?.provider, "go");
+  assert.equal(agent.tts?.provider, "go");
+  assert.equal(agent.tts?.capabilities.streaming, true);
+  assert.equal(agent.turnHandling?.preemptiveGeneration?.enabled, false);
 });
 
 test("session context emits correlated monotonic events and handles false interruption", () => {
@@ -126,7 +147,7 @@ test("audio buffer bounds completed upload idempotency entries", async () => {
   assert.equal(uploads, 4);
 });
 
-test("committed turn publishes canonical, delta, attachment, and failure events", async () => {
+test("committed turn streams speech and publishes only canonical message events", async () => {
   const context = new SessionContext({
     actorUserID: "demo-user",
     threadID: "thread-1",
@@ -172,6 +193,7 @@ test("committed turn publishes canonical, delta, attachment, and failure events"
   });
   const events: Record<string, unknown>[] = [];
   const deltas: string[] = [];
+  const background: Promise<void>[] = [];
   for await (const delta of streamCommittedTurn({
     context,
     committer,
@@ -179,19 +201,23 @@ test("committed turn publishes canonical, delta, attachment, and failure events"
     publish: async (event) => {
       events.push(event);
     },
+    onBackgroundTask: (task) => background.push(task),
   })) {
     deltas.push(delta);
   }
+  await Promise.all(background);
 
   assert.deepEqual(deltas, ["Hi", " there"]);
   assert.deepEqual(events.map((event) => event.type), [
     "turn.user_committed",
-    "assistant.delta",
-    "assistant.delta",
+    "latency.point",
     "turn.assistant_committed",
     "attachment.linked",
   ]);
-  assert.deepEqual(events.map((event) => event.sequence), [1, 2, 3, 4, 5]);
+  assert.deepEqual(
+    events.map((event) => event.sequence),
+    [1, 2, 3, 4],
+  );
   assert.equal(
     (events.at(-1)?.payload as Record<string, unknown>).attachment_id,
     "attachment-1",
@@ -227,4 +253,46 @@ test("committed turn publishes canonical, delta, attachment, and failure events"
     String((failedEvents.at(-1)?.payload as Record<string, unknown>).error),
     /adapter unavailable/,
   );
+});
+
+test("interrupting a generated turn aborts its pending Go LLM request", async () => {
+  const context = new SessionContext({
+    actorUserID: "demo-user",
+    threadID: "thread-1",
+    liveSessionID: "live-1",
+  });
+  context.beginTurn({ turnID: "turn-1", clientMessageID: "client-1" });
+  context.finalizeTranscript("hello");
+  let requestSignal: AbortSignal | undefined;
+  const committer = new TurnCommitter({
+    streamTurn: async (_turn, callbacks = {}, signal) => {
+      requestSignal = signal;
+      await callbacks.onUserCommitted?.({
+        ID: "message-user",
+        client_message_id: "client-1",
+      });
+      await callbacks.onAssistantDelta?.("Hi");
+      return new Promise((_resolve, reject) => {
+        signal?.addEventListener("abort", () => reject(signal.reason), {
+          once: true,
+        });
+      });
+    },
+  });
+  const stream = streamCommittedTurn({
+    context,
+    committer,
+    audio: new TurnAudioBuffer({
+      maxBytes: 16,
+      upload: async () => "attachment-1",
+      link: async () => undefined,
+    }),
+    publish: async () => undefined,
+  });
+
+  assert.deepEqual(await stream.next(), { value: "Hi", done: false });
+  await stream.return(undefined);
+
+  assert.equal(requestSignal?.aborted, true);
+  assert.match(String(requestSignal?.reason), /interrupted/);
 });

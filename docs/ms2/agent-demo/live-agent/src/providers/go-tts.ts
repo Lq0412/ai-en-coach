@@ -1,8 +1,14 @@
 import { AudioFrame } from "@livekit/rtc-node";
+import {
+  createDeadline,
+  type TimeoutScheduler,
+} from "../resilience.js";
 
 export type GoTTSOptions = {
   baseURL: string;
   fetch?: typeof globalThis.fetch;
+  timeoutMS?: number;
+  scheduler?: TimeoutScheduler;
 };
 
 export class GoTTS {
@@ -12,38 +18,66 @@ export class GoTTS {
 
   #baseURL: string;
   #fetch: typeof globalThis.fetch;
+  #timeoutMS: number;
+  #scheduler: TimeoutScheduler | undefined;
 
   constructor(options: GoTTSOptions) {
     this.#baseURL = options.baseURL.replace(/\/$/, "");
     this.#fetch = options.fetch ?? globalThis.fetch;
+    this.#timeoutMS = options.timeoutMS ?? 30_000;
+    this.#scheduler = options.scheduler;
   }
 
   async *synthesize(text: string, signal?: AbortSignal): AsyncGenerator<Uint8Array> {
-    const response = await this.#fetch(`${this.#baseURL}/v1/audio/speech`, {
-      method: "POST",
-      headers: {
-        accept: "audio/pcm",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ text, format: "pcm", sample_rate: this.sampleRate }),
-      ...(signal ? { signal } : {}),
-    });
-    if (!response.ok) throw new Error(`Go speech endpoint failed with HTTP ${response.status}`);
-    if (!response.headers.get("content-type")?.toLowerCase().startsWith("audio/pcm")) {
-      throw new Error("Go speech endpoint did not return PCM audio");
-    }
-    if (!response.body) throw new Error("Go speech endpoint returned no response body");
-
-    const reader = response.body.getReader();
+    const deadline = createDeadline(
+      signal,
+      this.#timeoutMS,
+      "Go TTS",
+      this.#scheduler,
+    );
     try {
-      while (true) {
-        if (signal?.aborted) throw signal.reason;
-        const { value, done } = await reader.read();
-        if (done) break;
-        if (value.byteLength > 0) yield value;
+      if (deadline.signal.aborted) throw deadline.signal.reason;
+      const response = await this.#fetch(`${this.#baseURL}/v1/audio/speech`, {
+        method: "POST",
+        headers: {
+          accept: "audio/pcm",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          text,
+          format: "pcm",
+          sample_rate: this.sampleRate,
+        }),
+        signal: deadline.signal,
+      });
+      if (!response.ok) {
+        throw new Error(`Go speech endpoint failed with HTTP ${response.status}`);
+      }
+      if (
+        !response.headers
+          .get("content-type")
+          ?.toLowerCase()
+          .startsWith("audio/pcm")
+      ) {
+        throw new Error("Go speech endpoint did not return PCM audio");
+      }
+      if (!response.body) {
+        throw new Error("Go speech endpoint returned no response body");
+      }
+
+      const reader = response.body.getReader();
+      try {
+        while (true) {
+          if (deadline.signal.aborted) throw deadline.signal.reason;
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value.byteLength > 0) yield value;
+        }
+      } finally {
+        reader.releaseLock();
       }
     } finally {
-      reader.releaseLock();
+      deadline.cleanup();
     }
   }
 }

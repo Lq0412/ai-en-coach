@@ -882,6 +882,8 @@ var transcriptionUpgrader = websocket.Upgrader{
 	},
 }
 
+const realtimeTranscriptionUnavailableMessage = "语音识别连接暂时不可用，请重试"
+
 func (h *HTTPHandler) streamTranscription(w http.ResponseWriter, r *http.Request) {
 	streamer, ok := h.transcriber.(RealtimeTranscriber)
 	if !ok {
@@ -936,7 +938,9 @@ func (h *HTTPHandler) streamTranscription(w http.ResponseWriter, r *http.Request
 	})
 	if err != nil {
 		h.logger.Printf("realtime transcription failed: %v", err)
-		_ = connection.WriteJSON(map[string]any{"type": "transcription.error", "error": err.Error()})
+		_ = connection.WriteJSON(map[string]any{
+			"type": "transcription.error", "error": realtimeTranscriptionUnavailableMessage,
+		})
 		return
 	}
 	_ = connection.WriteJSON(map[string]any{"type": "transcription.done", "text": transcript.Text})
@@ -1075,6 +1079,8 @@ func (h *HTTPHandler) writeError(w http.ResponseWriter, err error) {
 		status = http.StatusNotFound
 	} else if errors.Is(err, ErrLiveVoiceUnavailable) {
 		status = http.StatusServiceUnavailable
+	} else if errors.Is(err, ErrLiveSessionEnded) {
+		status = http.StatusConflict
 	} else if errors.Is(err, ErrForbidden) {
 		status = http.StatusForbidden
 	} else if errors.Is(err, ErrInvalidTaskRunState) || errors.Is(err, ErrNoPendingConfirm) {

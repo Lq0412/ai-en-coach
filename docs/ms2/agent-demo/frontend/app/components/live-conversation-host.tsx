@@ -12,6 +12,7 @@ import {
   LIVE_BRIDGE_VERSION,
   LIVE_HOST_SOURCE,
   LiveCallFlow,
+  LiveRecoveryController,
   createLiveSessionAPI,
   decodeLiveDataEvent,
   isIframeBridgeMessage,
@@ -32,7 +33,6 @@ type RoomCallbacks = {
   onReconnecting: () => void;
   onReconnected: () => void;
   onDisconnected: () => void;
-  onAudioState: (playing: boolean) => void;
 };
 
 const createBrowserRoom = (
@@ -54,22 +54,24 @@ const createBrowserRoom = (
     const element = track.attach();
     element.autoplay = true;
     element.setAttribute("playsinline", "");
-    element.addEventListener("playing", () => callbacks.onAudioState(true));
-    element.addEventListener("pause", () => callbacks.onAudioState(false));
-    element.addEventListener("ended", () => callbacks.onAudioState(false));
     audioElements.add(element);
     audioContainer.append(element);
-    void element.play().catch(() => {
-      callbacks.onAudioState(false);
-    });
+    void element.play().catch(() => undefined);
   };
   const onTrackUnsubscribed = (track: RemoteTrack) => {
     detachTrack(track);
-    callbacks.onAudioState(false);
   };
   const onDataReceived = (data: Uint8Array) => callbacks.onData(data);
   const onDisconnected = () => {
-    if (!intentionalDisconnect) callbacks.onDisconnected();
+    if (intentionalDisconnect) return;
+    for (const participant of room.remoteParticipants.values()) {
+      for (const publication of participant.audioTrackPublications.values()) {
+        if (publication.track) detachTrack(publication.track);
+      }
+    }
+    for (const element of audioElements) element.remove();
+    audioElements.clear();
+    callbacks.onDisconnected();
   };
 
   room.on(RoomEvent.TrackSubscribed, onTrackSubscribed);
@@ -112,7 +114,6 @@ export function LiveConversationHost({
   const audioRef = useRef<HTMLDivElement>(null);
   const flowRef = useRef<LiveCallFlow | null>(null);
   const busyRef = useRef(false);
-  const fallbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const iframe = iframeRef.current;
@@ -143,6 +144,18 @@ export function LiveConversationHost({
               flowRef.current?.notifyState("listening");
             } else if (event.type === "turn.user_committed") {
               flowRef.current?.notifyState("thinking");
+            } else if (
+              event.type === "latency.point" &&
+              event.latency &&
+              typeof event.latency === "object" &&
+              !Array.isArray(event.latency)
+            ) {
+              const stage = (event.latency as Record<string, unknown>).stage;
+              if (stage === "assistant.audio_first") {
+                flowRef.current?.notifyState("speaking");
+              } else if (stage === "assistant.audio_stopped") {
+                flowRef.current?.notifyState("listening");
+              }
             } else if (event.type === "turn.failed") {
               flowRef.current?.notifyState(
                 "failed",
@@ -152,21 +165,30 @@ export function LiveConversationHost({
               );
             }
           },
-          onReconnecting: () => flowRef.current?.notifyState("reconnecting"),
-          onReconnected: () => flowRef.current?.notifyState("listening"),
-          onDisconnected: () => {
-            const message = "实时连接已中断，已回到普通模式";
-            flowRef.current?.notifyState("failed", message);
-            fallbackTimerRef.current = setTimeout(() => {
-              void flowRef.current?.end().catch(() => undefined);
-            }, 2_500);
+          onReconnecting: () => recovery.markReconnecting(),
+          onReconnected: () => {
+            recovery.markHealthy();
+            flowRef.current?.notifyState("listening");
           },
-          onAudioState: (playing) =>
-            flowRef.current?.notifyState(playing ? "speaking" : "listening"),
+          onDisconnected: () => {
+            flowRef.current?.notifyState("reconnecting");
+            void recovery.recoverNow();
+          },
         }),
       onStatus: postStatus,
     });
     flowRef.current = flow;
+    const recovery = new LiveRecoveryController({
+      recover: () => flow.resume(),
+      fallback: () => flow.end(),
+      onState: (state, error) => flow.notifyState(state, error),
+    });
+
+    const recoverWhenForegrounded = () => {
+      if (!document.hidden && flow.state === "reconnecting") {
+        void recovery.recoverNow();
+      }
+    };
 
     const handleMessage = (event: MessageEvent) => {
       if (
@@ -194,6 +216,7 @@ export function LiveConversationHost({
           } else if (message.type === "live.intent.resume") {
             if (message.payload.live_session_id === flow.liveSessionID) {
               await flow.resume();
+              recovery.markHealthy();
             }
           } else if (message.type === "live.intent.end") {
             if (message.payload.live_session_id === flow.liveSessionID) {
@@ -214,10 +237,18 @@ export function LiveConversationHost({
     };
 
     window.addEventListener("message", handleMessage);
-    postStatus({ state: "idle", muted: false });
+    window.addEventListener("online", recoverWhenForegrounded);
+    document.addEventListener("visibilitychange", recoverWhenForegrounded);
+    postStatus({
+      state: "idle",
+      muted: false,
+      ...(!featureEnabled ? { error: "实时通话功能当前已关闭" } : {}),
+    });
     return () => {
       window.removeEventListener("message", handleMessage);
-      if (fallbackTimerRef.current) clearTimeout(fallbackTimerRef.current);
+      window.removeEventListener("online", recoverWhenForegrounded);
+      document.removeEventListener("visibilitychange", recoverWhenForegrounded);
+      recovery.dispose();
       flowRef.current = null;
       void flow.end().catch(() => undefined);
     };

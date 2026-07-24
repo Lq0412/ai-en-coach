@@ -18,6 +18,7 @@
     "turn.assistant_committed",
     "turn.failed",
     "attachment.linked",
+    "attachment.failed",
     "latency.point",
   ]);
   const LIVE_CANONICAL_EVENT_TYPES = new Set([
@@ -166,6 +167,15 @@
     }
     if (event.type === "turn.failed") {
       return typeof event.error === "string" &&
+        event.error.length > 0 &&
+        event.error.length <= 500 &&
+        !event.message;
+    }
+    if (event.type === "attachment.failed") {
+      return typeof event.stage === "string" &&
+        event.stage.length > 0 &&
+        event.stage.length <= 100 &&
+        typeof event.error === "string" &&
         event.error.length > 0 &&
         event.error.length <= 500 &&
         !event.message;
@@ -335,6 +345,18 @@
     }
     if (event.type === "turn.failed") {
       streamingText = "";
+      rerender(activeRealRoute);
+      return true;
+    }
+    if (event.type === "attachment.failed") {
+      const message = snapshot?.messages?.find(
+        (item) =>
+          item.Role === "user" &&
+          item.client_message_id === event.client_message_id,
+      );
+      if (message) {
+        message.recording_error = event.error || "录音未保存";
+      }
       rerender(activeRealRoute);
       return true;
     }
@@ -653,8 +675,14 @@
     if (audioAttachmentForMessage(message) || message?.recording_url || message?.audio_url) {
       return `<button class="real-bubble-tool" data-real-action="play-user-recording" data-message-id="${escapeHTML(message.ID)}" aria-label="播放我的录音" title="播放我的录音">${soundIconHTML("ME")}</button>`;
     }
+    if (message?.recording_error) {
+      return `<button class="real-bubble-tool" type="button" disabled aria-label="录音未保存" title="${escapeHTML(message.recording_error)}">${soundIconHTML("ME")}</button>`;
+    }
     if (message?.mode === "live") {
-      return `<button class="real-bubble-tool" type="button" disabled aria-label="录音处理中" title="录音上传并关联后可播放">${soundIconHTML("ME")}</button>`;
+      const callIsActive = liveCallState !== "idle" && liveCallState !== "failed";
+      return callIsActive
+        ? `<button class="real-bubble-tool" type="button" disabled aria-label="录音处理中" title="录音上传并关联后可播放">${soundIconHTML("ME")}</button>`
+        : `<button class="real-bubble-tool" type="button" disabled aria-label="本次录音不可用" title="本次录音没有可播放的附件">${soundIconHTML("ME")}</button>`;
     }
     return `<button class="real-bubble-tool" data-real-action="play-user-recording" data-message-id="${escapeHTML(message.ID)}" aria-label="播放我的录音" title="播放我的录音">${soundIconHTML("ME")}</button>`;
   }
@@ -862,37 +890,35 @@
     }
     const hasPending = pendingAttachments.length > 0;
     if (isRecording()) {
-      return `<footer class="real-voice-capture">
-        <div class="real-voice-capture-head"><span class="real-live-dot"></span><b>${formatRecordingTime(recordingElapsedSeconds)}</b><small>${escapeHTML(recordingStatus)}</small></div>
-        <div class="real-live-wave" aria-hidden="true">${Array.from({ length: 12 }, () => "<i></i>").join("")}</div>
-        <p>${escapeHTML(liveTranscript || "正在听你说话…")}</p>
-        <div><button data-real-action="cancel-record">取消</button><button class="primary" data-real-action="record">结束并使用</button></div>
+      return `<footer class="real-agent-composer recording">
+        <button class="real-add real-recording-cancel" data-real-action="cancel-record" aria-label="取消录音">×</button>
+        <div class="real-recording-inline" role="status" aria-live="polite">
+          <div class="real-live-wave" aria-hidden="true">${Array.from({ length: 12 }, () => "<i></i>").join("")}</div>
+          <span><b>${formatRecordingTime(recordingElapsedSeconds)}</b><small>${escapeHTML(liveTranscript || "正在听你说话…")}</small></span>
+        </div>
+        <button class="real-mic recording" data-real-action="record" aria-label="停止并发送录音"><i></i></button>
       </footer>`;
     }
     if (voiceSubmissionInProgress) {
-      return `<footer class="real-voice-capture processing">
-        <div class="real-voice-capture-head"><span class="real-live-dot"></span><b>正在发送</b><small>${escapeHTML(recordingStatus)}</small></div>
-        <div class="real-live-wave" aria-hidden="true">${Array.from({ length: 12 }, () => "<i></i>").join("")}</div>
-        <p>${escapeHTML(liveTranscript || "正在整理语音和文字…")}</p>
+      return `<footer class="real-agent-composer processing">
+        <button class="real-add" aria-hidden="true" disabled>＋</button>
+        <div class="real-recording-inline" role="status" aria-live="polite">
+          <div class="real-live-wave" aria-hidden="true">${Array.from({ length: 12 }, () => "<i></i>").join("")}</div>
+          <span><b>正在发送</b><small>${escapeHTML(liveTranscript || recordingStatus || "正在整理语音和文字…")}</small></span>
+        </div>
+        <button class="real-mic processing" aria-label="录音处理中" disabled><i></i></button>
       </footer>`;
     }
     return `${attachmentCardsHTML(pendingAttachments, true)}
     ${attachmentUploading ? `<div class="real-attachment-uploading"><i></i><span>正在上传并由真实模型理解附件…</span></div>` : ""}
     ${failedVoiceRecordingBlob ? `<div class="real-voice-send-retry"><span><b>${failedVoiceMessageID ? "文字已发送，录音尚未补充" : "录音尚未发送"}</b><small>本次录音已保留，可以直接重试。</small></span><button data-real-action="discard-voice-recording">删除</button><button class="primary" data-real-action="retry-voice-send">${failedVoiceMessageID ? "重试上传" : "重试发送"}</button></div>` : ""}
-    ${LIVE_FEATURE_ENABLED ? `<button class="real-live-entry" data-real-action="start-live-call"><i></i><span><b>实时通话</b><small>${escapeHTML(liveRecoveryNotice || "和 SpeakUp 连续对话")}</small></span><em>开始</em></button>` : ""}
-    ${voiceStateHTML()}
     <footer class="real-agent-composer">
       <input data-attachment-input type="file" accept="application/pdf,image/png,image/jpeg,image/webp" multiple hidden>
       <button class="real-add" data-real-action="more" aria-label="上传图片或 PDF" ${attachmentUploading ? "disabled" : ""}>＋</button>
       <textarea data-real-input rows="1" placeholder="点击麦克风说话，或输入文字">${escapeHTML(inputValue)}</textarea>
-      <button class="real-mic" data-real-action="record" aria-label="开始实时语音输入"><i></i></button>
+      <button class="real-mic" data-real-action="record" aria-label="开始录音"><i></i></button>
       <button class="real-send" data-real-action="send" aria-label="发送" ${loading || attachmentUploading || (!inputValue.trim() && !hasPending) || currentConfirmation() || contextLimitExceeded || snapshot?.requiresNewThread ? "disabled" : ""}>↑</button>
     </footer>`;
-  }
-
-  function voiceStateHTML() {
-    const status = conversationVoiceState();
-    return `<div class="real-voice-state ${status.key}"><span><i></i>${escapeHTML(status.label)}</span><div>${speaking ? `<button data-real-action="stop-speech">停止</button>` : ""}${lastSpokenSentence && !speaking ? `<button data-real-action="replay-last-sentence">重听上一句</button>` : ""}<button data-real-action="toggle-auto-voice">${autoVoiceEnabled ? "自动朗读已开" : "自动朗读已关"}</button></div></div>`;
   }
 
   function formatRecordingTime(seconds) {
@@ -926,11 +952,8 @@
         ${contextLimitHTML()}
         ${realErrorHTML()}
         ${thinkingHTML()}`;
-    const liveLayoutClass = !LIVE_FEATURE_ENABLED
-      ? ""
-      : liveCallState === "idle"
-        ? " live-entry-visible"
-        : " live-call-active";
+    const liveLayoutClass =
+      LIVE_FEATURE_ENABLED && liveCallState !== "idle" ? " live-call-active" : "";
     return `<div class="agent-page real-agent-page${liveLayoutClass}">
       <section class="real-agent-thread">${content}</section>
       ${composerHTML()}
@@ -1309,7 +1332,7 @@
 
   const prototypeBottomNav = bottomNav;
   bottomNav = function () {
-    return prototypeBottomNav()
+    let navigation = prototypeBottomNav()
       .replaceAll('data-action="agent-new-chat"', 'data-real-action="reset"')
       .replace(
         'data-action="drawer-route" data-route-target="agent-chat"',
@@ -1319,6 +1342,17 @@
         /<section class="app-drawer-recent">.*?<\/section>/s,
         recentConversationHTML(),
       );
+    if (
+      LIVE_FEATURE_ENABLED &&
+      state.route === "agent-chat" &&
+      liveCallState === "idle"
+    ) {
+      navigation = navigation.replace(
+        '<button class="app-new-chat"',
+        '<button class="app-live-call" data-real-action="start-live-call" aria-label="开始实时通话"><span aria-hidden="true"><i></i><i></i><i></i></span></button><button class="app-new-chat"',
+      );
+    }
+    return navigation;
   };
   views["agent-chat"] = realAgentView;
   views["practice"] = realPracticeView;
@@ -1743,7 +1777,12 @@
     }
   }
 
-  async function sendMessage(value, additionalAttachmentIDs = [], additionalAttachments = []) {
+  async function sendMessage(
+    value,
+    additionalAttachmentIDs = [],
+    additionalAttachments = [],
+    onUserCommitted,
+  ) {
     const message = String(value || inputValue).trim();
     const attachmentIDs = [
       ...pendingAttachments.map((attachment) => attachment.id),
@@ -1797,7 +1836,12 @@
     rerender();
     let canonicalUserMessage = null;
     try {
-      canonicalUserMessage = await streamTask(message, attachmentIDs, liveIdentity);
+      canonicalUserMessage = await streamTask(
+        message,
+        attachmentIDs,
+        liveIdentity,
+        onUserCommitted,
+      );
       pendingAttachments = [];
       optimisticUserMessage = null;
       if (originRoute === "practice" && interviewFinished()) {
@@ -1841,7 +1885,12 @@
     });
   }
 
-  async function streamTask(message, attachmentIDs = [], liveIdentity) {
+  async function streamTask(
+    message,
+    attachmentIDs = [],
+    liveIdentity,
+    onUserCommitted,
+  ) {
     const clientMessageID = liveIdentity?.client_message_id || crypto.randomUUID();
     const response = await fetch(
       `${API_BASE}/v1/assistant/threads/${THREAD_ID}/tasks/stream`,
@@ -1864,10 +1913,10 @@
         }),
       },
     );
-    await consumeTaskStream(response, liveIdentity);
+    return consumeTaskStream(response, liveIdentity, onUserCommitted);
   }
 
-  async function consumeTaskStream(response, liveIdentity) {
+  async function consumeTaskStream(response, liveIdentity, onUserCommitted) {
     if (!response.ok || !response.body) {
       throw new Error(await response.text());
     }
@@ -1899,6 +1948,7 @@
           if (eventName === "turn.user_committed") {
             canonicalUserMessage = data.message;
             reconcileCanonicalMessage(canonicalUserMessage);
+            onUserCommitted?.(canonicalUserMessage);
             rerender(activeRealRoute);
           } else if (eventName === "assistant.delta") {
             const delta = data.delta || "";
@@ -2017,6 +2067,10 @@
     loading = true;
     bridgeError = "";
     inputValue = "";
+    optimisticUserMessage = null;
+    failedVoiceRecordingBlob = null;
+    failedVoiceMessageID = "";
+    fallbackRecordingBlob = null;
     contextLimitExceeded = false;
     rejectedContextTokenCount = 0;
     selectedHistorySessionID = "";
@@ -2561,18 +2615,26 @@
       if (!transcript) throw new Error("没有识别到可发送的文字");
       liveTranscript = transcript;
       if (optimisticUserMessage) optimisticUserMessage.Content = transcript;
-      recordingStatus = "已发送，正在补充原始录音…";
-      rerender(activeRealRoute);
-      const messageTask = sendMessage(transcript);
-      const recordingUpload = uploadVoiceRecording(recordingBlob).then(
-        (attachment) => ({ attachment }),
-        (error) => ({ error }),
-      );
+      let resolveUserCommitted;
+      const userCommitted = new Promise((resolve) => {
+        resolveUserCommitted = resolve;
+      });
       pendingVoiceAnswerSubmit = false;
       inputValue = "";
       liveTranscript = "";
       fallbackRecordingBlob = null;
-      const canonicalUserMessage = await messageTask;
+      voiceSubmissionInProgress = false;
+      const messageTask = sendMessage(
+        transcript,
+        [],
+        [],
+        (message) => resolveUserCommitted(message),
+      );
+      const recordingUpload = uploadVoiceRecording(recordingBlob).then(
+        (attachment) => ({ attachment }),
+        (error) => ({ error }),
+      );
+      const canonicalUserMessage = await Promise.race([userCommitted, messageTask]);
       if (!canonicalUserMessage?.ID) {
         throw new Error("文字消息发送失败");
       }

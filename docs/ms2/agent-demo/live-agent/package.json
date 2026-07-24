@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "tsx src/worker.ts start",
+    "start": "sh scripts/run.sh",
     "test": "tsx --test tests/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
