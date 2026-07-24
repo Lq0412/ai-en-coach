@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@breezystack/lamejs": "^1.2.7",
     "@livekit/agents": "1.5.5",
     "@livekit/rtc-node": "0.13.31",
     "ws": "8.18.0",

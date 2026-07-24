@@ -19,12 +19,15 @@
     "turn.failed",
     "attachment.linked",
     "attachment.failed",
+    "assessment.completed",
+    "assessment.failed",
     "latency.point",
   ]);
   const LIVE_CANONICAL_EVENT_TYPES = new Set([
     "turn.user_committed",
     "turn.assistant_committed",
     "attachment.linked",
+    "assessment.completed",
   ]);
   const LIVE_CALL_STATES = new Set([
     "idle",
@@ -175,7 +178,7 @@
         event.delta.length <= 4000 &&
         !event.message;
     }
-    if (event.type === "turn.failed") {
+    if (event.type === "turn.failed" || event.type === "assessment.failed") {
       return typeof event.error === "string" &&
         event.error.length > 0 &&
         event.error.length <= 500 &&
@@ -365,7 +368,11 @@
           item.client_message_id === event.client_message_id,
       );
       if (message) {
-        message.recording_error = event.error || "录音未保存";
+        if (event.type === "attachment.failed") {
+          message.recording_error = event.error || "录音未保存";
+        } else {
+          message.assessment_error = event.error || "发音评分失败";
+        }
       }
       rerender(activeRealRoute);
       return true;
@@ -671,28 +678,9 @@
   function messageAssessment(message) {
     // Scoring integration point:
     // { overall, fluency, pronunciation, naturalness, native_expression, explanations }
-    const correction = languageAssistanceState(message?.ID, "correct").result?.correction;
-    const original = String(message?.Content || "");
-    const demoNativeExpression = original
-      .replace(/\bvery successfully\b/gi, "very successful")
-      .replace(/^Good morning,\s*good morning\.?$/i, "Good morning!");
-    const demoChanged = demoNativeExpression !== original;
     const assessment = message?.learning_assessment ||
       languageAssistanceState(message?.ID, "correct").result?.assessment;
-    if (assessment) return assessment;
-    return {
-      overall: 90,
-      fluency: 100,
-      pronunciation: 99,
-      naturalness: 70,
-      native_expression: correction?.corrected_text || demoNativeExpression,
-      explanations: correction?.items?.map((item) => item.explanation) || [
-        demoChanged
-          ? "当前为演示数据：推荐表达用于展示卡片效果，后续由真实评分模块替换。"
-          : "当前为演示评分，后续由真实语音评分模块提供分析说明。",
-      ],
-      is_demo: true,
-    };
+    return assessment || null;
   }
 
   function audioAttachmentForMessage(message) {
@@ -2451,16 +2439,9 @@
   }
 
   async function uploadVoiceRecording(blob) {
-    const mediaType = String(blob?.type || "audio/webm").split(";")[0];
-    const extension = {
-      "audio/ogg": "ogg",
-      "audio/mp4": "m4a",
-      "audio/mpeg": "mp3",
-      "audio/wav": "wav",
-      "audio/x-wav": "wav",
-    }[mediaType] || "webm";
+    const recording = await convertToWAV(blob);
     const form = new FormData();
-    form.append("file", blob, `voice-${Date.now()}.${extension}`);
+    form.append("file", recording, `voice-${Date.now()}.wav`);
     const response = await request("/v1/assistant/attachments", {
       method: "POST",
       body: form,

@@ -69,6 +69,8 @@ const LIVE_EVENT_TYPES = new Set([
   "turn.failed",
   "attachment.linked",
   "attachment.failed",
+  "assessment.completed",
+  "assessment.failed",
   "latency.point",
 ]);
 
@@ -87,7 +89,7 @@ export function isLiveEvent(value: unknown): value is RecordValue {
   if (value.type === "transcript.partial") {
     return boundedString(value.transcript, 4_000);
   }
-  if (value.type === "turn.failed") {
+  if (value.type === "turn.failed" || value.type === "assessment.failed") {
     return boundedString(value.error, 500);
   }
   if (value.type === "assistant.delta") {
@@ -97,7 +99,7 @@ export function isLiveEvent(value: unknown): value is RecordValue {
     return boundedString(value.stage, 100) &&
       boundedString(value.error, 500);
   }
-  if (["turn.user_committed", "turn.assistant_committed", "attachment.linked"].includes(String(value.type))) {
+  if (["turn.user_committed", "turn.assistant_committed", "attachment.linked", "assessment.completed"].includes(String(value.type))) {
     return isRecord(value.message) &&
       boundedString(value.message.ID) &&
       value.message.client_message_id === value.client_message_id;

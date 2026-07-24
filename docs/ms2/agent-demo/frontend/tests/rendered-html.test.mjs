@@ -32,7 +32,7 @@ test("server-renders the SpeakUp product prototype host", async () => {
   assert.match(html, /<title>SpeakUp 产品原型<\/title>/i);
   assert.match(html, /SpeakUp 产品原型/);
   assert.match(html, /\/prototype\/pages\/prototype\.html\?api_base=/);
-  assert.match(html, /live_voice=0/);
+  assert.match(html, /live_voice=[01]/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 
@@ -70,7 +70,7 @@ test("prototype bridges the original interaction to the Go assistant", async () 
   assert.match(bridge, /data-real-action="play-user-recording"/);
   assert.match(bridge, /aria-label="AI 发音"/);
   assert.match(bridge, /aria-label="播放我的录音"/);
-  assert.match(bridge, /is_demo:\s*true/);
+  assert.doesNotMatch(bridge, /is_demo:\s*true/);
   assert.match(bridge, /real-message-score-bar/);
   assert.match(bridge, /learning_assessment/);
   assert.match(bridge, /native_expression/);
@@ -312,7 +312,9 @@ test("defines realtime event, reconciliation, and latency bridge contracts", asy
   assert.match(bridge, /streamingText \+= event\.delta/);
   assert.match(bridge, /item\.Role === message\.Role/);
   assert.match(bridge, /aria-label="录音处理中"/);
-  assert.match(bridge, /is_demo:\s*true/);
+  assert.doesNotMatch(bridge, /is_demo:\s*true/);
+  assert.match(bridge, /assessment\.completed/);
+  assert.match(bridge, /assessment\.failed/);
   assert.match(bridge, /LIVE_FEATURE_ENABLED/);
   assert.match(styles, /\.real-live-call/);
   assert.match(bridge, /live-call-active/);

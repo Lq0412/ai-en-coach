@@ -12,6 +12,9 @@ const OUTPUT_FRAME_SAMPLES = 480;
 type JSONValue = Record<string, unknown>;
 
 export type QwenOmniCallbacks = {
+  onInputAudio?: (pcm16Mono16K: Uint8Array) => void | Promise<void>;
+  onSpeechStarted?: () => void | Promise<void>;
+  onSpeechStopped?: () => void | Promise<void>;
   onInputPartial?: (transcript: string) => void | Promise<void>;
   onInputFinal?: (transcript: string) => void | Promise<void>;
   onAssistantDelta?: (delta: string) => void | Promise<void>;
@@ -175,6 +178,7 @@ export class QwenOmniRealtimeSession extends llm.RealtimeSession {
         : (this.#resampler ??= new AudioResampler(frame.sampleRate, INPUT_SAMPLE_RATE, 1)).push(frame);
     for (const output of frames) {
       const bytes = Buffer.from(output.data.buffer, output.data.byteOffset, output.data.byteLength);
+      void this.#options.callbacks?.onInputAudio?.(bytes);
       this.#send({
         event_id: randomUUID(),
         type: "input_audio_buffer.append",
@@ -280,10 +284,12 @@ export class QwenOmniRealtimeSession extends llm.RealtimeSession {
     }
     const type = String(event.type ?? "");
     if (type === "input_audio_buffer.speech_started") {
+      void this.#options.callbacks?.onSpeechStarted?.();
       this.emit("input_speech_started", {});
       return;
     }
     if (type === "input_audio_buffer.speech_stopped") {
+      void this.#options.callbacks?.onSpeechStopped?.();
       this.emit("input_speech_stopped", { userTranscriptionEnabled: true });
       return;
     }

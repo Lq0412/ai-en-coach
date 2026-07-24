@@ -255,7 +255,7 @@ export async function* streamCommittedTurn({
     )
     .then((result) => {
       const attachmentTask = audio
-        .commit(turn.turnID, result.userMessage.ID)
+        .commit(turn.turnID, result.userMessage.ID, turn.transcript)
         .then(async (linked) => {
           if (!linked?.message) return;
           if (linked.message.client_message_id !== turn.clientMessageID) {
@@ -267,6 +267,19 @@ export async function* streamCommittedTurn({
               message: linked.message,
             }),
           );
+          if (linked.assessmentMessage) {
+            await publish(
+              context.event(turn, "assessment.completed", {
+                message: linked.assessmentMessage,
+              }),
+            );
+          } else if (linked.assessmentError) {
+            await publish(
+              context.event(turn, "assessment.failed", {
+                error: linked.assessmentError,
+              }),
+            );
+          }
         })
         .catch(async (error: unknown) => {
           try {

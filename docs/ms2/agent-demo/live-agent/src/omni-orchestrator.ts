@@ -5,8 +5,10 @@ import {
   QWEN_OMNI_REALTIME_MODEL,
 } from "./providers/qwen-omni-realtime.js";
 import { GoLiveTurnRecorder } from "./providers/go-live-turn.js";
+import { createGoTurnAudioBuffer } from "./providers/go-audio-recording.js";
 import { safeErrorMessage } from "./resilience.js";
 import { SessionContext, type TurnContext } from "./session-context.js";
+import { TurnAudioBuffer } from "./turn-audio-buffer.js";
 import type { WorkerJobMetadata } from "./worker.js";
 
 const SPEAKUP_INSTRUCTIONS = `
@@ -19,10 +21,16 @@ export class OmniConversationOrchestrator {
   readonly context: SessionContext;
   readonly model: QwenOmniRealtimeModel;
   readonly recorder: GoLiveTurnRecorder;
+  readonly audio: TurnAudioBuffer;
 
   #job: JobContext;
   #assistantTurn: TurnContext | undefined;
   #commitChain = Promise.resolve();
+  #recordingTurnID: string | undefined;
+  #preRoll: Uint8Array[] = [];
+  #preRollBytes = 0;
+  #audioFailedTurns = new Set<string>();
+  #audioStartedTurns = new Set<string>();
 
   constructor(
     job: JobContext,
@@ -41,14 +49,21 @@ export class OmniConversationOrchestrator {
       liveSessionID: metadata.live_session_id,
     });
     this.recorder = new GoLiveTurnRecorder(goBaseURL);
+    this.audio = createGoTurnAudioBuffer(goBaseURL, globalThis.fetch);
     this.model = new QwenOmniRealtimeModel({
       apiKey: options.apiKey,
       ...(options.websocketURL ? { websocketURL: options.websocketURL } : {}),
       ...(options.voice ? { voice: options.voice } : {}),
       instructions: SPEAKUP_INSTRUCTIONS,
       callbacks: {
+        onInputAudio: (pcm) => this.#captureInputAudio(pcm),
+        onSpeechStarted: () => this.#startAudioTurn(),
+        onSpeechStopped: () => {
+          this.#recordingTurnID = undefined;
+        },
         onInputPartial: (transcript) => {
           const turn = this.context.requireTurn();
+          this.#startAudioTurn(turn, false);
           void this.#publish(
             this.context.event(turn, "transcript.partial", { transcript }),
           );
@@ -71,7 +86,12 @@ export class OmniConversationOrchestrator {
         onAssistantDone: (transcript) => {
           const turn = this.#claimAssistantTurn();
           this.#assistantTurn = undefined;
-          if (!turn || !transcript.trim()) return;
+          if (!turn) return;
+          if (!transcript.trim()) {
+            this.audio.cancel(turn.turnID);
+            this.#audioStartedTurns.delete(turn.turnID);
+            return;
+          }
           this.#commitChain = this.#commitChain
             .then(() => this.#commitTurn(turn, transcript))
             .catch(() => undefined);
@@ -119,6 +139,54 @@ export class OmniConversationOrchestrator {
     return this.#assistantTurn;
   }
 
+  #captureInputAudio(pcm: Uint8Array): void {
+    if (this.#recordingTurnID) {
+      this.#appendTurnAudio(this.#recordingTurnID, pcm);
+      return;
+    }
+    this.#preRoll.push(pcm.slice());
+    this.#preRollBytes += pcm.byteLength;
+    const maxPreRollBytes = 32_000;
+    while (this.#preRollBytes > maxPreRollBytes && this.#preRoll.length > 1) {
+      const expired = this.#preRoll.shift();
+      if (expired) this.#preRollBytes -= expired.byteLength;
+    }
+  }
+
+  #startAudioTurn(
+    turn = this.context.requireTurn(),
+    resumeCapture = true,
+  ): void {
+    if (this.#recordingTurnID === turn.turnID) return;
+    if (this.#audioStartedTurns.has(turn.turnID) && !resumeCapture) return;
+    this.#recordingTurnID = turn.turnID;
+    this.#audioStartedTurns.add(turn.turnID);
+    for (const chunk of this.#preRoll) {
+      this.#appendTurnAudio(turn.turnID, chunk);
+    }
+    this.#preRoll = [];
+    this.#preRollBytes = 0;
+  }
+
+  #appendTurnAudio(turnID: string, pcm: Uint8Array): void {
+    if (this.#audioFailedTurns.has(turnID)) return;
+    try {
+      this.audio.append(turnID, pcm);
+    } catch (error) {
+      this.#audioFailedTurns.add(turnID);
+      this.audio.cancel(turnID);
+      const turn = this.context.latestTurn;
+      if (turn?.turnID === turnID) {
+        void this.#publish(
+          this.context.event(turn, "attachment.failed", {
+            stage: "attachment.buffer",
+            error: safeErrorMessage(error),
+          }),
+        );
+      }
+    }
+  }
+
   async #commitTurn(turn: TurnContext, assistantTranscript: string): Promise<void> {
     try {
       const result = await this.recorder.commit(turn, assistantTranscript);
@@ -133,11 +201,53 @@ export class OmniConversationOrchestrator {
           message: result.assistantMessage,
         }),
       );
+      if (!this.#audioFailedTurns.has(turn.turnID)) {
+        try {
+          const linked = await this.audio.commit(
+            turn.turnID,
+            String(result.userMessage.ID),
+            turn.transcript,
+          );
+          if (linked?.message) {
+            await this.#publish(
+              this.context.event(turn, "attachment.linked", {
+                attachment_id: linked.attachmentID,
+                message: linked.message,
+              }),
+            );
+          }
+          if (linked?.assessmentMessage) {
+            await this.#publish(
+              this.context.event(turn, "assessment.completed", {
+                message: linked.assessmentMessage,
+              }),
+            );
+          } else if (linked?.assessmentError) {
+            await this.#publish(
+              this.context.event(turn, "assessment.failed", {
+                error: linked.assessmentError,
+              }),
+            );
+          }
+        } catch (error) {
+          await this.#publish(
+            this.context.event(turn, "attachment.failed", {
+              stage: "attachment.upload",
+              error: safeErrorMessage(error),
+            }),
+          ).catch(() => undefined);
+        }
+      }
+      this.#audioFailedTurns.delete(turn.turnID);
+      this.#audioStartedTurns.delete(turn.turnID);
       await this.#publish(
         this.context.latencyEvent(turn, "assistant.audio_stopped"),
       );
       this.context.completeTurn(turn.turnID);
     } catch (error) {
+      this.audio.cancel(turn.turnID);
+      this.#audioFailedTurns.delete(turn.turnID);
+      this.#audioStartedTurns.delete(turn.turnID);
       await this.#publish(
         this.context.event(turn, "turn.failed", {
           model: QWEN_OMNI_REALTIME_MODEL,

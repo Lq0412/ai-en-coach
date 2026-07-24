@@ -275,6 +275,22 @@ func (s *MemoryConversationStore) LinkMessageAttachment(_ context.Context, messa
 	return AssistantMessage{}, ErrNotFound
 }
 
+func (s *MemoryConversationStore) UpdateMessageAssessment(_ context.Context, messageID string, assessment LearningAssessment) (AssistantMessage, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for index := range s.messages {
+		if s.messages[index].ID != messageID {
+			continue
+		}
+		s.messages[index].LearningAssessment = &assessment
+		if err := s.persistLocked(); err != nil {
+			return AssistantMessage{}, err
+		}
+		return s.messages[index], nil
+	}
+	return AssistantMessage{}, ErrNotFound
+}
+
 func (s *MemoryConversationStore) ListMessages(_ context.Context, threadID string) ([]AssistantMessage, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -403,6 +419,18 @@ func cloneAssistantMessages(messages []AssistantMessage) []AssistantMessage {
 			mistakes := *message.Mistakes
 			mistakes.Items = append([]MistakeCard(nil), message.Mistakes.Items...)
 			result[index].Mistakes = &mistakes
+		}
+		if message.LearningAssessment != nil {
+			assessment := *message.LearningAssessment
+			assessment.Explanations = append([]string(nil), message.LearningAssessment.Explanations...)
+			assessment.Words = append([]PronunciationWord(nil), message.LearningAssessment.Words...)
+			for wordIndex := range assessment.Words {
+				assessment.Words[wordIndex].Phonemes = append(
+					[]PronunciationPhoneme(nil),
+					assessment.Words[wordIndex].Phonemes...,
+				)
+			}
+			result[index].LearningAssessment = &assessment
 		}
 		result[index].Attachments = append([]AttachmentReference(nil), message.Attachments...)
 	}

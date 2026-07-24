@@ -168,6 +168,49 @@ test("audio buffer bounds completed upload idempotency entries", async () => {
   assert.equal(uploads, 4);
 });
 
+test("audio assessment runs after linking and does not discard a saved recording on failure", async () => {
+  const sequence: string[] = [];
+  const successful = new TurnAudioBuffer({
+    maxBytes: 8,
+    upload: async () => {
+      sequence.push("upload");
+      return "attachment-1";
+    },
+    link: async () => {
+      sequence.push("link");
+      return { ID: "message-1" };
+    },
+    assess: async (_audio, messageID, referenceText) => {
+      sequence.push(`assess:${messageID}:${referenceText}`);
+      return {
+        ID: messageID,
+        learning_assessment: { provider: "xunfei.suntone", pronunciation: 88 },
+      };
+    },
+  });
+  successful.append("turn-1", new Uint8Array([1, 0]));
+  const assessed = await successful.commit("turn-1", "message-1", "hello");
+  assert.deepEqual(sequence, ["upload", "link", "assess:message-1:hello"]);
+  assert.equal(
+    (assessed?.assessmentMessage?.learning_assessment as Record<string, unknown>)
+      .pronunciation,
+    88,
+  );
+
+  const failing = new TurnAudioBuffer({
+    maxBytes: 8,
+    upload: async () => "attachment-2",
+    link: async () => ({ ID: "message-2" }),
+    assess: async () => {
+      throw new Error("quota exhausted");
+    },
+  });
+  failing.append("turn-2", new Uint8Array([1, 0]));
+  const linked = await failing.commit("turn-2", "message-2", "hello");
+  assert.equal(linked?.message?.ID, "message-2");
+  assert.equal(linked?.assessmentError, "quota exhausted");
+});
+
 test("committed turn streams speech and publishes only canonical message events", async () => {
   const context = new SessionContext({
     actorUserID: "demo-user",

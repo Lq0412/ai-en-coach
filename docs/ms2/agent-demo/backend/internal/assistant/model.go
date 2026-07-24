@@ -395,19 +395,52 @@ type ToolResult struct {
 
 // AssistantMessage 仅服务于 Demo UI；它不改变 XE3-ESL assistant 核心契约。
 type AssistantMessage struct {
-	ID              string
-	Role            string
-	Content         string
-	ClientMessageID string                 `json:"client_message_id,omitempty"`
-	LiveSessionID   string                 `json:"live_session_id,omitempty"`
-	TurnID          string                 `json:"turn_id,omitempty"`
-	Mode            ConversationMode       `json:"mode,omitempty"`
-	Kind            string                 `json:"kind,omitempty"`
-	Report          *InterviewReportCard   `json:"report,omitempty"`
-	History         *InterviewHistoryCards `json:"history,omitempty"`
-	Mistakes        *MistakeCards          `json:"mistakes,omitempty"`
-	Attachments     []AttachmentReference  `json:"attachments,omitempty"`
-	CreatedAt       time.Time
+	ID                 string
+	Role               string
+	Content            string
+	ClientMessageID    string                 `json:"client_message_id,omitempty"`
+	LiveSessionID      string                 `json:"live_session_id,omitempty"`
+	TurnID             string                 `json:"turn_id,omitempty"`
+	Mode               ConversationMode       `json:"mode,omitempty"`
+	Kind               string                 `json:"kind,omitempty"`
+	Report             *InterviewReportCard   `json:"report,omitempty"`
+	History            *InterviewHistoryCards `json:"history,omitempty"`
+	Mistakes           *MistakeCards          `json:"mistakes,omitempty"`
+	Attachments        []AttachmentReference  `json:"attachments,omitempty"`
+	LearningAssessment *LearningAssessment    `json:"learning_assessment,omitempty"`
+	CreatedAt          time.Time
+}
+
+type LearningAssessment struct {
+	Provider      string              `json:"provider"`
+	Overall       float64             `json:"overall,omitempty"`
+	Fluency       float64             `json:"fluency,omitempty"`
+	Pronunciation float64             `json:"pronunciation,omitempty"`
+	Integrity     float64             `json:"integrity,omitempty"`
+	Rhythm        float64             `json:"rhythm,omitempty"`
+	Tone          float64             `json:"tone,omitempty"`
+	Speed         float64             `json:"speed,omitempty"`
+	Words         []PronunciationWord `json:"words,omitempty"`
+	Explanations  []string            `json:"explanations,omitempty"`
+}
+
+type PronunciationWord struct {
+	Word          string                 `json:"word"`
+	Overall       float64                `json:"overall,omitempty"`
+	Pronunciation float64                `json:"pronunciation,omitempty"`
+	Tone          float64                `json:"tone,omitempty"`
+	ReadType      int                    `json:"read_type,omitempty"`
+	Start         int                    `json:"start,omitempty"`
+	End           int                    `json:"end,omitempty"`
+	Phonemes      []PronunciationPhoneme `json:"phonemes,omitempty"`
+}
+
+type PronunciationPhoneme struct {
+	Phoneme       string  `json:"phoneme"`
+	Phone         string  `json:"phone,omitempty"`
+	Pronunciation float64 `json:"pronunciation,omitempty"`
+	Start         int     `json:"start,omitempty"`
+	End           int     `json:"end,omitempty"`
 }
 
 type InterviewReportCard struct {
