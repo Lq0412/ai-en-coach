@@ -90,6 +90,8 @@ test("prototype bridges the original interaction to the Go assistant", async () 
   assert.match(bridge, /views\["home"\]\s*=\s*realHistoryView/);
   assert.match(bridge, /completedQuestionCount/);
   assert.match(bridge, /snapshot\?\.targetRole/);
+  assert.match(bridge, /interviewContext\(confirmation\.TaskRunID\)/);
+  assert.match(bridge, /createStep\?\.Arguments\?\.role\s*\|\|[\s\S]*!\s*pending\s*\?\s*snapshot\?\.targetRole/);
   assert.match(bridge, /recentConversationHTML/);
   assert.match(bridge, /\/v1\/assistant\/conversations/);
   assert.match(bridge, /realConversationArchiveView/);

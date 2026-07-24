@@ -75,6 +75,21 @@ func (p *MockPlanner) Plan(_ context.Context, request PlanRequest) (Plan, error)
 			Steps:  []PlanStep{{ToolName: "review.generate_feedback", Arguments: map[string]any{}}},
 		}, nil
 	}
+	if isOralFreePracticeRequest(text) {
+		return Plan{
+			Intent: "oral_free_practice",
+			Steps: []PlanStep{{
+				ToolName: "conversation.generate_reply",
+				Arguments: map[string]any{
+					"user_message":    request.UserMessage,
+					"context_summary": request.ContextSummary,
+				},
+			}},
+		}, nil
+	}
+	if variant := ScenarioVariantFromMessage(request.UserMessage); variant == "restaurant_ordering" || variant == "apartment_rental" {
+		return scenarioPracticePlan(variant, false), nil
+	}
 
 	interviewRequested := strings.Contains(text, "面试") || strings.Contains(text, "interview")
 	requirementPending := strings.Contains(request.ContextSummary, "interview_requirement=pending_target_role")
@@ -85,6 +100,9 @@ func (p *MockPlanner) Plan(_ context.Context, request PlanRequest) (Plan, error)
 		role := detectTargetRole(request.UserMessage)
 		if role == "" {
 			return interviewRequirementQuestionPlan(), nil
+		}
+		if variant := ScenarioVariantFromRole(role); variant != "" {
+			return scenarioPracticePlan(variant, true), nil
 		}
 		return Plan{
 			Intent: "start_mock_interview",
@@ -112,12 +130,44 @@ func (p *MockPlanner) Plan(_ context.Context, request PlanRequest) (Plan, error)
 	}, nil
 }
 
+func scenarioPracticePlan(variant string, interview bool) Plan {
+	spec, _ := FindScenarioSpec(variant)
+	plan := Plan{
+		Intent:          "scenario_practice",
+		Scenario:        spec.Scenario,
+		ScenarioVariant: variant,
+		KnowledgeTags:   append([]string(nil), spec.KnowledgeTags...),
+		Steps: []PlanStep{{
+			ToolName: "scenario.retrieve_knowledge",
+			Arguments: map[string]any{
+				"scenario_variant": variant,
+				"tags":             append([]string(nil), spec.KnowledgeTags...),
+			},
+		}},
+	}
+	if interview {
+		plan.Steps = append(plan.Steps,
+			PlanStep{ToolName: "preparation.get_confirmed_context", Arguments: map[string]any{"scenario": "PROGRAMMER_INTERVIEW"}},
+			PlanStep{ToolName: "practice.create_plan", Arguments: map[string]any{}},
+			PlanStep{ToolName: "practice.start_session", Arguments: map[string]any{}},
+			PlanStep{ToolName: "conversation.generate_next_question", Arguments: map[string]any{}},
+		)
+		return plan
+	}
+	plan.Steps = append(plan.Steps, PlanStep{ToolName: "conversation.generate_reply", Arguments: map[string]any{}})
+	return plan
+}
+
 type MockDomainState struct {
 	CurrentSessionID       string
 	ActiveQuestion         string
 	CompletedQuestionCount int
 	TargetRole             string
 	Interviewer            string
+	Scenario               string
+	ScenarioVariant        string
+	KnowledgeTags          []string
+	ScenarioKnowledge      ScenarioKnowledge
 	MaxTurns               int
 	DurationMinutes        int
 	StartedAt              time.Time
@@ -1078,6 +1128,21 @@ func isInterviewStopRequest(text string) bool {
 	for _, phrase := range []string{
 		"结束面试", "停止面试", "结束这场面试", "结束练习",
 		"end interview", "stop interview", "finish interview", "finish the interview",
+	} {
+		if strings.Contains(text, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
+func isOralFreePracticeRequest(text string) bool {
+	text = strings.ToLower(strings.TrimSpace(text))
+	for _, phrase := range []string{
+		"随便练练口语", "随便练一下口语", "练练口语", "练一下口语", "练口语",
+		"日常英语", "英语聊一会", "英语聊一会儿", "用英语聊", "陪我练",
+		"practice speaking casually", "practice speaking", "casual speaking",
+		"practice oral english", "speak english with me", "chat in english",
 	} {
 		if strings.Contains(text, phrase) {
 			return true

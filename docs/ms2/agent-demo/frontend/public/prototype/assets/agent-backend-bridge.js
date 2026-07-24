@@ -154,26 +154,30 @@
   }
 
   function hasInterview() {
-    return taskRuns("start_mock_interview").length > 0;
+    return taskRuns("start_mock_interview").length > 0 || taskRuns("scenario_practice").some((item) => snapshot?.plans?.[item.ID]?.Scenario === "interview");
   }
 
-  function interviewContext() {
-    const start = taskRuns("start_mock_interview")[0];
-    const plan = start ? snapshot?.plans?.[start.ID] : null;
+  function interviewContext(taskID = "") {
+    const explicitPlan = taskID ? snapshot?.plans?.[taskID] : null;
+    const start =
+      (taskID ? null : taskRuns("start_mock_interview")[0]) ||
+      (taskID ? null : taskRuns("scenario_practice").find((item) => snapshot?.plans?.[item.ID]?.Scenario === "interview"));
+    const plan = explicitPlan || (start ? snapshot?.plans?.[start.ID] : null);
     const createStep = plan?.Steps?.find((item) => item.ToolName === "practice.create_plan");
+    const pending = Boolean(taskID && plan);
     return {
       targetRole:
-        snapshot?.targetRole ||
         createStep?.Arguments?.role ||
+        (!pending ? snapshot?.targetRole : "") ||
         "Software Engineer",
-      interviewer: snapshot?.interviewer || "Senior Hiring Manager",
+      interviewer: (!pending ? snapshot?.interviewer : "") || "Senior Hiring Manager",
       maxTurns:
-        snapshot?.maxInterviewTurns ??
         createStep?.Arguments?.max_turns ??
+        (!pending ? snapshot?.maxInterviewTurns : undefined) ??
         0,
       durationMinutes:
-        snapshot?.interviewDurationMinutes ??
         createStep?.Arguments?.duration_minutes ??
+        (!pending ? snapshot?.interviewDurationMinutes : undefined) ??
         15,
     };
   }
@@ -564,7 +568,7 @@
 
   function confirmationHTML(confirmation) {
     if (!confirmation) return "";
-    const { targetRole, interviewer, maxTurns, durationMinutes } = interviewContext();
+    const { targetRole, interviewer, maxTurns, durationMinutes } = interviewContext(confirmation.TaskRunID);
     const profile = snapshot?.candidateProfile || {};
     const background = profile.resumeName || profile.headline || "本次对话中已确认的信息";
     return `<section class="real-confirmation">

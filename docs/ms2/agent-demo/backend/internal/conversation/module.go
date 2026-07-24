@@ -102,6 +102,7 @@ func (s service) GenerateNextQuestion(ctx context.Context) (questionResult Quest
 				PreviousQuestions: append([]string(nil), state.Questions...), MaxTurns: state.MaxTurns,
 				DurationMinutes: state.DurationMinutes, ElapsedMinutes: elapsedMinutes,
 				RemainingMinutes: remainingMinutes, CandidateProfile: state.CandidateProfile,
+				ScenarioKnowledge: state.ScenarioKnowledge,
 			})
 			if err != nil {
 				return assistant.ToolResult{}, err
@@ -137,6 +138,9 @@ func (s service) GenerateReply(ctx context.Context, command ReplyCommand) (reply
 		reply := "我可以和你自由对话，也可以在你提出面试需求时切换到模拟面试场景。"
 		if userMessage != "" {
 			reply = "你说的是：“" + userMessage + "”。这是一次普通自由对话，没有启动面试。"
+		}
+		if strings.Contains(contextSummary, "自由口语陪练") {
+			reply = "Sure, let's practice casually. Tell me one thing you did today, and I will help you say it more naturally."
 		}
 		if s.generator != nil {
 			messages := make([]assistant.ContextMessage, 0, len(command.Messages))

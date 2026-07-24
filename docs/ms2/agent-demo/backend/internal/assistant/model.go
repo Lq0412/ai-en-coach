@@ -69,8 +69,14 @@ type ConfirmationRequest struct {
 }
 
 type Plan struct {
-	Intent string
-	Steps  []PlanStep
+	Intent          string
+	Scenario        string   `json:"Scenario,omitempty"`
+	ScenarioVariant string   `json:"ScenarioVariant,omitempty"`
+	KnowledgeTags   []string `json:"KnowledgeTags,omitempty"`
+	Steps           []PlanStep
+	Confidence      float64  `json:"Confidence,omitempty"`
+	MissingSlots    []string `json:"MissingSlots,omitempty"`
+	Reason          string   `json:"Reason,omitempty"`
 }
 
 type PlanStep struct {
@@ -209,6 +215,13 @@ type InterviewSession struct {
 	Questions       []string   `json:"questions"`
 	Answers         []string   `json:"answers"`
 	Feedback        string     `json:"feedback,omitempty"`
+}
+
+type ScenarioKnowledge struct {
+	ScenarioVariant   string   `json:"scenarioVariant"`
+	KnowledgeTags     []string `json:"knowledgeTags"`
+	CompetencyContext []string `json:"competencyContext"`
+	QuestionGuidance  string   `json:"questionGuidance"`
 }
 
 type SavedMistake struct {

@@ -15,6 +15,7 @@ import (
 )
 
 type Registry struct {
+	state        *assistant.DemoState
 	preparation  preparation.ScenarioReader
 	practice     practice.Service
 	conversation conversation.Service
@@ -26,6 +27,7 @@ var _ assistant.AnswerCoachService = (*Registry)(nil)
 
 func NewRegistry(state *assistant.DemoState, generator assistant.AgentContentGenerator) *Registry {
 	return &Registry{
+		state:        state,
 		preparation:  preparation.NewService(state),
 		practice:     practice.NewService(state),
 		conversation: conversation.NewService(state, generator),
@@ -39,6 +41,20 @@ func (r *Registry) GenerateAnswerCoach(ctx context.Context) (assistant.AnswerCoa
 
 func (r *Registry) Execute(ctx context.Context, invocation assistant.ToolInvocation) (assistant.ToolResult, error) {
 	switch invocation.ToolName {
+	case "scenario.retrieve_knowledge":
+		scenarioVariant := strings.TrimSpace(fmt.Sprint(invocation.Arguments["scenario_variant"]))
+		tags := stringSliceArgument(invocation.Arguments["tags"])
+		knowledge := assistant.RetrieveScenarioKnowledge(scenarioVariant, tags)
+		_, err := r.state.Transact(func(state *assistant.RuntimeSnapshot, _ *[]string) (assistant.ToolResult, error) {
+			state.ScenarioVariant = knowledge.ScenarioVariant
+			if spec, ok := assistant.FindScenarioSpec(knowledge.ScenarioVariant); ok {
+				state.Scenario = spec.Scenario
+			}
+			state.KnowledgeTags = append([]string(nil), knowledge.KnowledgeTags...)
+			state.ScenarioKnowledge = knowledge
+			return assistant.ToolResult{}, nil
+		})
+		return output(scenarioKnowledgeOutput(knowledge), err)
 	case "preparation.get_confirmed_context":
 		value, err := r.preparation.GetConfirmedContext(ctx, strings.TrimSpace(fmt.Sprint(invocation.Arguments["scenario"])))
 		return output(map[string]any{
@@ -134,6 +150,15 @@ func (r *Registry) Execute(ctx context.Context, invocation assistant.ToolInvocat
 		return output(map[string]any{"repractice": repracticeResultOutput(value), "summary": value.Summary}, err)
 	default:
 		return assistant.ToolResult{}, fmt.Errorf("unregistered tool: %s", invocation.ToolName)
+	}
+}
+
+func scenarioKnowledgeOutput(knowledge assistant.ScenarioKnowledge) map[string]any {
+	return map[string]any{
+		"scenario_variant":   knowledge.ScenarioVariant,
+		"knowledge_tags":     append([]string(nil), knowledge.KnowledgeTags...),
+		"competency_context": append([]string(nil), knowledge.CompetencyContext...),
+		"question_guidance":  knowledge.QuestionGuidance,
 	}
 }
 
@@ -284,4 +309,25 @@ func stringArgument(value any) string {
 		return ""
 	}
 	return strings.TrimSpace(fmt.Sprint(value))
+}
+
+func stringSliceArgument(value any) []string {
+	switch typed := value.(type) {
+	case []string:
+		return append([]string(nil), typed...)
+	case []any:
+		result := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if text := strings.TrimSpace(fmt.Sprint(item)); text != "" {
+				result = append(result, text)
+			}
+		}
+		return result
+	default:
+		text := stringArgument(value)
+		if text == "" {
+			return nil
+		}
+		return []string{text}
+	}
 }

@@ -91,6 +91,8 @@ func (s service) StartSession(_ context.Context) (session SessionSnapshot, err e
 		*state = assistant.RuntimeSnapshot{
 			CurrentSessionID: fmt.Sprintf("session-%d", startedAt.UnixNano()),
 			TargetRole:       state.TargetRole, Interviewer: state.Interviewer,
+			Scenario: state.Scenario, ScenarioVariant: state.ScenarioVariant,
+			KnowledgeTags: state.KnowledgeTags, ScenarioKnowledge: state.ScenarioKnowledge,
 			MaxTurns: state.MaxTurns, DurationMinutes: state.DurationMinutes,
 			StartedAt: startedAt, Deadline: startedAt.Add(time.Duration(state.DurationMinutes) * time.Minute),
 			Sessions:         append([]assistant.InterviewSession(nil), state.Sessions...),
