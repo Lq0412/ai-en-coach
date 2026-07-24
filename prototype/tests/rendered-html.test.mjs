@@ -28,6 +28,11 @@ test("presents SpeakUp as a long-term Agent teacher connected to real outcomes",
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /有记忆的 AI Agent 口语老师/);
+  assert.match(html, /scenario-flow/);
+  assert.match(html, /我下周有一场英文面试……/);
+  assert.match(html, /明天要第一次独自去医院……/);
+  assert.match(html, /我要向海外客户汇报项目……/);
+  assert.match(html, /帮我准备 IELTS Part 2……/);
   assert.doesNotMatch(html, /href="\/pages\/prototype\.html/);
   assert.match(html, /href="#early-access"/);
   assert.match(html, /先让 SpeakUp 了解我/);
@@ -99,6 +104,9 @@ test("renders five interactive product states instead of cropped screenshots", a
     styles.indexOf(".scenario-proof-section"),
   );
   assert.doesNotMatch(demoStyles, /gradient|glow/i);
+  assert.match(styles, /@keyframes scenario-flow/);
+  assert.match(styles, /--section-space:/);
+  assert.match(styles, /prefers-reduced-motion[\s\S]*\.scenario-flow-track/);
 });
 
 test("opens the original information collection form from primary calls to action", async () => {

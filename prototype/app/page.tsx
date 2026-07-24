@@ -5,6 +5,13 @@ import InterviewDemo from "./InterviewDemo";
 const comingSoonHref = "#coming-soon";
 const earlyAccessHref = "#early-access";
 
+const flowingTasks = [
+  "我下周有一场英文面试……",
+  "明天要第一次独自去医院……",
+  "我要向海外客户汇报项目……",
+  "帮我准备 IELTS Part 2……",
+];
+
 const journeyStages = [
   {
     index: "01",
@@ -132,6 +139,35 @@ export default function Home() {
             <a className="button button-secondary" href="#demo">
               看它怎么陪我
             </a>
+          </div>
+        </div>
+
+        <div
+          className="scenario-flow"
+          role="img"
+          aria-label={`可以告诉 SpeakUp 的真实任务：${flowingTasks.join("；")}`}
+        >
+          <div className="scenario-flow-heading" aria-hidden="true">
+            <span>把下一件真实的事，说给它听</span>
+            <small>场景会变，陪你的老师不变</small>
+          </div>
+          <div className="scenario-flow-viewport" aria-hidden="true">
+            <div className="scenario-flow-track">
+              {[0, 1].map((group) => (
+                <div className="scenario-flow-group" key={group}>
+                  {flowingTasks.map((task, index) => (
+                    <span key={`${group}-${task}`}>
+                      <i>{String(index + 1).padStart(2, "0")}</i>
+                      {task}
+                    </span>
+                  ))}
+                </div>
+              ))}
+            </div>
+            <span className="scenario-flow-agent">
+              <b>S</b>
+              <small>正在听</small>
+            </span>
           </div>
         </div>
 
